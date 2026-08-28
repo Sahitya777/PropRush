@@ -1,0 +1,6 @@
+{
+  "name": "RichUp - Fast-Paced Multiplayer Economy Game",
+  "description": "Play fast-paced monopoly online with friends or AI, wager prize pools, build custom property empires, climb league ranks, earn badges, and customize appearances.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
