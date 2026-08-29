@@ -104,7 +104,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                     {/* Background Subtle Watermark */}
                     <div className="absolute inset-0 flex items-center justify-center opacity-4 pointer-events-none select-none">
                       <div className="text-7xl sm:text-9xl font-black font-heading text-white tracking-widest">
-                        RICHUP
+                        PROPRUSH
                       </div>
                     </div>
 
@@ -149,6 +149,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                           onRoll={onRollDice}
                           timer={room.turnTimer}
                           fastSpeed={room.fastSpeed}
+                          diceSkin={currentTurnPlayer?.diceSkin || 'dice_golden'}
                         />
                       </div>
 

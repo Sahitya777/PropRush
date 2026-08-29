@@ -52,6 +52,7 @@ export interface Player {
   name: string;
   avatar: string; // skin id: 'navy' | 'lilac' | 'apple' | 'fire' | etc.
   avatarFrame?: string; // frame id: 'pfp_crown' | 'pfp_neon' | 'pfp_fire' | 'pfp_diamond'
+  diceSkin?: string; // dice skin id: 'dice_golden' | 'dice_neon' | 'dice_magma' etc.
   color: string; // hex or tailwind class
   isBot: boolean;
   isHost?: boolean;
@@ -125,7 +126,17 @@ export interface ChatMessage {
   isSystem?: boolean;
 }
 
-export type BoardMapTheme = 'classic' | 'worldwide' | 'death_valley' | 'lucky' | 'cyber';
+export type BoardMapTheme = 
+  | 'classic' 
+  | 'worldwide' 
+  | 'death_valley' 
+  | 'lucky' 
+  | 'cyber' 
+  | 'candy' 
+  | 'space' 
+  | 'medieval' 
+  | 'pirate' 
+  | 'egypt';
 
 export interface GameRoom {
   id: string;

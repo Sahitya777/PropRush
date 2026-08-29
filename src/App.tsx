@@ -7,6 +7,7 @@ import { StoreView } from './views/StoreView';
 import { ProfileView } from './views/ProfileView';
 import { WalletModal } from './components/WalletModal';
 import { RulesModal } from './components/RulesModal';
+import { ClerkAuthModal } from './components/ClerkAuthModal';
 import { sounds } from './utils/audio';
 import { getActiveMatch } from './utils/reconnectStorage';
 
@@ -161,12 +162,12 @@ function AppContent() {
         {currentView === 'profile' && <ProfileView />}
       </main>
 
-      {/* Footer matching RichUp sleek minimalism (hidden during active game) */}
+      {/* Footer sleek minimalism (hidden during active game) */}
       {currentView !== 'game' && (
         <footer className="w-full border-t border-[#2b2447] py-6 px-4 bg-[#100c1e] text-center text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-3 max-w-7xl mx-auto">
           <div className="flex items-center gap-2">
-            <span className="font-heading font-black text-slate-300">RICHUP.IO</span>
-            <span>• Fast-Paced Monopoly Economy</span>
+            <span className="font-heading font-black text-slate-300">PROPRUSH</span>
+            <span>• Fast-Paced Multiplayer Real Estate</span>
           </div>
           <div className="flex items-center gap-4">
             <button
@@ -208,6 +209,9 @@ function AppContent() {
         isOpen={isRulesOpen}
         onClose={() => setIsRulesOpen(false)}
       />
+
+      {/* Clerk Authentication Modal */}
+      <ClerkAuthModal />
     </div>
   );
 }

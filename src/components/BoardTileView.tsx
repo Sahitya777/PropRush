@@ -21,79 +21,79 @@ export const BoardTileView: React.FC<BoardTileViewProps> = ({
   housesCount = 0,
   playersOnTile,
   isActiveTile = false,
-  onClick
+  onClick,
 }) => {
   const isCorner = tile.id % 10 === 0;
   const groupStyle = tile.group ? GROUP_COLORS[tile.group] : null;
 
-  // Corner Tiles Rendering (START, IN PRISON, VACATION, GO TO PRISON)
+  // 1. CORNER TILES (0: START, 10: PRISON, 20: VACATION, 30: GO TO PRISON)
   if (isCorner) {
     return (
       <div
         id={`tile-${tile.id}`}
         onClick={onClick}
-        className={`relative w-full h-full select-none cursor-pointer transition-all duration-150 flex flex-col items-center justify-between p-1 sm:p-1.5 rounded-lg sm:rounded-xl border border-[#2b2447] bg-[#161228] hover:bg-[#201a38] overflow-hidden ${
-          isActiveTile ? 'ring-2 ring-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.6)] z-30' : ''
+        className={`relative w-full h-full select-none cursor-pointer transition-all duration-150 flex flex-col items-center justify-between p-1 rounded-xl border bg-[#130f28] hover:bg-[#1e173e] ${
+          isActiveTile
+            ? 'border-amber-400 ring-2 ring-amber-400 shadow-[0_0_16px_rgba(251,191,36,0.9)] z-30'
+            : 'border-[#332958]'
         }`}
       >
         {tile.id === 0 && (
-          // START TILE (Top-Left)
-          <div className="w-full h-full flex flex-col items-center justify-between py-0.5 text-center">
-            <div className="flex items-center justify-center gap-0.5 text-emerald-400 font-black font-heading text-[9px] sm:text-xs tracking-wider">
+          // START TILE
+          <div className="w-full h-full flex flex-col items-center justify-between py-1 text-center bg-gradient-to-br from-emerald-950/80 to-slate-900/90 rounded-lg">
+            <div className="text-[10px] sm:text-[12px] font-black text-emerald-400 tracking-wider flex items-center gap-0.5 justify-center">
               <span>START</span>
-              <span className="text-xs">»</span>
+              <span>🚀</span>
             </div>
-            <div className="text-xl sm:text-2xl filter drop-shadow-md">🚀</div>
-            <div className="text-[8px] sm:text-[9.5px] text-emerald-300 font-mono-code font-bold">
+            <div className="text-xl sm:text-2xl filter drop-shadow my-auto">🚩</div>
+            <div className="text-[8px] sm:text-[9.5px] text-emerald-300 font-mono font-black bg-emerald-950/90 px-1.5 py-0.5 rounded border border-emerald-500/50">
               +$200
             </div>
           </div>
         )}
 
         {tile.id === 10 && (
-          // PRISON TILE (Top-Right)
-          <div className="w-full h-full flex flex-col items-center justify-between py-0.5 text-center">
-            <div className="text-[7.5px] sm:text-[9px] text-slate-400 font-medium leading-none">
-              Visiting
+          // PRISON TILE
+          <div className="w-full h-full flex flex-col items-center justify-between py-1 text-center bg-gradient-to-bl from-slate-900 via-slate-950 to-slate-900 rounded-lg">
+            <div className="text-[8px] sm:text-[9.5px] text-slate-400 font-bold uppercase tracking-wider">
+              VISITING
             </div>
-            <div className="w-7 sm:w-9 h-5 sm:h-6 bg-slate-900/90 border border-slate-700/80 rounded flex items-center justify-evenly px-0.5 relative overflow-hidden">
-              <div className="w-0.5 h-full bg-slate-600" />
-              <div className="w-0.5 h-full bg-slate-600" />
-              <div className="w-0.5 h-full bg-slate-600" />
+            <div className="text-xl sm:text-2xl my-auto filter drop-shadow">
+              🔒
             </div>
-            <div className="text-[7.5px] sm:text-[9px] text-slate-300 font-bold leading-none">
-              In Prison
+            <div className="text-[8.5px] sm:text-[10.5px] text-slate-200 font-black uppercase tracking-wider">
+              IN PRISON
             </div>
           </div>
         )}
 
         {tile.id === 20 && (
-          // VACATION TILE (Bottom-Right)
-          <div className="w-full h-full flex flex-col items-center justify-between py-0.5 text-center">
-            <div className="text-lg sm:text-xl">🏖️</div>
-            <div className="text-[8px] sm:text-[10px] font-heading font-black text-amber-300 uppercase leading-tight">
-              Vacation
+          // VACATION TILE
+          <div className="w-full h-full flex flex-col items-center justify-between py-1 text-center bg-gradient-to-tl from-amber-950/80 to-slate-900/90 rounded-lg">
+            <div className="text-[9.5px] sm:text-[11.5px] font-black text-amber-400 tracking-wider">
+              VACATION
             </div>
-            <div className="text-[7.5px] sm:text-[8.5px] text-amber-400 font-mono-code font-bold">
-              Resort Pool
+            <div className="text-xl sm:text-2xl filter drop-shadow my-auto">🏖️</div>
+            <div className="text-[8px] sm:text-[9.5px] text-amber-300 font-mono font-black bg-amber-950/90 px-1.5 py-0.5 rounded border border-amber-500/50">
+              Resort Pot
             </div>
           </div>
         )}
 
         {tile.id === 30 && (
-          // GO TO PRISON TILE (Bottom-Left)
-          <div className="w-full h-full flex flex-col items-center justify-between py-0.5 text-center">
-            <div className="text-lg sm:text-xl">☠️</div>
-            <div className="text-[7.5px] sm:text-[9px] font-heading font-black text-rose-400 uppercase leading-tight">
-              Go to prison
+          // GO TO PRISON TILE
+          <div className="w-full h-full flex flex-col items-center justify-between py-1 text-center bg-gradient-to-tr from-rose-950/80 to-slate-900/90 rounded-lg">
+            <div className="text-[8.5px] sm:text-[10px] font-black text-rose-400 uppercase tracking-wider">
+              GO TO PRISON
             </div>
-            <div className="text-[7.5px] sm:text-[8.5px] text-slate-500 font-mono-code">
-              Lockup
+            <div className="text-xl sm:text-2xl filter drop-shadow my-auto">☠️</div>
+            <div className="text-[7.5px] sm:text-[9px] text-rose-300 font-mono font-bold">
+              Arrested
             </div>
           </div>
         )}
 
-        {/* Floating Players Badge on Corner Tile */}
+        {/* Players Floating on Corner Tile */}
         {playersOnTile.length > 0 && (
           <div className="absolute inset-x-0 bottom-0.5 flex items-center justify-center flex-wrap gap-0.5 p-0.5 z-20 pointer-events-none">
             {playersOnTile.map(p => (
@@ -111,147 +111,122 @@ export const BoardTileView: React.FC<BoardTileViewProps> = ({
     );
   }
 
-  // Regular Tile Rendering (Top row, Bottom row, Left col, Right col)
-  const isSpecial = tile.type === 'chest' || tile.type === 'chance' || tile.type === 'tax';
-  const isUtilityOrAirport = tile.type === 'utility' || tile.type === 'railroad';
+  // 2. STANDARD TILES (PROPERTIES, AIRPORTS, UTILITIES, TAXES, CHESTS, SURPRISES)
+  const isProperty = tile.type === 'property';
+  const isAirport = tile.type === 'railroad';
+  const isUtility = tile.type === 'utility';
+  const isTax = tile.type === 'tax';
+  const isChest = tile.type === 'chest';
+  const isChance = tile.type === 'chance';
 
-  const headerBgColor = owner
-    ? owner.color
-    : groupStyle?.badge || (isUtilityOrAirport ? '#334155' : '#1e1838');
+  // Group Color Stripe
+  const groupBadgeColor =
+    groupStyle?.badge ||
+    (isAirport ? '#0284c7' : isUtility ? '#0d9488' : isTax ? '#e11d48' : isChest ? '#d97706' : '#9333ea');
 
   return (
     <div
       id={`tile-${tile.id}`}
       onClick={onClick}
-      className={`relative w-full h-full select-none cursor-pointer transition-all duration-150 flex flex-col justify-between rounded-lg sm:rounded-xl border border-[#2b2447] bg-[#141024] hover:bg-[#1f1935] overflow-hidden ${
-        isActiveTile ? 'ring-2 ring-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.6)] z-30' : ''
-      } ${isMortgaged ? 'opacity-50 grayscale' : ''}`}
+      style={{
+        borderColor: owner ? owner.color : undefined,
+        boxShadow: owner
+          ? `0 0 10px ${owner.color}90, inset 0 0 8px ${owner.color}25`
+          : undefined,
+      }}
+      className={`relative w-full h-full select-none cursor-pointer transition-all duration-150 rounded-xl bg-[#130f28] hover:bg-[#1e173e] flex flex-col justify-between p-1 ${
+        isActiveTile
+          ? 'border-amber-400 ring-2 ring-amber-400 shadow-[0_0_16px_rgba(251,191,36,0.9)] z-30'
+          : owner
+          ? 'border-2 sm:border-[2.5px] z-10'
+          : 'border border-[#2c234b]'
+      } ${isMortgaged ? 'opacity-40 grayscale' : ''}`}
     >
-      {/* 1. TOP HEADER STRIP: Property Color / Owner Color Banner with Price */}
-      {tile.type === 'property' && (
+      {/* 1. TOP ACCENT STRIPE (Group/Country Set Color) */}
+      <div className="w-full flex items-center gap-1 flex-shrink-0">
         <div
-          className="w-full h-3.5 sm:h-4.5 transition-colors duration-300 flex items-center justify-between px-1 flex-shrink-0"
-          style={{
-            backgroundColor: headerBgColor
-          }}
-        >
-          {!owner ? (
-            <span className="w-full text-center text-[7.5px] sm:text-[9px] font-mono-code font-bold text-white drop-shadow-sm leading-none">
-              ${tile.price}
-            </span>
-          ) : (
-            <div className="w-full flex items-center justify-between gap-0.5 leading-none">
-              {/* House/Hotel or Owner Tag */}
-              {housesCount > 0 ? (
-                <div className="flex gap-0.5 items-center">
-                  {housesCount === 5 ? (
-                    <span className="text-[7px] text-white font-extrabold bg-red-700 px-0.5 rounded leading-none">
-                      🏨
-                    </span>
-                  ) : (
-                    <span className="text-[7.5px] font-bold text-emerald-200 leading-none">
-                      🏠x{housesCount}
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <span className="text-[7px] font-bold text-white uppercase tracking-tight truncate drop-shadow-sm max-w-[45%]">
-                  {owner.name.substring(0, 4)}
-                </span>
-              )}
-              <span className="text-[7.5px] sm:text-[8.5px] font-mono-code text-white font-bold ml-auto leading-none">
-                ${tile.price}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Airport / Utility Header */}
-      {isUtilityOrAirport && (
-        <div
-          className="w-full h-3.5 sm:h-4.5 transition-colors duration-300 flex items-center justify-center px-1 flex-shrink-0"
-          style={{
-            backgroundColor: owner ? owner.color : '#334155'
-          }}
-        >
-          <span className="text-[7.5px] sm:text-[8.5px] font-mono-code font-bold text-white drop-shadow-sm truncate leading-none">
-            {owner ? `${owner.name.substring(0, 4)} • $${tile.price}` : `$${tile.price}`}
-          </span>
-        </div>
-      )}
-
-      {/* Special Tiles (Treasure, Surprise, Tax) Top Bar */}
-      {isSpecial && (
-        <div className="w-full h-3 sm:h-3.5 bg-slate-900/70 flex items-center justify-center flex-shrink-0">
-          {tile.type === 'tax' ? (
-            <span className="text-[7px] sm:text-[8px] text-rose-300 font-mono-code font-bold leading-none">
-              {tile.taxAmount ? `$${tile.taxAmount}` : '10%'}
-            </span>
-          ) : (
-            <span className="text-[7px] sm:text-[8px] text-amber-300 font-bold leading-none">
-              {tile.type === 'chest' ? 'Treasure' : 'Surprise'}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* 2. MIDDLE SECTION: Property / Tile Name & Icon */}
-      <div className="flex-1 min-h-0 flex flex-col items-center justify-center px-0.5 py-0.5 text-center overflow-hidden">
-        {tile.type === 'chest' && (
-          <div className="text-xs sm:text-base filter drop-shadow leading-none mb-0.5">🎁</div>
-        )}
-        {tile.type === 'chance' && (
-          <div className="text-xs sm:text-base filter drop-shadow leading-none mb-0.5">❓</div>
-        )}
-        {tile.type === 'tax' && (
-          <div className="text-xs sm:text-base filter drop-shadow leading-none mb-0.5">💸</div>
-        )}
-        {tile.type === 'railroad' && (
-          <div className="text-xs sm:text-base filter drop-shadow leading-none mb-0.5">✈️</div>
-        )}
-        {tile.type === 'utility' && (
-          <div className="text-xs sm:text-base filter drop-shadow leading-none mb-0.5">
-            {tile.icon || (tile.name.includes('Water') ? '💧' : '⚡')}
-          </div>
-        )}
-
-        {/* Name Text */}
-        <span
-          className={`font-heading font-bold text-[7.5px] sm:text-[8.5px] md:text-[9.5px] leading-[1.05] text-slate-100 line-clamp-2 px-0.5 break-words ${
-            isSpecial ? 'text-[7px] sm:text-[8px] text-slate-300' : ''
-          }`}
-        >
-          {tile.name}
-        </span>
-      </div>
-
-      {/* 3. BOTTOM SECTION: Country Flag or Indicator */}
-      <div className="w-full pb-0.5 flex items-center justify-center flex-shrink-0">
-        {tile.flag ? (
-          <span className="text-[10px] sm:text-xs leading-none drop-shadow-sm">
-            {tile.flag}
-          </span>
-        ) : tile.type === 'property' && groupStyle ? (
+          className="flex-1 h-1.5 sm:h-2 rounded-full shadow-xs"
+          style={{ backgroundColor: groupBadgeColor }}
+        />
+        {/* If owned, show small owner color indicator tag at top corner */}
+        {owner && (
           <div
-            className="w-2 h-0.5 rounded-full"
-            style={{ backgroundColor: groupStyle.badge }}
+            className="w-2 h-2 rounded-full flex-shrink-0 shadow-sm ring-1 ring-white/60 animate-pulse"
+            style={{ backgroundColor: owner.color }}
+            title={`Owned by ${owner.name}`}
           />
-        ) : (
-          <div className="h-0.5" />
         )}
       </div>
 
-      {/* Mortgaged Overlay Tag */}
+      {/* Houses / Hotel Indicator */}
+      {housesCount > 0 && (
+        <div className="absolute top-1 right-1 bg-black/85 px-1 py-0.5 rounded text-[8px] sm:text-[9.5px] font-bold text-white border border-amber-400/60 filter drop-shadow leading-none z-10">
+          {housesCount === 5 ? '🏨 Hotel' : `🏠 ${housesCount}`}
+        </div>
+      )}
+
+      {/* 2. PLACE NAME & ICON (ALWAYS VISIBLE & HIGH-CONTRAST) */}
+      <div className="w-full flex-1 flex flex-col items-center justify-center text-center my-0.5 px-0.5">
+        <div
+          style={{
+            color: '#ffffff',
+            textShadow: '0 1px 3px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.85)',
+          }}
+          className="text-[9.5px] sm:text-[11px] font-black text-white leading-tight text-center break-words"
+        >
+          {tile.flag ? `${tile.flag} ` : tile.icon ? `${tile.icon} ` : ''}
+          {tile.name}
+        </div>
+      </div>
+
+      {/* 3. BOTTOM PRICE / OWNER BANNER */}
+      <div className="w-full flex items-center justify-center flex-shrink-0">
+        {owner ? (
+          // UNMISTAKABLE OWNER BADGE MATCHING PLAYER OUTLINE & COLOR
+          <div
+            className="w-full flex items-center justify-center gap-1 px-1 py-0.5 rounded-md text-[8px] sm:text-[9.5px] font-bold text-white leading-none shadow-sm truncate"
+            style={{
+              backgroundColor: owner.color,
+              boxShadow: `0 0 8px ${owner.color}90`,
+              textShadow: '0 1px 2px rgba(0,0,0,0.9)',
+            }}
+            title={`Owned by ${owner.name} (Rent active)`}
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-white flex-shrink-0 animate-pulse" />
+            <span className="truncate max-w-[50px] sm:max-w-[70px] font-mono uppercase tracking-tight">
+              {owner.name}
+            </span>
+          </div>
+        ) : tile.price ? (
+          // UNOWNED BUY PRICE
+          <div className="px-1.5 py-0.2 rounded-full bg-[#1e1738] text-amber-300 text-[8.5px] sm:text-[10px] font-mono font-bold border border-slate-700 leading-none">
+            ${tile.price}
+          </div>
+        ) : tile.taxAmount ? (
+          <div className="px-1.5 py-0.2 rounded-full bg-rose-950/90 text-rose-300 text-[8.5px] sm:text-[9.5px] font-mono font-bold border border-rose-800 leading-none">
+            -${tile.taxAmount}
+          </div>
+        ) : isChest ? (
+          <div className="px-1.5 py-0.2 rounded-full bg-amber-950/90 text-amber-300 text-[8px] sm:text-[9px] font-bold border border-amber-800 leading-none">
+            Bonus
+          </div>
+        ) : isChance ? (
+          <div className="px-1.5 py-0.2 rounded-full bg-purple-950/90 text-purple-300 text-[8px] sm:text-[9px] font-bold border border-purple-800 leading-none">
+            Mystery
+          </div>
+        ) : null}
+      </div>
+
+      {/* Mortgaged Overlay */}
       {isMortgaged && (
-        <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-10 pointer-events-none">
-          <span className="px-1 py-0.2 rounded bg-rose-900/90 text-rose-200 text-[6.5px] font-extrabold font-mono-code border border-rose-500">
+        <div className="absolute inset-0 bg-black/85 backdrop-blur-xs flex items-center justify-center z-10 pointer-events-none rounded-xl">
+          <span className="px-1 py-0.5 rounded bg-rose-950 text-rose-200 text-[7px] sm:text-[8px] font-black font-mono border border-rose-600 shadow-md">
             MORTGAGED
           </span>
         </div>
       )}
 
-      {/* 4. PLAYER AVATARS SITTING ON THIS TILE (Compact floating overlay) */}
+      {/* Players on Tile - Compact Floating Badge */}
       {playersOnTile.length > 0 && (
         <div className="absolute inset-x-0 bottom-0.5 flex items-center justify-center flex-wrap gap-0.5 p-0.5 z-20 pointer-events-none">
           {playersOnTile.map(p => (

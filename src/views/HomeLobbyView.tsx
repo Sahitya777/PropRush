@@ -25,7 +25,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
   onOpenWallet,
   onOpenStore
 }) => {
-  const { user, deductBuyIn } = useUser();
+  const { user, deductBuyIn, isLoggedIn, openAuthModal } = useUser();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [roomCodeInput, setRoomCodeInput] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
@@ -79,7 +79,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
     {
       code: 'lnu17',
       name: 'High Stakes NYC Arena',
-      host: 'RichUp_Admin',
+      host: 'PropRush_Admin',
       hostAvatar: 'navy',
       players: 3,
       max: 4,
@@ -113,6 +113,10 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
 
   const handleQuickPlay = (bet: number = 0, timer: number = 15) => {
     if (bet > 0) {
+      if (!isLoggedIn) {
+        openAuthModal('Sign in with Google or Clerk to enter cash stakes matches and win real prize pools.');
+        return;
+      }
       if (user.walletBalance < bet) {
         onOpenWallet();
         return;
@@ -164,6 +168,10 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
     const effectiveBet = wagerPreset === 'custom' ? (parseInt(customWagerAmount, 10) || 0) : betAmount;
 
     if (effectiveBet > 0) {
+      if (!isLoggedIn) {
+        openAuthModal('Sign in with Google or Clerk to create real-money wager rooms.');
+        return;
+      }
       if (user.walletBalance < effectiveBet) {
         onOpenWallet();
         return;
@@ -287,7 +295,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
         </div>
       )}
 
-      {/* Hero Section matching RichUp clean dark vibe */}
+      {/* Hero Section matching PropRush clean dark vibe */}
       <div className="text-center space-y-3 max-w-2xl mx-auto">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#7059e2]/20 border border-[#7059e2]/40 text-[#a390ff] text-xs font-bold font-mono-code mb-1">
           <span>⚡</span> FAST-PACED MULTIPLAYER MONOPOLY
@@ -439,6 +447,10 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
                 </button>
                 <button
                   onClick={() => {
+                    if (r.bet > 0 && !isLoggedIn) {
+                      openAuthModal(`Sign in with Google or Clerk to enter "${r.name}" ($${r.bet} Buy-in).`);
+                      return;
+                    }
                     onJoinRoom({
                       roomCode: r.code,
                       roomName: r.name,
@@ -532,7 +544,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
                   </button>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-slate-500 font-mono-code">richup.io/room/</span>
+                  <span className="text-slate-500 font-mono-code">proprush.com/room/</span>
                   <input
                     type="text"
                     value={roomCode}
@@ -661,7 +673,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
                     className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none font-mono-code text-xs"
                   >
                     <option value={10}>⚡ 10s (Turbo Blitz - Fastest)</option>
-                    <option value={15}>⏱️ 15s (Fast - RichUp Standard)</option>
+                    <option value={15}>⏱️ 15s (Fast - PropRush Standard)</option>
                     <option value={20}>⚡ 20s (Dynamic Action)</option>
                     <option value={30}>🕒 30s (Relaxed Pacing)</option>
                     <option value={45}>⏳ 45s (Strategic Deep Play)</option>
@@ -679,7 +691,12 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
                     <option value="classic">Classic Monopoly</option>
                     <option value="worldwide">Mr. Worldwide</option>
                     <option value="death_valley">Death Valley</option>
-                    <option value="cyber_neon">Cyber Neon</option>
+                    <option value="cyber_neon">Cyber Neon 2099</option>
+                    <option value="candy">Candy Kingdom</option>
+                    <option value="space">Space Odyssey</option>
+                    <option value="medieval">Medieval Castle Keep</option>
+                    <option value="pirate">Pirate Treasure Cove</option>
+                    <option value="egypt">Ancient Egypt Pyramids</option>
                   </select>
                 </div>
               </div>

@@ -20,7 +20,11 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
   isMuted,
   onToggleMute
 }) => {
-  const { user } = useUser();
+  const { user, isLoggedIn, openAuthModal, requireAuth } = useUser();
+
+  const handleWalletClick = () => {
+    requireAuth('Sign in with Google or Clerk to access your real-money wallet and deposit funds.', onOpenWallet);
+  };
 
   return (
     <header className="w-full bg-[#141024]/90 backdrop-blur-md border-b border-[#2b2447] px-4 py-2.5 flex items-center justify-between sticky top-0 z-40">
@@ -46,7 +50,7 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
           </div>
           <div className="flex flex-col">
             <span className="font-heading font-black text-lg sm:text-xl tracking-tight text-white flex items-center">
-              RICHUP<span className="text-[#7059e2]">.IO</span>
+              PROPRUSH
             </span>
           </div>
         </div>
@@ -57,7 +61,7 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
         {/* Wallet Balance ($ Wager system) */}
         <button
           id="btn-wallet-open"
-          onClick={onOpenWallet}
+          onClick={handleWalletClick}
           className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-500/40 text-emerald-300 font-mono-code font-bold text-xs sm:text-sm transition-all cursor-pointer shadow-sm"
           title="Deposit/Withdraw & Wager Balance"
         >
@@ -77,7 +81,7 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
               ? 'bg-[#7059e2] text-white shadow-[0_0_14px_rgba(112,89,226,0.6)] border border-[#8e76f7]'
               : 'bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-slate-800 hover:border-[#7059e2]/50'
           }`}
-          title="RichUp Store & Coins"
+          title="PropRush Store & Coins"
         >
           <span className="flex items-center gap-1">
             <span>🛒</span>
@@ -90,15 +94,27 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
           </span>
         </button>
 
-        {/* User Profile / Login */}
-        <button
-          id="btn-nav-profile"
-          onClick={() => onNavigate('profile')}
-          className="flex items-center gap-2 pl-1.5 pr-2.5 py-1 rounded-xl bg-slate-900 hover:bg-[#201838] border border-slate-800 text-xs font-bold text-slate-200 transition-all cursor-pointer"
-        >
-          <AvatarCharacter avatarId={user.avatar} frameId={user.avatarFrame} size="xs" />
-          <span className="hidden sm:inline max-w-[80px] truncate">{user.username}</span>
-        </button>
+        {/* Auth / Profile State */}
+        {!isLoggedIn ? (
+          <button
+            id="btn-nav-clerk-signin"
+            onClick={() => openAuthModal('Sign in to save progress, deposit cash, buy coins and play high-stakes.')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#7059e2] to-[#8e76f7] hover:from-[#6047d8] hover:to-[#7d64f0] text-white font-heading font-bold text-xs shadow-[0_0_12px_rgba(112,89,226,0.5)] transition-all cursor-pointer transform active:scale-95"
+          >
+            <span>⚡</span>
+            <span>Sign In</span>
+          </button>
+        ) : (
+          <button
+            id="btn-nav-profile"
+            onClick={() => onNavigate('profile')}
+            className="flex items-center gap-2 pl-1.5 pr-2.5 py-1 rounded-xl bg-slate-900 hover:bg-[#201838] border border-slate-800 text-xs font-bold text-slate-200 transition-all cursor-pointer"
+          >
+            <AvatarCharacter avatarId={user.avatar} frameId={user.avatarFrame} size="xs" />
+            <span className="hidden sm:inline max-w-[80px] truncate">{user.username}</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-400" title="Connected via Clerk" />
+          </button>
+        )}
       </div>
     </header>
   );

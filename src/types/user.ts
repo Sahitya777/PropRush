@@ -21,7 +21,7 @@ export interface Badge {
 export interface StoreItem {
   id: string;
   name: string;
-  category: 'appearance' | 'maps' | 'upgrades' | 'profile_pictures' | 'coins';
+  category: 'appearance' | 'maps' | 'upgrades' | 'profile_pictures' | 'dice_skins' | 'coins';
   priceCoins: number;
   previewColor?: string;
   emoji?: string;
@@ -49,7 +49,9 @@ export interface UserProfile {
   username: string;
   email: string;
   avatar: string; // skin id: 'navy' | 'lilac' | 'apple' | 'fire' etc.
-  avatarFrame?: string; // frame id: 'pfp_crown' | 'pfp_neon' | 'pfp_fire' | 'pfp_diamond' | 'none'
+  avatarFrame?: string; // frame id: 'pfp_crown' | 'pfp_neon' | 'pfp_fire' | 'pfp_diamond' | 'pfp_cosmic' | etc.
+  diceSkin?: string; // 'dice_golden' | 'dice_neon' | 'dice_magma' | etc.
+  mapSkin?: string; // 'worldwide' | 'death_valley' | 'cyber' | 'candy' | etc.
   title: string;
   coins: number;
   walletBalance: number; // in USD $ (e.g. 50.00)

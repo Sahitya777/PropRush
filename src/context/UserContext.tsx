@@ -12,7 +12,10 @@ interface UserContextType {
   buyCoinPack: (coins: number, priceUsd: number) => boolean;
   deductBuyIn: (amount: number) => boolean;
   buyStoreItem: (itemId: string, category: string, price: number) => boolean;
-  equipItem: (category: 'appearance' | 'maps' | 'diceSkins' | 'profile_pictures', itemId: string) => void;
+  equipItem: (
+    category: 'appearance' | 'maps' | 'upgrades' | 'diceSkins' | 'dice_skins' | 'profile_pictures',
+    itemId: string
+  ) => void;
   recordMatchResult: (result: {
     roomName: string;
     placement: number;
@@ -31,18 +34,28 @@ interface UserContextType {
   claimDailyReward: () => number | null;
   lastDailyClaim: string | null;
   loginUser: (email: string, username: string) => void;
+  loginWithGoogle: (email?: string, name?: string, avatar?: string) => void;
+  loginWithSocial: (provider: 'github' | 'discord' | 'apple') => void;
+  loginWithEmail: (email: string) => void;
   logoutUser: () => void;
   isLoggedIn: boolean;
+  isAuthModalOpen: boolean;
+  authModalReason: string | null;
+  openAuthModal: (reason?: string) => void;
+  closeAuthModal: () => void;
+  requireAuth: (reason: string, onAuthenticated: () => void) => void;
 }
 
 const DEFAULT_USER: UserProfile = {
   id: 'usr_' + Math.random().toString(36).substring(2, 9),
   username: 'sahi',
-  email: 'sahi@richup.io',
+  email: 'sahi@gmail.com',
   avatar: 'orange',
   avatarFrame: 'pfp_neon',
+  diceSkin: 'dice_golden',
+  mapSkin: 'worldwide',
   title: 'Novice Landlord',
-  coins: 240, // starter coins to try store
+  coins: 450, // starter coins to try store
   walletBalance: 50.00, // $50 starter wager wallet balance
   leaguePoints: 750, // Gold Tier
   leagueTier: 'Gold',
@@ -50,10 +63,10 @@ const DEFAULT_USER: UserProfile = {
   xp: 320,
   maxXp: 600,
   inventory: {
-    appearances: ['orange', 'bu', 'navy', 'apple'],
-    maps: ['classic', 'worldwide'],
-    profilePictures: ['pfp_neon', 'pfp_crown', 'pfp_fire'],
-    diceSkins: ['dice_neon']
+    appearances: ['orange', 'bu', 'navy', 'apple', 'fire'],
+    maps: ['classic', 'worldwide', 'cyber_neon', 'death_valley', 'lucky'],
+    profilePictures: ['pfp_neon', 'pfp_crown', 'pfp_fire', 'pfp_cosmic', 'pfp_diamond', 'pfp_electric', 'pfp_rgb', 'pfp_dragon'],
+    diceSkins: ['dice_golden', 'dice_neon', 'dice_ruby', 'dice_magma', 'dice_cyber', 'dice_cosmic', 'dice_rainbow', 'dice_dragon']
   },
   stats: {
     gamesPlayed: 14,
@@ -61,7 +74,7 @@ const DEFAULT_USER: UserProfile = {
     winStreak: 2,
     bestWinStreak: 4,
     totalEarningsUsd: 152.00,
-    totalCoinsEarned: 680,
+    totalCoinsEarned: 880,
     monopoliesBuilt: 11,
     bankruptciesCaused: 9,
     rentCollectedTotal: 18450
@@ -99,7 +112,7 @@ const DEFAULT_USER: UserProfile = {
 };
 
 function calculateLeagueTier(lp: number): LeagueTier {
-  if (lp >= 2200) return 'Tycoon';
+  if (lp >= 2300) return 'Tycoon';
   if (lp >= 1800) return 'Master';
   if (lp >= 1400) return 'Diamond';
   if (lp >= 1000) return 'Platinum';
@@ -112,10 +125,35 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem('richup_user_profile');
+    const saved = localStorage.getItem('proprush_user_profile') || localStorage.getItem('richup_user_profile');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        const mergedDiceSkins = Array.from(new Set([
+          ...(DEFAULT_USER.inventory.diceSkins || []),
+          ...(parsed.inventory?.diceSkins || [])
+        ]));
+        const mergedMaps = Array.from(new Set([
+          ...(DEFAULT_USER.inventory.maps || []),
+          ...(parsed.inventory?.maps || [])
+        ]));
+        const mergedFrames = Array.from(new Set([
+          ...(DEFAULT_USER.inventory.profilePictures || []),
+          ...(parsed.inventory?.profilePictures || [])
+        ]));
+
+        return {
+          ...DEFAULT_USER,
+          ...parsed,
+          diceSkin: parsed.diceSkin || 'dice_golden',
+          inventory: {
+            ...DEFAULT_USER.inventory,
+            ...(parsed.inventory || {}),
+            diceSkins: mergedDiceSkins,
+            maps: mergedMaps,
+            profilePictures: mergedFrames
+          }
+        };
       } catch (e) {
         console.error('Error loading saved profile', e);
       }
@@ -124,15 +162,100 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
-    return localStorage.getItem('richup_auth') === 'true' || true;
+    return localStorage.getItem('proprush_clerk_auth') === 'true';
   });
 
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalReason, setAuthModalReason] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+
+  const openAuthModal = (reason?: string) => {
+    setAuthModalReason(reason || null);
+    setIsAuthModalOpen(true);
+  };
+
+  const closeAuthModal = () => {
+    setIsAuthModalOpen(false);
+    setAuthModalReason(null);
+  };
+
+  const requireAuth = (reason: string, onAuthenticated: () => void) => {
+    if (isLoggedIn) {
+      onAuthenticated();
+    } else {
+      setPendingAction(() => onAuthenticated);
+      openAuthModal(reason);
+    }
+  };
+
+  const loginWithGoogle = (email?: string, name?: string, avatar?: string) => {
+    const userEmail = email || 'sahi@gmail.com';
+    const userName = name || userEmail.split('@')[0];
+    setIsLoggedIn(true);
+    localStorage.setItem('proprush_clerk_auth', 'true');
+    setUser(prev => ({
+      ...prev,
+      email: userEmail,
+      username: userName,
+      avatar: avatar || prev.avatar
+    }));
+    if (pendingAction) {
+      setTimeout(() => {
+        pendingAction();
+        setPendingAction(null);
+      }, 100);
+    }
+  };
+
+  const loginWithSocial = (provider: 'github' | 'discord' | 'apple') => {
+    const defaultEmail = `${user.username.toLowerCase()}@${provider}.auth`;
+    setIsLoggedIn(true);
+    localStorage.setItem('proprush_clerk_auth', 'true');
+    setUser(prev => ({
+      ...prev,
+      email: defaultEmail
+    }));
+    if (pendingAction) {
+      setTimeout(() => {
+        pendingAction();
+        setPendingAction(null);
+      }, 100);
+    }
+  };
+
+  const loginWithEmail = (email: string) => {
+    const name = email.split('@')[0] || 'Player';
+    setIsLoggedIn(true);
+    localStorage.setItem('proprush_clerk_auth', 'true');
+    setUser(prev => ({
+      ...prev,
+      email,
+      username: name
+    }));
+    if (pendingAction) {
+      setTimeout(() => {
+        pendingAction();
+        setPendingAction(null);
+      }, 100);
+    }
+  };
+
+  const loginUser = (email: string, username: string) => {
+    loginWithGoogle(email, username);
+  };
+
+  const logoutUser = () => {
+    setIsLoggedIn(false);
+    localStorage.removeItem('proprush_clerk_auth');
+    sounds.playClick();
+  };
+
   const [lastDailyClaim, setLastDailyClaim] = useState<string | null>(() => {
-    return localStorage.getItem('richup_daily_claim');
+    return localStorage.getItem('proprush_daily_claim') || localStorage.getItem('richup_daily_claim');
   });
 
   useEffect(() => {
-    localStorage.setItem('richup_user_profile', JSON.stringify(user));
+    localStorage.setItem('proprush_user_profile', JSON.stringify(user));
   }, [user]);
 
   const updateUser = (updates: Partial<UserProfile>) => {
@@ -200,6 +323,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updatedInv = { ...prev.inventory };
       let newAvatar = prev.avatar;
       let newFrame = prev.avatarFrame;
+      let newDice = prev.diceSkin;
+      let newMap = prev.mapSkin;
 
       if (category === 'appearance') {
         if (!updatedInv.appearances.includes(itemId)) {
@@ -210,10 +335,12 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!updatedInv.maps.includes(itemId)) {
           updatedInv.maps = [...updatedInv.maps, itemId];
         }
-      } else if (category === 'upgrades') {
+        newMap = itemId;
+      } else if (category === 'upgrades' || category === 'diceSkins' || category === 'dice_skins') {
         if (!updatedInv.diceSkins.includes(itemId)) {
           updatedInv.diceSkins = [...updatedInv.diceSkins, itemId];
         }
+        newDice = itemId;
       } else if (category === 'profile_pictures') {
         if (!updatedInv.profilePictures.includes(itemId)) {
           updatedInv.profilePictures = [...updatedInv.profilePictures, itemId];
@@ -226,13 +353,18 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         coins: prev.coins - priceCoins,
         avatar: newAvatar,
         avatarFrame: newFrame,
+        diceSkin: newDice,
+        mapSkin: newMap,
         inventory: updatedInv
       };
     });
     return true;
   };
 
-  const equipItem = (category: 'appearance' | 'maps' | 'diceSkins' | 'profile_pictures', itemId: string) => {
+  const equipItem = (
+    category: 'appearance' | 'maps' | 'upgrades' | 'diceSkins' | 'dice_skins' | 'profile_pictures',
+    itemId: string
+  ) => {
     sounds.playClick();
     if (category === 'appearance') {
       setUser(prev => ({ ...prev, avatar: itemId }));
@@ -241,6 +373,16 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ...prev,
         avatarFrame: prev.avatarFrame === itemId ? 'none' : itemId
       }));
+    } else if (category === 'upgrades' || category === 'diceSkins' || category === 'dice_skins') {
+      setUser(prev => ({
+        ...prev,
+        diceSkin: itemId
+      }));
+    } else if (category === 'maps') {
+      setUser(prev => ({
+        ...prev,
+        mapSkin: itemId
+      }));
     }
   };
 
@@ -248,10 +390,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const today = new Date().toDateString();
     if (lastDailyClaim === today) return null;
 
-    const rewardCoins = 50;
+    const rewardCoins = 60;
     sounds.playVictory();
     setLastDailyClaim(today);
-    localStorage.setItem('richup_daily_claim', today);
+    localStorage.setItem('proprush_daily_claim', today);
 
     setUser(prev => ({
       ...prev,
@@ -291,7 +433,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       lpChange = -18;
     }
 
-    const coinsEarned = isWin ? 30 + Math.floor(result.betAmount * 2) : 10;
+    const coinsEarned = isWin ? 35 + Math.floor(result.betAmount * 2.5) : 12;
     const xpGained = isWin ? 120 : 50;
 
     const newBadgesUnlocked: Badge[] = [];
@@ -370,21 +512,6 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { lpChange, coinsEarned, newBadges: newBadgesUnlocked };
   };
 
-  const loginUser = (email: string, username: string) => {
-    setIsLoggedIn(true);
-    localStorage.setItem('richup_auth', 'true');
-    setUser(prev => ({
-      ...prev,
-      email: email || prev.email,
-      username: username || prev.username
-    }));
-  };
-
-  const logoutUser = () => {
-    setIsLoggedIn(false);
-    localStorage.removeItem('richup_auth');
-  };
-
   return (
     <UserContext.Provider
       value={{
@@ -401,8 +528,16 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         claimDailyReward,
         lastDailyClaim,
         loginUser,
+        loginWithGoogle,
+        loginWithSocial,
+        loginWithEmail,
         logoutUser,
-        isLoggedIn
+        isLoggedIn,
+        isAuthModalOpen,
+        authModalReason,
+        openAuthModal,
+        closeAuthModal,
+        requireAuth
       }}
     >
       {children}

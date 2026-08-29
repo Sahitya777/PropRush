@@ -49,6 +49,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   const botNames = ['bu', 'CryptoBaron', 'PixelTycoon', 'QueenVee'];
   const botAvatars = ['bu', 'apple', 'ghost', 'cyber', 'king'];
   const botFrames = ['pfp_neon', 'pfp_crown', 'pfp_fire', 'pfp_diamond'];
+  const botDiceSkins = ['dice_neon', 'dice_ruby', 'dice_magma', 'dice_cyber', 'dice_cosmic', 'dice_rainbow', 'dice_dragon'];
   const playerColors = ['#ff7844', '#b066fe', '#10b981', '#06b6d4', '#ec4899', '#eab308'];
 
   const initialPlayers: Player[] = [
@@ -57,6 +58,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       name: user.username,
       avatar: user.avatar || 'orange',
       avatarFrame: user.avatarFrame,
+      diceSkin: user.diceSkin || 'dice_golden',
       color: playerColors[0],
       cash: roomConfig.initialCash,
       netWorth: roomConfig.initialCash,
@@ -79,6 +81,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       name: botNames[i - 1] || `Tycoon_${i}`,
       avatar: botAvatars[i - 1] || 'bu',
       avatarFrame: botFrames[i - 1] || undefined,
+      diceSkin: botDiceSkins[(i - 1) % botDiceSkins.length],
       color: playerColors[i % playerColors.length],
       cash: roomConfig.initialCash,
       netWorth: roomConfig.initialCash,
@@ -132,6 +135,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   const [selectedTile, setSelectedTile] = useState<BoardTile | null>(null);
   const [isRolling, setIsRolling] = useState(false);
   const [showTradeModal, setShowTradeModal] = useState(false);
+  const [showForfeitConfirmModal, setShowForfeitConfirmModal] = useState(false);
   const [showAppearanceModal, setShowAppearanceModal] = useState(false);
   const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
   const [matchSummaryStats, setMatchSummaryStats] = useState<any>(null);
@@ -146,7 +150,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       return savedActive.chatMessages;
     }
     return [
-      { id: 'c1', sender: 'System', avatar: 'navy', text: 'Welcome to RichUp! Have fun and play fair.', time: '12:00' }
+      { id: 'c1', sender: 'System', avatar: 'navy', text: 'Welcome to PropRush! Have fun and play fair.', time: '12:00' }
     ];
   });
 
@@ -162,6 +166,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
   // Turn timer ref
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const isRollingRef = useRef<boolean>(false);
+  const lastLogRef = useRef<{ text: string; time: number }>({ text: '', time: 0 });
 
   // Auto-save active match whenever room or chat state updates
   useEffect(() => {
@@ -178,13 +184,24 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   }, []);
 
   const addLog = (text: string, type: 'move' | 'buy' | 'rent' | 'card' | 'jail' | 'auction' | 'info' = 'info') => {
-    setRoom(prev => ({
-      ...prev,
-      logs: [
-        { id: 'log_' + Date.now() + Math.random(), timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), text, type },
-        ...prev.logs.slice(0, 30)
-      ]
-    }));
+    const now = Date.now();
+    if (lastLogRef.current.text === text && now - lastLogRef.current.time < 1200) {
+      return; // Deduplicate rapid duplicate logs
+    }
+    lastLogRef.current = { text, time: now };
+
+    setRoom(prev => {
+      if (prev.logs.length > 0 && prev.logs[0].text === text) {
+        return prev;
+      }
+      return {
+        ...prev,
+        logs: [
+          { id: 'log_' + Date.now() + Math.random().toString(36).substring(2, 6), timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), text, type },
+          ...prev.logs.slice(0, 30)
+        ]
+      };
+    });
   };
 
   const calculateNetWorth = (player: Player): number => {
@@ -262,7 +279,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
   // Handle dice rolling and tile resolution
   const handleRollDice = () => {
-    if (isRolling) return;
+    if (isRolling || isRollingRef.current) return;
+    isRollingRef.current = true;
     setIsRolling(true);
     sounds.playDiceRoll();
 
@@ -272,9 +290,10 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     const totalSteps = d1 + d2;
 
     setTimeout(() => {
+      isRollingRef.current = false;
       setIsRolling(false);
       executeMove(d1, d2, totalSteps, isDouble);
-    }, room.fastSpeed ? 400 : 700);
+    }, room.fastSpeed ? 350 : 650);
   };
 
   const executeMove = (d1: number, d2: number, steps: number, isDouble: boolean) => {
@@ -283,6 +302,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       const player = { ...prev.players[currentPlayerIndex] };
 
       let doubleCount = isDouble ? prev.doubleCount + 1 : 0;
+      let freeParkingPool = prev.freeParkingPool;
 
       // 3 consecutive doubles -> Go to prison
       if (doubleCount >= 3) {
@@ -318,8 +338,9 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
             player.inJail = false;
             player.cash -= 50;
             player.jailTurns = 0;
+            freeParkingPool += 50;
             showCashDelta(player.id, -50);
-            addLog(`${player.name} served 3 turns, paid $50 fine and was released.`, 'jail');
+            addLog(`${player.name} served 3 turns, paid $50 fine into Resort Pool and was released.`, 'jail');
           } else {
             addLog(`${player.name} failed to roll doubles and stays in prison (${player.jailTurns}/3).`, 'jail');
             const updatedPlayers = [...prev.players];
@@ -329,7 +350,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               players: updatedPlayers,
               lastDice: [d1, d2],
               isDouble: false,
-              turnPhase: 'action'
+              turnPhase: 'action',
+              freeParkingPool
             };
           }
         }
@@ -340,8 +362,14 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       const newPos = (oldPos + steps) % 40;
       player.position = newPos;
 
-      // Pass START bonus (+$200)
-      if (newPos < oldPos && oldPos !== 0) {
+      // Pass START (+$200) vs Land on START (+$300)
+      if (newPos === 0) {
+        player.cash += 300;
+        player.netWorth = calculateNetWorth(player);
+        showCashDelta(player.id, 300);
+        addLog(`🚀 ${player.name} landed on START and collected $300 salary!`, 'rent');
+        sounds.playPassGo();
+      } else if (newPos < oldPos && oldPos !== 0) {
         player.cash += 200;
         player.netWorth = calculateNetWorth(player);
         showCashDelta(player.id, 200);
@@ -352,7 +380,6 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       const landedTile = tiles[newPos];
       let newPhase: GameRoom['turnPhase'] = 'action';
       let pendingCard = null;
-      let freeParkingPool = prev.freeParkingPool;
 
       addLog(`${player.name} rolled ${d1}+${d2} (${steps}) and landed on ${landedTile.name}.`, 'move');
 
@@ -368,15 +395,17 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           player.cash += freeParkingPool;
           player.netWorth = calculateNetWorth(player);
           showCashDelta(player.id, freeParkingPool);
-          addLog(`🏖️ ${player.name} landed on Vacation and won the $${freeParkingPool} Resort Pool!`, 'rent');
+          addLog(`🏖️ ${player.name} landed on Vacation and collected the $${freeParkingPool} Resort Pool!`, 'rent');
           sounds.playCashRegister();
-          freeParkingPool = 0;
+          freeParkingPool = 0; // Reset pool to 0 for next tax cycle
+        } else {
+          addLog(`🏖️ ${player.name} is resting on Vacation (Pool is currently $0).`, 'info');
         }
       } else if (landedTile.type === 'tax') {
         const taxVal = landedTile.taxAmount || 100;
         player.cash -= taxVal;
         player.netWorth = calculateNetWorth(player);
-        freeParkingPool += taxVal;
+        freeParkingPool += taxVal; // Tax is deposited into vacation pool
         showCashDelta(player.id, -taxVal);
         addLog(`💸 ${player.name} paid $${taxVal} tax into the Resort Pool.`, 'rent');
         sounds.playPayRent();
@@ -395,8 +424,18 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           player.cash += randomCard.value;
           player.netWorth = calculateNetWorth(player);
           showCashDelta(player.id, randomCard.value);
+          if (randomCard.value < 0) {
+            const fineAmount = Math.abs(randomCard.value);
+            freeParkingPool += fineAmount;
+            addLog(`💸 ${player.name} paid $${fineAmount} penalty into the Resort Pool.`, 'rent');
+          }
         } else if (randomCard.action === 'goto' && randomCard.tileId !== undefined) {
           player.position = randomCard.tileId;
+          if (randomCard.tileId === 0) {
+            player.cash += 300;
+            showCashDelta(player.id, 300);
+            addLog(`🚀 ${player.name} landed on START and collected $300!`, 'rent');
+          }
         } else if (randomCard.action === 'jail') {
           player.inJail = true;
           player.jailTurns = 0;
@@ -543,12 +582,17 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       p.inJail = false;
       p.jailTurns = 0;
       showCashDelta(p.id, -50);
-      addLog(`💸 ${p.name} paid $50 fine and is out of prison.`, 'jail');
+      addLog(`💸 ${p.name} paid $50 fine into Resort Pool and is out of prison.`, 'jail');
       sounds.playEscape();
 
       const updated = [...prev.players];
       updated[prev.currentTurnIndex] = p;
-      return { ...prev, players: updated, turnPhase: 'roll' };
+      return {
+        ...prev,
+        players: updated,
+        freeParkingPool: prev.freeParkingPool + 50,
+        turnPhase: 'roll'
+      };
     });
   };
 
@@ -568,22 +612,39 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     });
   };
 
-  // Property Building
+  // Property Building (Monopoly set ownership, turn-based, even-building rules, and cash deduction)
   const handleBuildHouse = (tileId: number) => {
     setRoom(prev => {
+      // Must be player's turn to build
+      if (prev.currentTurnPlayerId !== user.id || prev.status !== 'playing') return prev;
+
       const p = { ...prev.players.find(x => x.id === user.id)! };
       const tile = tiles[tileId];
-      if (!tile || !tile.houseCost || p.cash < tile.houseCost) return prev;
+      if (!tile || !tile.houseCost || !tile.group || p.cash < tile.houseCost) return prev;
+
+      // Check complete monopoly set ownership
+      const groupTiles = tiles.filter(t => t.type === 'property' && t.group === tile.group);
+      const ownsAllInGroup = groupTiles.every(t => p.properties.includes(t.id));
+      if (!ownsAllInGroup) return prev;
+
+      // Check no mortgaged properties in the color set
+      const anyMortgaged = groupTiles.some(t => p.mortgaged.includes(t.id));
+      if (anyMortgaged) return prev;
 
       const currentHouses = p.houses[tileId] || 0;
       if (currentHouses >= 5) return prev;
+
+      // Even building rule: cannot build if this property already has more houses than any other property in the group
+      const groupHouses = groupTiles.map(t => p.houses[t.id] || 0);
+      const minHouses = Math.min(...groupHouses);
+      if (currentHouses !== minHouses) return prev;
 
       p.cash -= tile.houseCost;
       p.houses[tileId] = currentHouses + 1;
       p.netWorth = calculateNetWorth(p);
 
       showCashDelta(p.id, -tile.houseCost);
-      addLog(`🏗️ ${p.name} upgraded ${tile.name} to ${p.houses[tileId] === 5 ? 'Hotel' : `${p.houses[tileId]} Houses`}.`, 'buy');
+      addLog(`🏗️ ${p.name} upgraded ${tile.name} to ${p.houses[tileId] === 5 ? 'Hotel 🏨' : `${p.houses[tileId]} Houses 🏠`}.`, 'buy');
       sounds.playBuild();
 
       const updated = prev.players.map(x => (x.id === p.id ? p : x));
@@ -593,10 +654,19 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
   const handleSellHouse = (tileId: number) => {
     setRoom(prev => {
+      // Must be player's turn to sell
+      if (prev.currentTurnPlayerId !== user.id || prev.status !== 'playing') return prev;
+
       const p = { ...prev.players.find(x => x.id === user.id)! };
       const tile = tiles[tileId];
       const currentHouses = p.houses[tileId] || 0;
-      if (!tile || currentHouses <= 0) return prev;
+      if (!tile || currentHouses <= 0 || !tile.group) return prev;
+
+      // Even selling rule: must sell from the property with the most houses in the group
+      const groupTiles = tiles.filter(t => t.type === 'property' && t.group === tile.group);
+      const groupHouses = groupTiles.map(t => p.houses[t.id] || 0);
+      const maxHouses = Math.max(...groupHouses);
+      if (currentHouses !== maxHouses) return prev;
 
       const refund = Math.floor((tile.houseCost || 100) / 2);
       p.cash += refund;
@@ -613,9 +683,19 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
   const handleMortgage = (tileId: number) => {
     setRoom(prev => {
+      // Must be player's turn to mortgage
+      if (prev.currentTurnPlayerId !== user.id || prev.status !== 'playing') return prev;
+
       const p = { ...prev.players.find(x => x.id === user.id)! };
       const tile = tiles[tileId];
       if (!tile || !tile.mortgageValue || p.mortgaged.includes(tileId)) return prev;
+
+      // Cannot mortgage if any property in the group has houses
+      if (tile.group && tile.type === 'property') {
+        const groupTiles = tiles.filter(t => t.type === 'property' && t.group === tile.group);
+        const hasAnyHouses = groupTiles.some(t => (p.houses[t.id] || 0) > 0);
+        if (hasAnyHouses) return prev;
+      }
 
       p.cash += tile.mortgageValue;
       p.mortgaged = [...p.mortgaged, tileId];
@@ -631,6 +711,9 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
   const handleUnmortgage = (tileId: number) => {
     setRoom(prev => {
+      // Must be player's turn to unmortgage
+      if (prev.currentTurnPlayerId !== user.id || prev.status !== 'playing') return prev;
+
       const p = { ...prev.players.find(x => x.id === user.id)! };
       const tile = tiles[tileId];
       if (!tile || !tile.mortgageValue || !p.mortgaged.includes(tileId)) return prev;
@@ -687,9 +770,9 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     if (room.status !== 'playing' || room.turnTimer > 0) return;
 
     const current = room.players.find(p => p.id === room.currentTurnPlayerId);
-    if (!current || current.isBankrupt) return;
+    if (!current || current.isBankrupt || current.isBot) return;
 
-    // Timeout expired! Auto execute current phase action
+    // Timeout expired for human player! Auto execute current phase action
     if (room.turnPhase === 'roll') {
       handleRollDice();
     } else if (room.turnPhase === 'jail_decision') {
@@ -711,9 +794,10 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     const current = room.players.find(p => p.id === room.currentTurnPlayerId);
     if (!current || !current.isBot || current.isBankrupt) return;
 
-    const delay = room.fastSpeed ? 600 : 1200;
+    const delay = room.fastSpeed ? 500 : 1000;
 
     const botTimer = setTimeout(() => {
+      if (isRollingRef.current) return;
       if (room.turnPhase === 'jail_decision') {
         if (current.cash >= 50) {
           handlePayJailFine();
@@ -782,7 +866,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 font-heading font-black text-base sm:text-lg tracking-wider text-white">
             <span className="text-[#a390ff] text-xl">🎲</span>
-            <span>RICHUP.IO</span>
+            <span>PROPRUSH</span>
           </div>
 
           <div className="h-4 w-px bg-slate-700 hidden sm:block" />
@@ -936,20 +1020,14 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               })}
             </div>
 
-            {/* Bankrupt / Forfeit Button */}
+            {/* Bankrupt / Forfeit Button with Confirmation Trigger */}
             <button
               id="btn-bankrupt-forfeit"
               onClick={() => {
-                sounds.playBankrupt();
-                clearActiveMatch();
-                setRoom(prev => {
-                  const updated = prev.players.map(p => p.id === user.id ? { ...p, isBankrupt: true, cash: 0 } : p);
-                  return { ...prev, players: updated };
-                });
-                addLog(`💀 ${user.username} surrendered and declared bankruptcy.`, 'info');
-                nextTurn();
+                sounds.playClick();
+                setShowForfeitConfirmModal(true);
               }}
-              className="w-full py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 text-[11px] font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 active:scale-95"
+              className="w-full py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 text-[11px] font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 active:scale-95 shadow-sm"
               title="Surrender this match and declare bankruptcy"
             >
               <span>🚩</span>
@@ -1141,12 +1219,67 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       )}
 
       {/* 3. MODALS & POPUPS */}
+      {/* Forfeit / Bankrupt Confirmation Modal */}
+      {showForfeitConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-sm bg-[#1a122e] border border-rose-500/50 rounded-2xl shadow-[0_12px_45px_rgba(0,0,0,0.85)] p-5 overflow-hidden flex flex-col gap-4">
+            <div className="flex items-center gap-3 text-rose-400 border-b border-slate-800 pb-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-950/80 border border-rose-600/60 flex items-center justify-center text-xl flex-shrink-0">
+                ⚠️
+              </div>
+              <div>
+                <h3 className="font-heading font-black text-base text-white">
+                  Confirm Forfeit
+                </h3>
+                <p className="text-xs text-rose-300 font-medium">
+                  Declare bankruptcy & surrender match
+                </p>
+              </div>
+            </div>
+
+            <div className="text-xs text-slate-300 bg-slate-950/70 p-3 rounded-xl border border-slate-800/80 leading-relaxed">
+              Are you sure you want to forfeit? You will surrender all your cash and owned properties, declare bankruptcy, and be eliminated from the current match.
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5 pt-1">
+              <button
+                onClick={() => {
+                  sounds.playClick();
+                  setShowForfeitConfirmModal(false);
+                }}
+                className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-bold text-xs text-slate-200 cursor-pointer transition-all active:scale-95 border border-slate-700"
+              >
+                Keep Playing
+              </button>
+              <button
+                onClick={() => {
+                  sounds.playBankrupt();
+                  clearActiveMatch();
+                  setShowForfeitConfirmModal(false);
+                  setRoom(prev => {
+                    const updated = prev.players.map(p => p.id === user.id ? { ...p, isBankrupt: true, cash: 0 } : p);
+                    return { ...prev, players: updated };
+                  });
+                  addLog(`💀 ${user.username} surrendered and declared bankruptcy.`, 'info');
+                  nextTurn();
+                }}
+                className="py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 font-bold text-xs text-white cursor-pointer transition-all active:scale-95 shadow-md shadow-rose-950/50"
+              >
+                Yes, Forfeit Match
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Property Deed & House Management Modal */}
       {selectedTile && (
         <PropertyCardModal
           tile={selectedTile}
+          tiles={tiles}
           room={room}
           myPlayerId={user.id}
+          isMyTurn={isMyTurn}
           onClose={() => setSelectedTile(null)}
           onBuildHouse={handleBuildHouse}
           onSellHouse={handleSellHouse}

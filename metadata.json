@@ -1,6 +1,6 @@
 {
-  "name": "RichUp - Fast-Paced Multiplayer Economy Game",
-  "description": "Play fast-paced monopoly online with friends or AI, wager prize pools, build custom property empires, climb league ranks, earn badges, and customize appearances.",
+  "name": "PropRush - Fast-Paced Multiplayer Real Estate & Economy Rush",
+  "description": "PropRush is a fast-paced multiplayer property trading and real estate economy game. Roll dice, trade properties, build hotels, collect rents, and bankrupt rivals in intense multiplayer rooms.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

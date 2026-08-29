@@ -16,7 +16,7 @@ export const RulesModal: React.FC<RulesModalProps> = ({ isOpen, onClose }) => {
             <span className="text-2xl">🎲</span>
             <div>
               <h2 className="font-heading font-black text-lg text-white">
-                HOW TO PLAY RICHUP.IO
+                HOW TO PLAY PROPRUSH
               </h2>
               <p className="text-xs text-slate-400">Fast-paced digital real estate monopoly</p>
             </div>

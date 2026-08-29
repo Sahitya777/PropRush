@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { useUser } from '../context/UserContext';
 import { BADGES_LIST, LEAGUE_TIERS_INFO, STORE_ITEMS } from '../data/storeData';
 import { AvatarCharacter } from '../components/AvatarCharacter';
+import { DiceFaceMini } from '../components/DiceFaceMini';
 import { LeagueTier } from '../types/user';
 import { sounds } from '../utils/audio';
 
 export const ProfileView: React.FC = () => {
-  const { user, updateUsername, claimDailyReward, lastDailyClaim, equipItem } = useUser();
+  const { user, updateUsername, claimDailyReward, lastDailyClaim, equipItem, isLoggedIn, openAuthModal, logoutUser } = useUser();
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(user.username);
   const [dailyClaimMsg, setDailyClaimMsg] = useState<string | null>(null);
@@ -82,10 +83,20 @@ export const ProfileView: React.FC = () => {
               </div>
             )}
 
-            <div className="flex items-center gap-2 mt-1 justify-center sm:justify-start">
+            <div className="flex flex-wrap items-center gap-2 mt-1 justify-center sm:justify-start">
               <span className="text-xs text-[#8e76f7] font-semibold">{user.title}</span>
               <span className="text-xs text-slate-500">•</span>
               <span className="text-xs text-slate-400 font-mono-code">{user.email}</span>
+              {isLoggedIn ? (
+                <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono-code font-bold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  Google Verified (Clerk)
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-mono-code font-bold flex items-center gap-1">
+                  Guest Account
+                </span>
+              )}
             </div>
 
             {/* Level XP Bar */}
@@ -104,16 +115,16 @@ export const ProfileView: React.FC = () => {
           </div>
         </div>
 
-        {/* Daily Reward Claim Card */}
-        <div className="flex flex-col items-center sm:items-end gap-2 text-center sm:text-right">
-          <div className="p-4 rounded-2xl bg-[#221b38] border border-amber-500/30 flex flex-col items-center gap-2 shadow-lg">
+        {/* Daily Reward Claim Card & Auth Actions */}
+        <div className="flex flex-col items-center sm:items-end gap-3 text-center sm:text-right">
+          <div className="p-4 rounded-2xl bg-[#221b38] border border-amber-500/30 flex flex-col items-center gap-2 shadow-lg w-full sm:w-auto">
             <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
               <span>🎁</span> Daily Tycoon Bonus
             </div>
             <button
               onClick={handleClaimDaily}
               disabled={!canClaimToday}
-              className={`px-5 py-2 rounded-xl font-heading font-bold text-xs transition-all cursor-pointer ${
+              className={`w-full px-5 py-2 rounded-xl font-heading font-bold text-xs transition-all cursor-pointer ${
                 canClaimToday
                   ? 'bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.5)] animate-pulse'
                   : 'bg-slate-800 text-slate-500 cursor-not-allowed'
@@ -125,6 +136,25 @@ export const ProfileView: React.FC = () => {
               <span className="text-xs font-bold text-emerald-400 animate-bounce">{dailyClaimMsg}</span>
             )}
           </div>
+
+          {/* Account Authentication Control */}
+          {!isLoggedIn ? (
+            <button
+              onClick={() => openAuthModal('Sign in with Google or Clerk to protect your balance and items.')}
+              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-[#7059e2] to-[#8e76f7] hover:from-[#6047d8] hover:to-[#7d64f0] text-white font-heading font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+            >
+              <span>⚡</span>
+              <span>Sign In with Clerk / Google</span>
+            </button>
+          ) : (
+            <button
+              onClick={logoutUser}
+              className="w-full sm:w-auto px-4 py-1.5 rounded-xl bg-slate-900/80 hover:bg-rose-950/60 border border-slate-800 hover:border-rose-500/40 text-slate-400 hover:text-rose-300 font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <span>🚪</span>
+              <span>Sign Out</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -216,6 +246,77 @@ export const ProfileView: React.FC = () => {
                     <AvatarCharacter avatarId={user.avatar} frameId={frameId} size="md" />
                     <span className="text-[10px] font-bold text-slate-300 truncate max-w-[70px]">
                       {frameItem?.name.replace(' Frame', '') || frameId}
+                    </span>
+                    <span className={`text-[8px] font-extrabold uppercase px-1.5 py-0.2 rounded ${
+                      isCurrent ? 'bg-[#7059e2] text-white' : 'text-slate-500'
+                    }`}>
+                      {isCurrent ? 'Equipped' : 'Equip'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Dice Skins Locker */}
+          <div className="p-4 rounded-2xl bg-[#141024] border border-slate-800 space-y-3">
+            <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+              <span>Unlocked Dice Skins ({(user.inventory.diceSkins || []).length})</span>
+              <span className="text-[10px] text-purple-300 font-mono-code">Equipped: {(user.diceSkin || 'Standard').replace('dice_', '').replace('_', ' ')}</span>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {(user.inventory.diceSkins || ['dice_golden', 'dice_neon']).map(diceId => {
+                const isCurrent = user.diceSkin === diceId;
+                const diceItem = STORE_ITEMS.find(i => i.id === diceId);
+                return (
+                  <button
+                    key={diceId}
+                    onClick={() => equipItem('dice_skins', diceId)}
+                    className={`p-3 rounded-2xl border transition-all flex flex-col items-center gap-2 cursor-pointer ${
+                      isCurrent
+                        ? 'border-[#7059e2] bg-[#7059e2]/25 ring-2 ring-[#7059e2] shadow-[0_0_15px_rgba(112,89,226,0.4)]'
+                        : 'border-slate-800 bg-slate-900/60 hover:border-slate-700 hover:bg-slate-800/60'
+                    }`}
+                  >
+                    <DiceFaceMini skinId={diceId} size="md" pips={5} />
+                    <span className="text-[10px] font-bold text-slate-200 truncate max-w-[85px] text-center">
+                      {diceItem?.name.replace(' Dice', '') || diceId.replace('dice_', '')}
+                    </span>
+                    <span className={`text-[8px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
+                      isCurrent ? 'bg-[#7059e2] text-white shadow-sm' : 'bg-slate-800 text-slate-400'
+                    }`}>
+                      {isCurrent ? 'Equipped ✓' : 'Equip'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Map Themes Locker */}
+          <div className="p-4 rounded-2xl bg-[#141024] border border-slate-800 space-y-3">
+            <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+              Unlocked Maps ({(user.inventory.maps || []).length})
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {(user.inventory.maps || ['map_classic']).map(mapId => {
+                const isCurrent = user.mapSkin === mapId;
+                const mapItem = STORE_ITEMS.find(i => i.id === mapId);
+                return (
+                  <button
+                    key={mapId}
+                    onClick={() => equipItem('maps', mapId)}
+                    className={`p-2.5 rounded-2xl border transition-all flex flex-col items-center gap-1.5 cursor-pointer ${
+                      isCurrent
+                        ? 'border-[#7059e2] bg-[#7059e2]/20 ring-2 ring-[#7059e2]'
+                        : 'border-slate-800 bg-slate-900/60 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-xl shadow-inner">
+                      {mapItem?.emoji || '🗺️'}
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-300 truncate max-w-[80px]">
+                      {mapItem?.name || mapId}
                     </span>
                     <span className={`text-[8px] font-extrabold uppercase px-1.5 py-0.2 rounded ${
                       isCurrent ? 'bg-[#7059e2] text-white' : 'text-slate-500'

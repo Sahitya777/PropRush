@@ -9,6 +9,7 @@ interface DiceRollerProps {
   onRoll: () => void;
   timer: number;
   fastSpeed?: boolean;
+  diceSkin?: string;
 }
 
 export const DiceRoller: React.FC<DiceRollerProps> = ({
@@ -18,7 +19,8 @@ export const DiceRoller: React.FC<DiceRollerProps> = ({
   canRoll,
   onRoll,
   timer,
-  fastSpeed = false
+  fastSpeed = false,
+  diceSkin = 'standard'
 }) => {
   const [localRolling, setLocalRolling] = useState(false);
 
@@ -32,8 +34,68 @@ export const DiceRoller: React.FC<DiceRollerProps> = ({
     }, fastSpeed ? 350 : 650);
   };
 
+  const getDiceStyle = () => {
+    switch (diceSkin) {
+      case 'dice_golden':
+        return {
+          bg: 'bg-gradient-to-br from-amber-200 via-yellow-400 to-amber-600 border-amber-200',
+          dot: 'bg-amber-950 shadow-[0_0_3px_#78350f]',
+          glow: 'shadow-[0_0_18px_rgba(245,158,11,0.6)]'
+        };
+      case 'dice_neon':
+        return {
+          bg: 'bg-gradient-to-br from-fuchsia-500 via-pink-600 to-purple-800 border-pink-300',
+          dot: 'bg-white shadow-[0_0_6px_#f472b6]',
+          glow: 'shadow-[0_0_18px_rgba(236,72,153,0.7)]'
+        };
+      case 'dice_ruby':
+        return {
+          bg: 'bg-gradient-to-br from-red-500 via-rose-700 to-red-950 border-red-300',
+          dot: 'bg-amber-300 shadow-[0_0_5px_#fde047]',
+          glow: 'shadow-[0_0_18px_rgba(239,68,68,0.7)]'
+        };
+      case 'dice_magma':
+        return {
+          bg: 'bg-gradient-to-br from-orange-500 via-red-600 to-slate-950 border-orange-400',
+          dot: 'bg-yellow-300 shadow-[0_0_6px_#facc15] animate-pulse',
+          glow: 'shadow-[0_0_20px_rgba(249,115,22,0.8)]'
+        };
+      case 'dice_cyber':
+        return {
+          bg: 'bg-gradient-to-br from-slate-900 via-cyan-950 to-slate-900 border-cyan-400',
+          dot: 'bg-cyan-400 shadow-[0_0_8px_#22d3ee] animate-pulse',
+          glow: 'shadow-[0_0_20px_rgba(6,182,212,0.7)]'
+        };
+      case 'dice_cosmic':
+        return {
+          bg: 'bg-gradient-to-br from-indigo-950 via-purple-900 to-slate-950 border-purple-400',
+          dot: 'bg-fuchsia-300 shadow-[0_0_8px_#e879f9]',
+          glow: 'shadow-[0_0_22px_rgba(168,85,247,0.8)]'
+        };
+      case 'dice_rainbow':
+        return {
+          bg: 'bg-gradient-to-br from-rose-500 via-emerald-500 to-sky-600 border-white',
+          dot: 'bg-white shadow-[0_0_6px_#ffffff]',
+          glow: 'shadow-[0_0_22px_rgba(56,189,248,0.8)]'
+        };
+      case 'dice_dragon':
+        return {
+          bg: 'bg-gradient-to-br from-emerald-600 via-teal-800 to-emerald-950 border-emerald-300',
+          dot: 'bg-amber-400 shadow-[0_0_6px_#fbbf24]',
+          glow: 'shadow-[0_0_20px_rgba(16,185,129,0.8)]'
+        };
+      default:
+        return {
+          bg: 'bg-gradient-to-br from-white via-slate-100 to-slate-200 border-white/80',
+          dot: 'bg-slate-900 shadow-inner',
+          glow: 'shadow-lg'
+        };
+    }
+  };
+
+  const style = getDiceStyle();
+
   const renderDots = (value: number) => {
-    // 3x3 grid dots placement
     const dotsMap: Record<number, number[]> = {
       1: [4],
       2: [0, 8],
@@ -50,7 +112,7 @@ export const DiceRoller: React.FC<DiceRollerProps> = ({
         {[0, 1, 2, 3, 4, 5, 6, 7, 8].map(idx => (
           <div key={idx} className="flex items-center justify-center">
             {activeIndices.includes(idx) && (
-              <div className="w-2.5 h-2.5 bg-slate-900 rounded-full shadow-inner" />
+              <div className={`w-2.5 h-2.5 rounded-full ${style.dot}`} />
             )}
           </div>
         ))}
@@ -66,11 +128,11 @@ export const DiceRoller: React.FC<DiceRollerProps> = ({
       <div className="flex items-center gap-4">
         {/* Die 1 */}
         <div
-          className={`w-14 h-14 bg-gradient-to-br from-white via-slate-100 to-slate-200 rounded-xl shadow-lg border-2 border-white/80 flex items-center justify-center transition-all ${
+          className={`w-14 h-14 ${style.bg} ${style.glow} rounded-xl border-2 flex items-center justify-center transition-all ${
             rollingNow ? 'animate-dice-roll scale-110' : 'scale-100 hover:rotate-3'
           }`}
           style={{
-            boxShadow: '0 8px 16px -2px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.9)'
+            boxShadow: '0 8px 16px -2px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.4)'
           }}
         >
           {renderDots(dice[0])}
@@ -78,11 +140,11 @@ export const DiceRoller: React.FC<DiceRollerProps> = ({
 
         {/* Die 2 */}
         <div
-          className={`w-14 h-14 bg-gradient-to-br from-white via-slate-100 to-slate-200 rounded-xl shadow-lg border-2 border-white/80 flex items-center justify-center transition-all ${
+          className={`w-14 h-14 ${style.bg} ${style.glow} rounded-xl border-2 flex items-center justify-center transition-all ${
             rollingNow ? 'animate-dice-roll scale-110' : 'scale-100 hover:-rotate-3'
           }`}
           style={{
-            boxShadow: '0 8px 16px -2px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.9)',
+            boxShadow: '0 8px 16px -2px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.4)',
             animationDelay: '0.08s'
           }}
         >

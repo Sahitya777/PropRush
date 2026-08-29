@@ -2,22 +2,23 @@ import React, { useState } from 'react';
 import { useUser } from '../context/UserContext';
 import { STORE_ITEMS } from '../data/storeData';
 import { AvatarCharacter } from '../components/AvatarCharacter';
+import { DiceFaceMini } from '../components/DiceFaceMini';
 import { StoreItem } from '../types/user';
 import { sounds } from '../utils/audio';
 
 export const StoreView: React.FC = () => {
-  const { user, buyStoreItem, buyCoinPack, equipItem } = useUser();
+  const { user, buyStoreItem, buyCoinPack, equipItem, isLoggedIn, openAuthModal, requireAuth } = useUser();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [buySuccessMsg, setBuySuccessMsg] = useState<string | null>(null);
   const [buyErrorMsg, setBuyErrorMsg] = useState<string | null>(null);
 
   const categories = [
-    { id: 'all', label: 'All', icon: '🏠' },
-    { id: 'appearance', label: 'Player appearance', icon: '👤' },
-    { id: 'profile_pictures', label: 'Avatar Frames', icon: '🖼️' },
-    { id: 'maps', label: 'Board maps', icon: '🗺️' },
-    { id: 'upgrades', label: 'Upgrades & Dice', icon: '⚡' },
-    { id: 'coins', label: 'Richup Coins', icon: '🪙' }
+    { id: 'all', label: 'All Items', icon: '🏠' },
+    { id: 'appearance', label: 'Player Appearance', icon: '👤' },
+    { id: 'profile_pictures', label: 'Avatar Frames (Nitro FX)', icon: '✨' },
+    { id: 'maps', label: 'Board Maps', icon: '🗺️' },
+    { id: 'upgrades', label: 'Dice Skins & FX', icon: '🎲' },
+    { id: 'coins', label: 'PropRush Coins', icon: '🪙' }
   ];
 
   const filteredItems = STORE_ITEMS.filter(
@@ -35,25 +36,37 @@ export const StoreView: React.FC = () => {
   const isEquipped = (item: StoreItem): boolean => {
     if (item.category === 'appearance') return user.avatar === item.id;
     if (item.category === 'profile_pictures') return user.avatarFrame === item.id;
+    if (item.category === 'upgrades') return user.diceSkin === item.id;
+    if (item.category === 'maps') return user.mapSkin === item.id;
     return false;
   };
 
   const handlePurchaseItem = (item: StoreItem) => {
+    if (!isLoggedIn) {
+      openAuthModal('Sign in with Google or Clerk to purchase and equip custom cosmetics.');
+      return;
+    }
+
     if (user.coins < item.priceCoins) {
       sounds.playPayRent();
-      setBuyErrorMsg(`You need ${item.priceCoins - user.coins} more RichUp Coins! Buy coins below or win matches.`);
+      setBuyErrorMsg(`You need ${item.priceCoins - user.coins} more PropRush Coins! Buy coin packs below or win PropRush matches.`);
       setTimeout(() => setBuyErrorMsg(null), 4000);
       return;
     }
 
     const ok = buyStoreItem(item.id, item.category, item.priceCoins);
     if (ok) {
-      setBuySuccessMsg(`🎉 Successfully purchased & equipped ${item.name}!`);
+      setBuySuccessMsg(`🎉 Successfully purchased & unlocked ${item.name}!`);
       setTimeout(() => setBuySuccessMsg(null), 3000);
     }
   };
 
   const handleBuyCoins = (pack: { id: string; name: string; coins: number; priceUsd: number }) => {
+    if (!isLoggedIn) {
+      openAuthModal('Sign in with Google or Clerk to purchase PropRush Coins with real balance.');
+      return;
+    }
+
     if (user.walletBalance < pack.priceUsd) {
       sounds.playPayRent();
       setBuyErrorMsg(`Insufficient wallet balance ($${user.walletBalance.toFixed(2)} available). You need $${pack.priceUsd.toFixed(2)} to buy ${pack.name}. Please deposit funds.`);
@@ -63,16 +76,29 @@ export const StoreView: React.FC = () => {
 
     const ok = buyCoinPack(pack.coins, pack.priceUsd);
     if (ok) {
-      setBuySuccessMsg(`💰 Successfully bought +${pack.coins} RichUp Coins! $${pack.priceUsd.toFixed(2)} deducted from your account.`);
+      setBuySuccessMsg(`💰 Successfully bought +${pack.coins} PropRush Coins! $${pack.priceUsd.toFixed(2)} deducted from your account.`);
       setTimeout(() => setBuySuccessMsg(null), 4000);
     }
   };
 
   const coinPacks = [
     { id: 'coins_100', name: 'Pouch of Coins', coins: 100, priceUsd: 1.99, icon: '🪙' },
-    { id: 'coins_350', name: 'Mogul Chest', coins: 350, priceUsd: 4.99, icon: '💰', popular: true },
-    { id: 'coins_1000', name: 'Tycoon Vault', coins: 1000, priceUsd: 11.99, icon: '👑' }
+    { id: 'coins_350', name: 'Tycoon Chest', coins: 350, priceUsd: 4.99, icon: '💰', popular: true },
+    { id: 'coins_1000', name: 'Mogul Vault', coins: 1000, priceUsd: 11.99, icon: '👑' }
   ];
+
+  const getRarityBadge = (rarity?: string) => {
+    switch (rarity) {
+      case 'legendary':
+        return 'bg-amber-500/20 text-amber-300 border-amber-500/50';
+      case 'epic':
+        return 'bg-purple-500/20 text-purple-300 border-purple-500/50';
+      case 'rare':
+        return 'bg-blue-500/20 text-blue-300 border-blue-500/50';
+      default:
+        return 'bg-slate-700/40 text-slate-300 border-slate-600/50';
+    }
+  };
 
   return (
     <div className="w-full max-w-7xl mx-auto px-4 py-6 sm:py-8 animate-fade-in flex flex-col gap-6">
@@ -80,10 +106,10 @@ export const StoreView: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-[#2b2447] pb-4">
         <div>
           <h1 className="font-heading font-black text-3xl sm:text-4xl text-white">
-            Store
+            PropRush Store
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            Customize your player token, dice, board themes, and glowing avatar frames
+            Unlock exclusive characters, animated Discord Nitro-style avatar frames, dice skins, and board maps
           </p>
         </div>
 
@@ -96,13 +122,38 @@ export const StoreView: React.FC = () => {
             <span className="text-[10px] text-emerald-400/80 font-normal uppercase hidden sm:inline">Wallet</span>
           </div>
 
-          {/* RichUp Coins */}
+          {/* PropRush Coins */}
           <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-[#1c1630] border border-amber-500/40 text-amber-300 font-mono-code font-bold text-sm sm:text-base shadow-lg">
             <span className="text-lg">🪙</span>
-            <span>{user.coins} Coins</span>
+            <span>{user.coins} PropRush Coins</span>
           </div>
         </div>
       </div>
+
+      {/* Guest Mode Banner */}
+      {!isLoggedIn && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-[#7059e2]/25 via-[#221a42] to-[#7059e2]/25 border border-[#7059e2]/60 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#7059e2]/30 border border-[#7059e2]/50 flex items-center justify-center text-xl text-white">
+              🔐
+            </div>
+            <div>
+              <div className="font-heading font-extrabold text-sm text-white">
+                Guest Mode Active
+              </div>
+              <div className="text-xs text-slate-300">
+                Sign in with Google or Clerk to save purchased items, unlock dice skins, and buy coin packs.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => openAuthModal('Sign in with Google or Clerk to buy coins and equip cosmetics.')}
+            className="px-5 py-2 rounded-xl bg-[#7059e2] hover:bg-[#6047d8] text-white font-heading font-bold text-xs shadow-md transition-all cursor-pointer whitespace-nowrap transform active:scale-95"
+          >
+            ⚡ Sign In with Google
+          </button>
+        </div>
+      )}
 
       {/* Notifications */}
       {buySuccessMsg && (
@@ -131,29 +182,45 @@ export const StoreView: React.FC = () => {
                 sounds.playClick();
                 setSelectedCategory(cat.id);
               }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm text-left transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm text-left transition-all cursor-pointer ${
                 selectedCategory === cat.id
                   ? 'bg-[#7059e2] text-white shadow-lg'
                   : 'bg-[#19142b]/80 hover:bg-[#231c3d] text-slate-300 border border-slate-800/80'
               }`}
             >
-              <span>{cat.icon}</span>
-              <span>{cat.label}</span>
+              <div className="flex items-center gap-3">
+                <span>{cat.icon}</span>
+                <span>{cat.label}</span>
+              </div>
+              {cat.id !== 'coins' && (
+                <span className="text-[10px] opacity-70 px-1.5 py-0.5 rounded bg-black/30 font-mono-code">
+                  {STORE_ITEMS.filter(i => cat.id === 'all' || i.category === cat.id).length}
+                </span>
+              )}
             </button>
           ))}
 
-          {/* Equipped Preview Card */}
-          <div className="mt-6 p-4 rounded-2xl bg-[#181329] border border-[#2b2447] text-xs text-slate-400 space-y-3">
+          {/* Equipped Profile Preview Card */}
+          <div className="mt-6 p-4 rounded-2xl bg-[#181329] border border-[#2b2447] text-xs text-slate-400 space-y-3 shadow-xl">
             <div className="font-bold text-slate-200 flex items-center justify-between">
-              <span>Your Character</span>
-              <span className="text-[10px] text-[#8e76f7] font-mono-code uppercase">Equipped</span>
+              <span>Your Character Loadout</span>
+              <span className="text-[10px] text-[#8e76f7] font-mono-code uppercase">Live Preview</span>
             </div>
-            <div className="flex items-center gap-3">
-              <AvatarCharacter avatarId={user.avatar} frameId={user.avatarFrame} size="lg" />
-              <div>
-                <div className="font-heading font-black text-sm text-white capitalize">{user.avatar}</div>
-                <div className="text-[11px] text-slate-400 font-mono-code">
-                  Frame: {user.avatarFrame && user.avatarFrame !== 'none' ? user.avatarFrame.replace('pfp_', '') : 'Standard'}
+            <div className="flex items-center gap-4 py-2">
+              <AvatarCharacter avatarId={user.avatar} frameId={user.avatarFrame} size="xl" />
+              <div className="space-y-1">
+                <div className="font-heading font-black text-base text-white capitalize">{user.avatar}</div>
+                <div className="text-[11px] text-amber-300 font-mono-code flex items-center gap-1">
+                  <span>Frame:</span>
+                  <span className="font-bold capitalize">{user.avatarFrame && user.avatarFrame !== 'none' ? user.avatarFrame.replace('pfp_', '').replace('_', ' ') : 'None'}</span>
+                </div>
+                <div className="text-[11px] text-cyan-300 font-mono-code flex items-center gap-1">
+                  <span>Dice:</span>
+                  <span className="font-bold capitalize">{(user.diceSkin || 'Standard').replace('dice_', '')}</span>
+                </div>
+                <div className="text-[11px] text-emerald-300 font-mono-code flex items-center gap-1">
+                  <span>Map:</span>
+                  <span className="font-bold capitalize">{(user.mapSkin || 'Worldwide').replace('_', ' ')}</span>
                 </div>
               </div>
             </div>
@@ -163,15 +230,15 @@ export const StoreView: React.FC = () => {
         {/* Content Area */}
         <div className="md:col-span-3 space-y-6">
           {selectedCategory === 'coins' ? (
-            /* RichUp Coins Purchase Packs */
+            /* PropRush Coins Purchase Packs */
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="font-heading font-black text-xl text-white">
-                    RichUp Coin Packs
+                    PropRush Coin Packs
                   </h2>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Coins are instantly purchased with your USD account balance and credited to your inventory.
+                    PropRush Coins are instantly purchased with your USD account balance and credited to your inventory.
                   </p>
                 </div>
                 <span className="text-xs font-mono-code text-emerald-400 font-bold bg-emerald-950/40 px-3 py-1 rounded-xl border border-emerald-500/30">
@@ -198,7 +265,7 @@ export const StoreView: React.FC = () => {
                       +{pack.coins} Coins
                     </div>
                     <p className="text-[11px] text-slate-400">
-                      Instantly unlocks avatar frames, skins, and dice!
+                      Instantly unlocks animated avatar frames, skins, dice, and maps!
                     </p>
                     <button
                       onClick={() => handleBuyCoins(pack)}
@@ -211,12 +278,27 @@ export const StoreView: React.FC = () => {
               </div>
             </div>
           ) : (
-            /* Store Items Grid matching RichUp */
+            /* Store Items Grid matching PropRush */
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="font-heading font-black text-xl text-white capitalize">
-                  {selectedCategory === 'all' ? 'All Store Items' : selectedCategory === 'profile_pictures' ? 'Avatar Frames' : selectedCategory.replace('_', ' ')}
-                </h2>
+                <div>
+                  <h2 className="font-heading font-black text-xl text-white capitalize">
+                    {selectedCategory === 'all' 
+                      ? 'All PropRush Store Items' 
+                      : selectedCategory === 'profile_pictures' 
+                        ? 'Animated Avatar Frames (Discord Nitro-Style FX)' 
+                        : selectedCategory === 'upgrades'
+                          ? 'Dice Skins & Roll FX'
+                          : selectedCategory === 'maps'
+                            ? 'Board Maps & Landscapes'
+                            : 'Player Appearances'}
+                  </h2>
+                  {selectedCategory === 'profile_pictures' && (
+                    <p className="text-xs text-purple-300 mt-0.5 font-medium">
+                      ✨ Premium animated profile frames featuring continuous moving halos, particle loops, and glow effects.
+                    </p>
+                  )}
+                </div>
                 <span className="text-xs text-slate-400 font-mono-code">
                   {filteredItems.length} items
                 </span>
@@ -232,7 +314,7 @@ export const StoreView: React.FC = () => {
                       key={item.id}
                       className={`group p-4 rounded-2xl bg-[#19142b] border transition-all flex flex-col items-center text-center justify-between gap-3 ${
                         equipped
-                          ? 'border-[#7059e2] shadow-[0_0_20px_rgba(112,89,226,0.3)] bg-[#1e1738]'
+                          ? 'border-[#7059e2] shadow-[0_0_20px_rgba(112,89,226,0.35)] bg-[#1e1738]'
                           : 'border-[#2b2447] hover:border-[#7059e2]/60 hover:bg-[#1d1733]'
                       }`}
                     >
@@ -244,11 +326,20 @@ export const StoreView: React.FC = () => {
                           <AvatarCharacter avatarId={user.avatar} frameId={item.id} size="lg" />
                         ) : item.category === 'maps' ? (
                           <div className="flex flex-col items-center">
-                            <span className="text-3xl">{item.emoji}</span>
-                            <span className="text-[10px] text-slate-400 font-bold uppercase mt-1">Map Skin</span>
+                            <span className="text-3xl filter drop-shadow">{item.emoji}</span>
+                            <span className="text-[9px] text-slate-400 font-bold uppercase mt-1">Map Theme</span>
                           </div>
                         ) : (
-                          <span className="text-4xl">{item.emoji}</span>
+                          <div className="flex flex-col items-center gap-1">
+                            <DiceFaceMini skinId={item.id} size="md" pips={5} />
+                            <span className="text-[9px] text-slate-400 font-bold uppercase">Dice Skin</span>
+                          </div>
+                        )}
+
+                        {item.rarity && (
+                          <span className={`absolute top-1 left-1 text-[8px] font-black uppercase px-1.5 py-0.2 rounded border ${getRarityBadge(item.rarity)}`}>
+                            {item.rarity}
+                          </span>
                         )}
 
                         {item.isPopular && (
@@ -271,7 +362,7 @@ export const StoreView: React.FC = () => {
                       {/* Price / Status */}
                       <div className="w-full flex items-center justify-center gap-1.5 font-mono-code font-bold text-amber-300 text-sm">
                         <span>🪙</span>
-                        <span>{item.priceCoins}</span>
+                        <span>{item.priceCoins} Coins</span>
                       </div>
 
                       {/* Action Button */}
@@ -281,15 +372,19 @@ export const StoreView: React.FC = () => {
                             onClick={() => {
                               if (item.category === 'profile_pictures') {
                                 equipItem('profile_pictures', item.id);
+                              } else if (item.category === 'upgrades') {
+                                equipItem('upgrades', item.id);
+                              } else if (item.category === 'maps') {
+                                equipItem('maps', item.id);
                               }
                             }}
                             className={`w-full py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                              item.category === 'profile_pictures'
+                              item.category === 'profile_pictures' || item.category === 'upgrades' || item.category === 'maps'
                                 ? 'bg-[#7059e2]/30 hover:bg-rose-900/40 border border-[#7059e2] text-purple-200 hover:text-rose-200'
                                 : 'bg-[#7059e2]/30 border border-[#7059e2] text-purple-200'
                             }`}
                           >
-                            {item.category === 'profile_pictures' ? 'Equipped (Click to Unequip)' : 'Equipped ✓'}
+                            {item.category === 'appearance' ? 'Equipped ✓' : 'Equipped (Click to Unequip)'}
                           </button>
                         ) : owned ? (
                           <button
@@ -298,11 +393,15 @@ export const StoreView: React.FC = () => {
                                 equipItem('appearance', item.id);
                               } else if (item.category === 'profile_pictures') {
                                 equipItem('profile_pictures', item.id);
+                              } else if (item.category === 'upgrades') {
+                                equipItem('upgrades', item.id);
+                              } else if (item.category === 'maps') {
+                                equipItem('maps', item.id);
                               }
                             }}
                             className="w-full py-2 rounded-xl bg-slate-800 hover:bg-[#7059e2] text-xs font-bold text-slate-200 hover:text-white cursor-pointer transition-all shadow-sm"
                           >
-                            Equip {item.category === 'profile_pictures' ? 'Frame' : ''}
+                            Equip {item.category === 'profile_pictures' ? 'Frame' : item.category === 'upgrades' ? 'Dice' : item.category === 'maps' ? 'Map' : 'Skin'}
                           </button>
                         ) : (
                           <button
@@ -324,4 +423,3 @@ export const StoreView: React.FC = () => {
     </div>
   );
 };
-

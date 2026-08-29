@@ -8,13 +8,13 @@ interface WalletModalProps {
 }
 
 export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => {
-  const { user, depositFunds, withdrawFunds } = useUser();
+  const { user, depositFunds, withdrawFunds, isLoggedIn, openAuthModal, requireAuth } = useUser();
   const [tab, setTab] = useState<'deposit' | 'withdraw' | 'wager_info'>('deposit');
   const [depositAmount, setDepositAmount] = useState<number>(20);
   const [withdrawAmount, setWithdrawAmount] = useState<number>(10);
   const [paymentMethod, setPaymentMethod] = useState<string>('card');
   const [withdrawMethod, setWithdrawMethod] = useState<string>('paypal');
-  const [withdrawAddress, setWithdrawAddress] = useState<string>('sahi@richup.io');
+  const [withdrawAddress, setWithdrawAddress] = useState<string>('sahi@gmail.com');
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -22,6 +22,12 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
   const handleDeposit = (e: React.FormEvent) => {
     e.preventDefault();
     if (depositAmount <= 0) return;
+
+    if (!isLoggedIn) {
+      openAuthModal('Sign in with Google or Clerk to deposit funds into your secure wallet.');
+      return;
+    }
+
     const ok = depositFunds(depositAmount, paymentMethod);
     if (ok) {
       setSuccessMsg(`Successfully deposited $${depositAmount.toFixed(2)} to your balance!`);
@@ -31,6 +37,10 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
 
   const handleWithdraw = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isLoggedIn) {
+      openAuthModal('Sign in with Google or Clerk to withdraw balance to your payment method.');
+      return;
+    }
     if (withdrawAmount <= 0 || withdrawAmount > user.walletBalance) {
       alert('Invalid withdrawal amount');
       return;
