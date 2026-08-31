@@ -1,12 +1,14 @@
 import React, { useEffect } from 'react';
-import { useUser as useClerkUser, AuthenticateWithRedirectCallback } from '@clerk/clerk-react';
+import { AuthenticateWithRedirectCallback } from '@clerk/clerk-react';
+import { useSafeClerkUser, useClerkConfig } from '../context/ClerkIntegration';
 import { useUser } from '../context/UserContext';
 
 export const ClerkUserSync: React.FC = () => {
-  const { isLoaded, isSignedIn, user: clerkUser } = useClerkUser();
+  const { isClerkAvailable } = useClerkConfig();
+  const { isLoaded, isSignedIn, user: clerkUser } = useSafeClerkUser();
   const { syncClerkUser, closeAuthModal } = useUser();
 
-  const isCallbackUrl = typeof window !== 'undefined' && (
+  const isCallbackUrl = isClerkAvailable && typeof window !== 'undefined' && (
     window.location.search.includes('__clerk') ||
     window.location.hash.includes('__clerk')
   );

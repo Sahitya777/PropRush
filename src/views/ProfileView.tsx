@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { useUser as useClerkUser, useClerk } from '@clerk/clerk-react';
 import { useUser } from '../context/UserContext';
 import { useTheme } from '../context/ThemeContext';
-import { useClerkConfig } from '../context/ClerkIntegration';
+import { useClerkConfig, useSafeClerkUser, useSafeClerk } from '../context/ClerkIntegration';
 import { BADGES_LIST, LEAGUE_TIERS_INFO, STORE_ITEMS } from '../data/storeData';
 import { AvatarCharacter } from '../components/AvatarCharacter';
 import { DiceFaceMini } from '../components/DiceFaceMini';
@@ -13,8 +12,8 @@ export const ProfileView: React.FC = () => {
   const { user, updateUsername, claimDailyReward, lastDailyClaim, equipItem, isLoggedIn, openAuthModal, logoutUser } = useUser();
   const { isLight } = useTheme();
   const { isClerkAvailable } = useClerkConfig();
-  const { isLoaded: isClerkLoaded, isSignedIn: isClerkSignedIn, user: clerkUser } = useClerkUser();
-  const clerk = useClerk();
+  const { isLoaded: isClerkLoaded, isSignedIn: isClerkSignedIn, user: clerkUser } = useSafeClerkUser();
+  const clerk = useSafeClerk();
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(user.username);

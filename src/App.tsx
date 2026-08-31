@@ -15,7 +15,7 @@ import { sounds } from './utils/audio';
 import { getActiveMatch } from './utils/reconnectStorage';
 import { findActiveRoomByCode } from './utils/activeRoomsRegistry';
 import { verifyStripeSession } from './utils/stripeClient';
-import confetti from 'canvas-confetti';
+import { fireConfetti } from './utils/confetti';
 
 function AppContent() {
   const { user, deductBuyIn, depositFunds } = useUser();
@@ -64,7 +64,7 @@ function AppContent() {
           depositFunds(credited, 'stripe');
           sounds.playVictory();
           try {
-            confetti({
+            fireConfetti({
               particleCount: 80,
               spread: 70,
               origin: { y: 0.6 }

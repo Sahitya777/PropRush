@@ -3,7 +3,7 @@ import { useUser } from '../context/UserContext';
 import { useTheme } from '../context/ThemeContext';
 import { sounds } from '../utils/audio';
 import { fetchStripeStatus, createStripeCheckoutSession, StripeStatus } from '../utils/stripeClient';
-import confetti from 'canvas-confetti';
+import { fireConfetti } from '../utils/confetti';
 
 interface WalletModalProps {
   isOpen: boolean;
@@ -71,7 +71,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
       depositFunds(depositAmount, 'stripe_sandbox');
       sounds.playVictory();
       try {
-        confetti({
+        fireConfetti({
           particleCount: 50,
           spread: 60,
           origin: { y: 0.6 }

@@ -1,5 +1,11 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { ClerkProvider, useUser as useClerkUser, useClerk, SignIn, SignUp } from '@clerk/clerk-react';
+import React, { createContext, useContext, useState } from 'react';
+import {
+  ClerkProvider,
+  useUser as useClerkUserOriginal,
+  useClerk as useClerkOriginal,
+  useSignIn as useSignInOriginal,
+  useSignUp as useSignUpOriginal,
+} from '@clerk/clerk-react';
 import { dark } from '@clerk/themes';
 
 interface ClerkConfigContextType {
@@ -13,10 +19,89 @@ const ClerkConfigContext = createContext<ClerkConfigContextType>({
   publishableKey: null,
   setPublishableKey: () => {},
   isClerkAvailable: false,
-  clearPublishableKey: () => {}
+  clearPublishableKey: () => {},
 });
 
 export const useClerkConfig = () => useContext(ClerkConfigContext);
+
+interface ClerkStateContextType {
+  isLoaded: boolean;
+  isSignedIn: boolean;
+  user: any;
+  clerk: any;
+  signIn: any;
+  isSignInLoaded: boolean;
+  signUp: any;
+  isSignUpLoaded: boolean;
+}
+
+const defaultClerkState: ClerkStateContextType = {
+  isLoaded: true,
+  isSignedIn: false,
+  user: null,
+  clerk: null,
+  signIn: null,
+  isSignInLoaded: false,
+  signUp: null,
+  isSignUpLoaded: false,
+};
+
+const ClerkStateContext = createContext<ClerkStateContextType>(defaultClerkState);
+
+export const useSafeClerkUser = () => {
+  const state = useContext(ClerkStateContext);
+  return {
+    isLoaded: state.isLoaded,
+    isSignedIn: state.isSignedIn,
+    user: state.user,
+  };
+};
+
+export const useSafeClerk = () => {
+  const state = useContext(ClerkStateContext);
+  return state.clerk;
+};
+
+export const useSafeSignIn = () => {
+  const state = useContext(ClerkStateContext);
+  return {
+    isLoaded: state.isSignInLoaded,
+    signIn: state.signIn,
+  };
+};
+
+export const useSafeSignUp = () => {
+  const state = useContext(ClerkStateContext);
+  return {
+    isLoaded: state.isSignUpLoaded,
+    signUp: state.signUp,
+  };
+};
+
+// Bridge component rendered inside ClerkProvider
+const ClerkStateBridge: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isLoaded, isSignedIn, user } = useClerkUserOriginal();
+  const clerk = useClerkOriginal();
+  const { signIn, isLoaded: isSignInLoaded } = useSignInOriginal();
+  const { signUp, isLoaded: isSignUpLoaded } = useSignUpOriginal();
+
+  const stateValue: ClerkStateContextType = {
+    isLoaded,
+    isSignedIn: Boolean(isSignedIn),
+    user: user || null,
+    clerk: clerk || null,
+    signIn: signIn || null,
+    isSignInLoaded,
+    signUp: signUp || null,
+    isSignUpLoaded,
+  };
+
+  return (
+    <ClerkStateContext.Provider value={stateValue}>
+      {children}
+    </ClerkStateContext.Provider>
+  );
+};
 
 // Hook to check if publishable key is valid
 function isValidClerkKey(key: string | null | undefined): boolean {
@@ -26,16 +111,13 @@ function isValidClerkKey(key: string | null | undefined): boolean {
 }
 
 export const ClerkIntegrationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Default key from user's Clerk dashboard (app_3lcrT706042SF1VNW3fJOPSZszr)
-  const DEFAULT_CLERK_PUB_KEY = 'pk_test_d29ya2luZy1sYXJrLTU4MDMuY2xlcmsuYWNjb3VudHMuZGV2JA';
   const envKey = (((import.meta as any).env?.VITE_CLERK_PUBLISHABLE_KEY as string | undefined) || '').trim();
   
   const [publishableKey, setPublishableKeyInternal] = useState<string>(() => {
     const local = localStorage.getItem('proprush_clerk_pub_key')?.trim() || '';
     if (isValidClerkKey(envKey)) return envKey;
     if (isValidClerkKey(local)) return local;
-    if (isValidClerkKey(DEFAULT_CLERK_PUB_KEY)) return DEFAULT_CLERK_PUB_KEY;
-    return envKey || local || DEFAULT_CLERK_PUB_KEY;
+    return '';
   });
 
   const setPublishableKey = (key: string) => {
@@ -51,23 +133,25 @@ export const ClerkIntegrationProvider: React.FC<{ children: React.ReactNode }> =
 
   const isClerkAvailable = isValidClerkKey(publishableKey);
 
-  const contextValue: ClerkConfigContextType = {
+  const configValue: ClerkConfigContextType = {
     publishableKey: publishableKey || null,
     setPublishableKey,
     isClerkAvailable,
-    clearPublishableKey
+    clearPublishableKey,
   };
 
-  if (!isClerkAvailable) {
+  if (!isClerkAvailable || !publishableKey) {
     return (
-      <ClerkConfigContext.Provider value={contextValue}>
-        {children}
+      <ClerkConfigContext.Provider value={configValue}>
+        <ClerkStateContext.Provider value={defaultClerkState}>
+          {children}
+        </ClerkStateContext.Provider>
       </ClerkConfigContext.Provider>
     );
   }
 
   return (
-    <ClerkConfigContext.Provider value={contextValue}>
+    <ClerkConfigContext.Provider value={configValue}>
       <ClerkProvider
         publishableKey={publishableKey}
         appearance={{
@@ -91,11 +175,13 @@ export const ClerkIntegrationProvider: React.FC<{ children: React.ReactNode }> =
             formFieldInput: 'bg-[#0d0a18] border border-slate-800 focus:border-[#7059e2] text-white rounded-xl py-2.5',
             footerActionLink: 'text-[#9d89fc] hover:text-[#b4a4ff] font-semibold',
             dividerLine: 'bg-slate-800',
-            dividerText: 'text-slate-500 text-xs uppercase'
-          }
+            dividerText: 'text-slate-500 text-xs uppercase',
+          },
         }}
       >
-        {children}
+        <ClerkStateBridge>
+          {children}
+        </ClerkStateBridge>
       </ClerkProvider>
     </ClerkConfigContext.Provider>
   );

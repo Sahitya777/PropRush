@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { SignIn, SignUp, useClerk, useSignIn, useSignUp, useUser as useClerkUser } from '@clerk/clerk-react';
-import { useClerkConfig } from '../context/ClerkIntegration';
+import { SignIn, SignUp } from '@clerk/clerk-react';
+import { useClerkConfig, useSafeClerk, useSafeSignIn, useSafeSignUp, useSafeClerkUser } from '../context/ClerkIntegration';
 import { useUser } from '../context/UserContext';
 import { useTheme } from '../context/ThemeContext';
 import { sounds } from '../utils/audio';
@@ -11,12 +11,12 @@ interface ClerkActiveAuthProps {
 
 export const ClerkActiveAuth: React.FC<ClerkActiveAuthProps> = ({ onClose }) => {
   const { publishableKey } = useClerkConfig();
-  const { signIn, isLoaded: isSignInLoaded } = useSignIn();
-  const { signUp, isLoaded: isSignUpLoaded } = useSignUp();
-  const { isSignedIn, user: clerkUser } = useClerkUser();
+  const { signIn, isLoaded: isSignInLoaded } = useSafeSignIn();
+  const { signUp, isLoaded: isSignUpLoaded } = useSafeSignUp();
+  const { isSignedIn, user: clerkUser } = useSafeClerkUser();
   const { loginWithGoogle, syncClerkUser } = useUser();
   const { isLight } = useTheme();
-  const clerk = useClerk();
+  const clerk = useSafeClerk();
 
   const [activeTab, setActiveTab] = useState<'oauth' | 'clerk_form'>('oauth');
   const [clerkMode, setClerkMode] = useState<'signin' | 'signup'>('signin');

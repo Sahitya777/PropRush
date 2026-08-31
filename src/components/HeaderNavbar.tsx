@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useUser as useClerkUser, useClerk } from '@clerk/clerk-react';
 import { useUser } from '../context/UserContext';
-import { useClerkConfig } from '../context/ClerkIntegration';
+import { useClerkConfig, useSafeClerkUser, useSafeClerk } from '../context/ClerkIntegration';
 import { useTheme } from '../context/ThemeContext';
 import { AvatarCharacter } from './AvatarCharacter';
 import { sounds } from '../utils/audio';
@@ -29,8 +28,8 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
   const { user, isLoggedIn, openAuthModal, requireAuth, logoutUser } = useUser();
   const { isClerkAvailable } = useClerkConfig();
   const { isLight, toggleTheme } = useTheme();
-  const { isLoaded: isClerkLoaded, isSignedIn: isClerkSignedIn, user: clerkUser } = useClerkUser();
-  const clerk = useClerk();
+  const { isLoaded: isClerkLoaded, isSignedIn: isClerkSignedIn, user: clerkUser } = useSafeClerkUser();
+  const clerk = useSafeClerk();
 
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
