@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { GameRoom, Player, BoardTile } from '../types/game';
 import { BASE_BOARD_TILES, CHANCE_CARDS, CHEST_CARDS, GROUP_PROPERTY_COUNTS } from '../data/boardTiles';
 import { useUser } from '../context/UserContext';
+import { useTheme } from '../context/ThemeContext';
 import { GameBoard } from '../components/GameBoard';
 import { PropertyCardModal } from '../components/PropertyCardModal';
 import { AuctionModal } from '../components/AuctionModal';
@@ -36,6 +37,10 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   onOpenRules
 }) => {
   const { user, recordMatchResult, equipItem, updateUser } = useUser();
+  const { isLight, toggleTheme } = useTheme();
+
+  // Mobile / Tablet Tab switch: 'board' or 'stats'
+  const [mobileTab, setMobileTab] = useState<'board' | 'stats'>('board');
 
   // Check if resuming an existing active match
   const savedActive = getActiveMatch();
@@ -859,22 +864,30 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   const myOwnedTiles = tiles.filter(t => myPlayer?.properties.includes(t.id));
 
   return (
-    <div className="w-full h-screen max-h-screen overflow-hidden flex flex-col bg-[#0e0b1f] text-slate-100 select-none relative">
+    <div className={`w-full h-screen max-h-screen overflow-hidden flex flex-col select-none relative transition-colors duration-200 ${
+      isLight ? 'bg-slate-100 text-slate-900' : 'bg-[#0e0b1f] text-slate-100'
+    }`}>
       {/* 1. TOP HEADER BAR */}
-      <header className="h-12 bg-[#130f26] border-b border-[#251d45] px-3 sm:px-4 flex items-center justify-between flex-shrink-0 z-30 shadow-md">
+      <header className={`h-12 border-b px-2 sm:px-4 flex items-center justify-between flex-shrink-0 z-30 shadow-md ${
+        isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-[#130f26] border-[#251d45] text-white'
+      }`}>
         {/* Left: Logo + Navigation Links */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 font-heading font-black text-base sm:text-lg tracking-wider text-white">
-            <span className="text-[#a390ff] text-xl">🎲</span>
-            <span>PROPRUSH</span>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1 sm:gap-1.5 font-heading font-black text-sm sm:text-lg tracking-wider">
+            <span className="text-[#7059e2] text-lg sm:text-xl">🎲</span>
+            <span className={isLight ? 'text-slate-900' : 'text-white'}>PROPRUSH</span>
           </div>
 
-          <div className="h-4 w-px bg-slate-700 hidden sm:block" />
+          <div className={`h-4 w-px hidden sm:block ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
 
           <button
             id="btn-leave-room"
             onClick={handleGracefulLeave}
-            className="px-2.5 py-1 rounded-lg bg-slate-900/80 hover:bg-slate-800 text-[11px] font-bold text-slate-300 border border-slate-700 cursor-pointer flex items-center gap-1 transition-all"
+            className={`px-2 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-bold border cursor-pointer flex items-center gap-1 transition-all ${
+              isLight
+                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-slate-700'
+            }`}
             title="Leave room (Your state is saved for 2 minutes to rejoin)"
           >
             <span>←</span>
@@ -883,25 +896,50 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         </div>
 
         {/* Center: Room Code Display & Pot */}
-        <div className="flex items-center gap-2">
-          <div className="px-3 py-0.5 rounded-full bg-[#1e1738] border border-[#7059e2]/40 text-xs font-mono-code font-bold text-[#b4a4ff] flex items-center gap-1.5 shadow-inner">
-            <span>Room:</span>
-            <span className="text-white tracking-wider uppercase">{room.code}</span>
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className={`px-2 sm:px-3 py-0.5 rounded-full border text-[10px] sm:text-xs font-mono-code font-bold flex items-center gap-1 sm:gap-1.5 shadow-inner ${
+            isLight
+              ? 'bg-purple-50 border-purple-200 text-purple-800'
+              : 'bg-[#1e1738] border-[#7059e2]/40 text-[#b4a4ff]'
+          }`}>
+            <span className="hidden xs:inline">Room:</span>
+            <span className="tracking-wider uppercase font-bold">{room.code}</span>
           </div>
           {room.betAmount > 0 && (
-            <div className="px-2.5 py-0.5 rounded-full bg-emerald-950/70 border border-emerald-500/40 text-xs font-mono-code font-bold text-emerald-300">
+            <div className={`px-2 sm:px-2.5 py-0.5 rounded-full border text-[10px] sm:text-xs font-mono-code font-bold ${
+              isLight
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                : 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300'
+            }`}>
               Pot: ${room.totalPrizePool}
             </div>
           )}
         </div>
 
         {/* Right: Quick Action Controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Theme Toggle Button */}
+          <button
+            onClick={toggleTheme}
+            className={`p-1.5 rounded-lg border text-xs cursor-pointer transition-all flex items-center justify-center ${
+              isLight
+                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                : 'bg-[#1a1433] hover:bg-[#281f4a] text-slate-200 border-[#3b2f66]'
+            }`}
+            title={isLight ? 'Switch to Dark Theme' : 'Switch to Light Theme'}
+          >
+            {isLight ? '🌙' : '☀️'}
+          </button>
+
           {/* Sound Mute Toggle */}
           {onToggleMute && (
             <button
               onClick={onToggleMute}
-              className="p-1.5 rounded-lg bg-[#1a1433] hover:bg-[#281f4a] border border-[#3b2f66] text-xs cursor-pointer transition-colors"
+              className={`p-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                isLight
+                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                  : 'bg-[#1a1433] hover:bg-[#281f4a] text-slate-200 border-[#3b2f66]'
+              }`}
               title={isMuted ? 'Unmute Audio' : 'Mute Audio'}
             >
               {isMuted ? '🔇' : '🔊'}
@@ -911,7 +949,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           {/* Share Button with Instant Copy */}
           <button
             onClick={handleCopyLink}
-            className="px-3 py-1 rounded-lg bg-[#7059e2]/20 hover:bg-[#7059e2]/40 text-[#a390ff] border border-[#7059e2]/50 text-xs font-bold cursor-pointer transition-all flex items-center gap-1"
+            className="px-2.5 sm:px-3 py-1 rounded-lg bg-[#7059e2]/20 hover:bg-[#7059e2]/30 text-[#7059e2] border border-[#7059e2]/40 text-xs font-bold cursor-pointer transition-all flex items-center gap-1"
             title="Copy room invite link"
           >
             <span>🔗</span>
@@ -920,41 +958,83 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         </div>
       </header>
 
-      {/* 2. MAIN SINGLE-VIEW EXPANSIVE LAYOUT (MAX BOARD SPACE) */}
-      <div className="flex-1 min-h-0 flex flex-row items-stretch justify-between p-2 sm:p-3 gap-3 overflow-hidden">
+      {/* Mobile/Tablet Screen View Mode Tabs (Visible on < lg screens) */}
+      <div className={`lg:hidden flex items-center justify-around border-b px-2 py-1 flex-shrink-0 z-20 ${
+        isLight ? 'bg-white border-slate-200' : 'bg-[#110d24] border-[#251d45]'
+      }`}>
+        <button
+          onClick={() => setMobileTab('board')}
+          className={`flex-1 py-1 px-2 rounded-lg text-xs font-bold text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+            mobileTab === 'board'
+              ? 'bg-[#7059e2] text-white shadow-xs'
+              : isLight
+              ? 'text-slate-600 hover:bg-slate-100'
+              : 'text-slate-400 hover:bg-slate-800/60'
+          }`}
+        >
+          <span>🎲</span>
+          <span>Game Board</span>
+        </button>
+        <button
+          onClick={() => setMobileTab('stats')}
+          className={`flex-1 py-1 px-2 rounded-lg text-xs font-bold text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+            mobileTab === 'stats'
+              ? 'bg-[#7059e2] text-white shadow-xs'
+              : isLight
+              ? 'text-slate-600 hover:bg-slate-100'
+              : 'text-slate-400 hover:bg-slate-800/60'
+          }`}
+        >
+          <span>👥</span>
+          <span>Players & Stats ({room.players.length})</span>
+        </button>
+      </div>
+
+      {/* 2. MAIN LAYOUT: RESPONSIVE ACROSS MOBILE, IPAD/TABLET & DESKTOP */}
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row items-stretch justify-between p-1.5 sm:p-2.5 lg:p-3 gap-2 sm:gap-3 overflow-hidden">
         
         {/* CENTER / PRIMARY COLUMN: The Authentic 11x11 GameBoard (Expanded & Centered) */}
-        <div className="flex-1 min-h-0 min-w-0 flex items-center justify-center p-1 relative">
-          <GameBoard
-            tiles={tiles}
-            room={room}
-            activeTileId={selectedTile?.id || null}
-            onTileClick={tile => setSelectedTile(tile)}
-            onRollDice={handleRollDice}
-            isRolling={isRolling}
-            canRoll={isMyTurn && (room.turnPhase === 'roll' || (room.isDouble && room.turnPhase === 'action'))}
-            onBuyProperty={handleBuyProperty}
-            onPassToAuction={handlePassToAuction}
-            onPayJailFine={handlePayJailFine}
-            onUseJailCard={handleUseJailCard}
-            onEndTurn={nextTurn}
-            onToggleSpeed={() => setRoom(r => ({ ...r, fastSpeed: !r.fastSpeed }))}
-            onStartGame={() => setRoom(r => ({ ...r, status: 'playing' }))}
-            isLobbyMode={room.status === 'waiting'}
-          />
+        <div className={`flex-1 min-h-0 min-w-0 flex items-center justify-center p-0.5 sm:p-1 relative overflow-hidden ${
+          mobileTab === 'board' ? 'flex' : 'hidden lg:flex'
+        }`}>
+          <div className="w-full h-full max-h-full max-w-full aspect-square flex items-center justify-center">
+            <GameBoard
+              tiles={tiles}
+              room={room}
+              activeTileId={selectedTile?.id || null}
+              onTileClick={tile => setSelectedTile(tile)}
+              onRollDice={handleRollDice}
+              isRolling={isRolling}
+              canRoll={isMyTurn && (room.turnPhase === 'roll' || (room.isDouble && room.turnPhase === 'action'))}
+              onBuyProperty={handleBuyProperty}
+              onPassToAuction={handlePassToAuction}
+              onPayJailFine={handlePayJailFine}
+              onUseJailCard={handleUseJailCard}
+              onEndTurn={nextTurn}
+              onToggleSpeed={() => setRoom(r => ({ ...r, fastSpeed: !r.fastSpeed }))}
+              onStartGame={() => setRoom(r => ({ ...r, status: 'playing' }))}
+              isLobbyMode={room.status === 'waiting'}
+            />
+          </div>
         </div>
 
         {/* RIGHT COLUMN: Player List, Bankrupt Button, Trades Card, My Properties */}
-        <div className="w-68 xl:w-76 flex-shrink-0 flex flex-col justify-between gap-2.5 h-full overflow-hidden">
+        <div className={`w-full lg:w-72 xl:w-80 flex-shrink-0 flex flex-col justify-between gap-2.5 h-full overflow-y-auto lg:overflow-hidden ${
+          mobileTab === 'stats' ? 'flex' : 'hidden lg:flex'
+        }`}>
           
           {/* Players List */}
-          <div className="p-3 rounded-2xl bg-[#141026] border border-[#2b2447] flex flex-col gap-2 shadow-lg">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-300 border-b border-slate-800 pb-1.5">
+          <div className={`p-3 rounded-2xl border flex flex-col gap-2 shadow-md ${
+            isLight ? 'bg-white border-slate-200' : 'bg-[#141026] border-[#2b2447]'
+          }`}>
+            <div className={`flex items-center justify-between text-xs font-bold border-b pb-1.5 ${
+              isLight ? 'text-slate-700 border-slate-100' : 'text-slate-300 border-slate-800'
+            }`}>
               <span>Players ({room.players.length})</span>
-              <span className="text-[10px] text-slate-500 font-mono-code">Ranked</span>
+              <span className={`text-[10px] font-mono-code ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>Ranked</span>
             </div>
 
-            <div className="space-y-1.5 max-h-[190px] overflow-y-auto pr-1">
+            <div className="space-y-1.5 max-h-[220px] lg:max-h-[190px] overflow-y-auto pr-1">
               {room.players.map(p => {
                 const isTurn = p.id === room.currentTurnPlayerId;
                 const delta = cashDeltas[p.id];
@@ -964,10 +1044,14 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                     key={p.id}
                     className={`p-2 rounded-xl border transition-all flex items-center justify-between ${
                       p.isBankrupt
-                        ? 'bg-slate-950/40 border-slate-900 opacity-40 grayscale'
+                        ? 'opacity-40 grayscale ' + (isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950/40 border-slate-900')
                         : isTurn
-                        ? 'bg-[#22183d] border-[#7059e2] ring-1.5 ring-[#7059e2]/80 shadow-[0_0_15px_rgba(112,89,226,0.3)]'
-                        : 'bg-[#0f0c1e] border-slate-800/80'
+                        ? (isLight
+                            ? 'bg-purple-50/90 border-[#7059e2] ring-1.5 ring-[#7059e2]/60 shadow-xs'
+                            : 'bg-[#22183d] border-[#7059e2] ring-1.5 ring-[#7059e2]/80 shadow-[0_0_15px_rgba(112,89,226,0.3)]')
+                        : (isLight
+                            ? 'bg-slate-50 border-slate-200'
+                            : 'bg-[#0f0c1e] border-slate-800/80')
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
@@ -978,13 +1062,15 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                         )}
                       </div>
                       <div className="min-w-0">
-                        <div className="font-heading font-bold text-xs text-white truncate flex items-center gap-1">
+                        <div className={`font-heading font-bold text-xs truncate flex items-center gap-1 ${
+                          isLight ? 'text-slate-900' : 'text-white'
+                        }`}>
                           <span>{p.name}</span>
                           {p.id === user.id && (
-                            <span className="text-[9px] text-[#a390ff] font-mono-code font-normal">(You)</span>
+                            <span className="text-[9px] text-[#7059e2] font-mono-code font-normal">(You)</span>
                           )}
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono-code">
+                        <div className={`text-[10px] font-mono-code ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                           {p.properties.length} props
                         </div>
                       </div>
@@ -993,7 +1079,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                     {/* Cash & Turn Indicator */}
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <div className="text-right">
-                        <div className="text-xs font-mono-code font-extrabold text-emerald-400">
+                        <div className={`text-xs font-mono-code font-extrabold ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>
                           ${p.cash}
                         </div>
                         {/* Animated Net Change Badge */}
@@ -1001,7 +1087,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                           <div
                             key={delta.key}
                             className={`text-[9px] font-mono-code font-bold animate-fade-in ${
-                              delta.delta >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                              delta.delta >= 0 ? (isLight ? 'text-emerald-600' : 'text-emerald-400') : 'text-rose-500'
                             }`}
                           >
                             {delta.delta >= 0 ? `+$${delta.delta}` : `-$${Math.abs(delta.delta)}`}
@@ -1010,7 +1096,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                       </div>
 
                       {isTurn && (
-                        <span className="text-[#a390ff] font-black text-sm animate-pulse">
+                        <span className="text-[#7059e2] font-black text-sm animate-pulse">
                           →
                         </span>
                       )}
@@ -1027,7 +1113,11 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                 sounds.playClick();
                 setShowForfeitConfirmModal(true);
               }}
-              className="w-full py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 text-[11px] font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 active:scale-95 shadow-sm"
+              className={`w-full py-1.5 rounded-xl border text-[11px] font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 active:scale-95 shadow-xs ${
+                isLight
+                  ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                  : 'bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60'
+              }`}
               title="Surrender this match and declare bankruptcy"
             >
               <span>🚩</span>
@@ -1036,9 +1126,11 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           </div>
 
           {/* Trades Section Card */}
-          <div className="p-3 rounded-2xl bg-[#141026] border border-[#2b2447] flex flex-col gap-1.5 shadow-lg">
+          <div className={`p-3 rounded-2xl border flex flex-col gap-1.5 shadow-md ${
+            isLight ? 'bg-white border-slate-200' : 'bg-[#141026] border-[#2b2447]'
+          }`}>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-white flex items-center gap-1">
+              <span className={`text-xs font-bold flex items-center gap-1 ${isLight ? 'text-slate-800' : 'text-white'}`}>
                 <span>🤝</span> Trades
               </span>
               <button
@@ -1048,18 +1140,22 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                 + Create
               </button>
             </div>
-            <p className="text-[10px] text-slate-400 leading-relaxed">
+            <p className={`text-[10px] leading-relaxed ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
               Make trades with other players to acquire monopolies and build houses.
             </p>
           </div>
 
           {/* My Properties Card */}
-          <div className="flex-1 min-h-0 p-3 rounded-2xl bg-[#141026] border border-[#2b2447] flex flex-col justify-between gap-1.5 shadow-lg overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-1">
-              <span className="text-xs font-bold text-white flex items-center gap-1">
+          <div className={`flex-1 min-h-0 p-3 rounded-2xl border flex flex-col justify-between gap-1.5 shadow-md overflow-hidden ${
+            isLight ? 'bg-white border-slate-200' : 'bg-[#141026] border-[#2b2447]'
+          }`}>
+            <div className={`flex items-center justify-between border-b pb-1 ${
+              isLight ? 'border-slate-100' : 'border-slate-800'
+            }`}>
+              <span className={`text-xs font-bold flex items-center gap-1 ${isLight ? 'text-slate-800' : 'text-white'}`}>
                 <span>🏘️</span> My Properties ({myOwnedTiles.length})
               </span>
-              <span className="text-[9px] text-slate-500 font-mono-code">Click to manage</span>
+              <span className={`text-[9px] font-mono-code ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>Click to manage</span>
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto space-y-1 pr-1 text-xs">
@@ -1068,24 +1164,32 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                   <div
                     key={t.id}
                     onClick={() => setSelectedTile(t)}
-                    className="p-1.5 rounded-xl bg-[#0f0c1e] hover:bg-[#1f1935] border border-slate-800/80 cursor-pointer flex items-center justify-between transition-colors"
+                    className={`p-1.5 rounded-xl border cursor-pointer flex items-center justify-between transition-colors ${
+                      isLight
+                        ? 'bg-slate-50 hover:bg-purple-50 border-slate-200'
+                        : 'bg-[#0f0c1e] hover:bg-[#1f1935] border-slate-800/80'
+                    }`}
                   >
                     <div className="flex items-center gap-1.5 truncate">
                       <span className="text-xs">{t.flag || '📍'}</span>
-                      <span className="text-[11px] font-bold text-slate-200 truncate">{t.name}</span>
+                      <span className={`text-[11px] font-bold truncate ${isLight ? 'text-slate-800' : 'text-slate-200'}`}>
+                        {t.name}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1">
                       {myPlayer?.houses[t.id] ? (
-                        <span className="text-[9px] text-emerald-400 font-bold">
+                        <span className={`text-[9px] font-bold ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>
                           {myPlayer.houses[t.id] === 5 ? '🏨' : `🏠x${myPlayer.houses[t.id]}`}
                         </span>
                       ) : null}
-                      <span className="text-[10px] font-mono-code text-slate-400">${t.price}</span>
+                      <span className={`text-[10px] font-mono-code ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>${t.price}</span>
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="h-full flex items-center justify-center text-center text-[10px] text-slate-500 p-2">
+                <div className={`h-full flex items-center justify-center text-center text-[10px] p-2 ${
+                  isLight ? 'text-slate-400' : 'text-slate-500'
+                }`}>
                   No properties owned yet. Roll and buy available tiles!
                 </div>
               )}
@@ -1108,7 +1212,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       >
         <span>💬</span>
         {unreadChatCount > 0 && !isChatOpen && (
-          <span className="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black font-mono-code border-2 border-[#0e0b1f] animate-pulse shadow-md">
+          <span className="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black font-mono-code border-2 border-white animate-pulse shadow-md">
             {unreadChatCount}
           </span>
         )}
@@ -1118,20 +1222,34 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       {isChatOpen && (
         <div
           id="floating-chat-window"
-          className="fixed bottom-18 right-4 sm:bottom-20 sm:right-6 w-80 sm:w-88 h-[430px] max-h-[72vh] bg-[#141026]/98 backdrop-blur-xl border border-[#3b3260] rounded-2xl shadow-[0_12px_45px_rgba(0,0,0,0.85)] z-50 flex flex-col justify-between overflow-hidden animate-fade-in"
+          className={`fixed bottom-18 right-4 sm:bottom-20 sm:right-6 w-80 sm:w-88 h-[430px] max-h-[72vh] rounded-2xl shadow-[0_12px_45px_rgba(0,0,0,0.45)] z-50 flex flex-col justify-between overflow-hidden animate-fade-in border ${
+            isLight
+              ? 'bg-white/98 backdrop-blur-xl border-slate-200 text-slate-800'
+              : 'bg-[#141026]/98 backdrop-blur-xl border-[#3b3260] text-white'
+          }`}
         >
           {/* Chat Header */}
-          <div className="px-3.5 py-2.5 bg-[#1b1535] border-b border-[#2e2554] flex items-center justify-between flex-shrink-0">
+          <div className={`px-3.5 py-2.5 border-b flex items-center justify-between flex-shrink-0 ${
+            isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1b1535] border-[#2e2554]'
+          }`}>
             <div className="flex items-center gap-2">
               <span className="text-sm">💬</span>
-              <span className="font-heading font-bold text-xs text-white">Live Room Chat</span>
-              <span className="px-1.5 py-0.2 rounded-full bg-emerald-950/60 border border-emerald-500/40 text-[9px] font-mono-code font-bold text-emerald-400">
+              <span className={`font-heading font-bold text-xs ${isLight ? 'text-slate-800' : 'text-white'}`}>Live Room Chat</span>
+              <span className={`px-1.5 py-0.2 rounded-full border text-[9px] font-mono-code font-bold ${
+                isLight
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                  : 'bg-emerald-950/60 border-emerald-500/40 text-emerald-400'
+              }`}>
                 Online
               </span>
             </div>
             <button
               onClick={() => setIsChatOpen(false)}
-              className="w-6 h-6 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white text-xs flex items-center justify-center cursor-pointer transition-colors"
+              className={`w-6 h-6 rounded-lg text-xs flex items-center justify-center cursor-pointer transition-colors ${
+                isLight
+                  ? 'bg-slate-200 hover:bg-slate-300 text-slate-600'
+                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white'
+              }`}
               title="Close chat"
             >
               ✕
@@ -1147,7 +1265,11 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               if (isSystem) {
                 return (
                   <div key={msg.id} className="text-center py-1">
-                    <span className="px-2.5 py-0.5 rounded-full bg-slate-900/80 text-[10px] text-slate-400 border border-slate-800 font-medium">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-medium border ${
+                      isLight
+                        ? 'bg-slate-100 text-slate-600 border-slate-200'
+                        : 'bg-slate-900/80 text-slate-400 border-slate-800'
+                    }`}>
                       ℹ️ {msg.text}
                     </span>
                   </div>
@@ -1162,15 +1284,19 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                   <AvatarCharacter avatarId={msg.avatar} size="xs" isAnimated={false} />
                   <div className={`max-w-[75%] ${isMe ? 'text-right' : 'text-left'}`}>
                     <div className="flex items-center gap-1.5 mb-0.5 leading-none px-1">
-                      <span className={`text-[10px] font-bold ${isMe ? 'text-[#b4a4ff]' : 'text-slate-300'}`}>
+                      <span className={`text-[10px] font-bold ${
+                        isMe ? (isLight ? 'text-purple-700' : 'text-[#b4a4ff]') : (isLight ? 'text-slate-600' : 'text-slate-300')
+                      }`}>
                         {msg.sender}
                       </span>
-                      <span className="text-[8px] text-slate-500 font-mono-code">{msg.time}</span>
+                      <span className={`text-[8px] font-mono-code ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>{msg.time}</span>
                     </div>
                     <div
-                      className={`px-3 py-1.5 rounded-2xl text-[11px] break-words shadow-sm ${
+                      className={`px-3 py-1.5 rounded-2xl text-[11px] break-words shadow-xs ${
                         isMe
                           ? 'bg-[#7059e2] text-white rounded-tr-none'
+                          : isLight
+                          ? 'bg-slate-100 text-slate-800 border border-slate-200 rounded-tl-none'
                           : 'bg-[#211a3e] text-slate-200 border border-[#33285c] rounded-tl-none'
                       }`}
                     >
@@ -1183,7 +1309,9 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           </div>
 
           {/* Quick Reactions Bar */}
-          <div className="px-3 py-1.5 bg-[#100d21] border-t border-[#251d45] flex items-center justify-between gap-1 overflow-x-auto flex-shrink-0">
+          <div className={`px-3 py-1.5 border-t flex items-center justify-between gap-1 overflow-x-auto flex-shrink-0 ${
+            isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#100d21] border-[#251d45]'
+          }`}>
             {['🔥', '🎲', '💸', '🚀', '😭', '👑', 'GG!'].map(emoji => (
               <button
                 key={emoji}
@@ -1192,7 +1320,11 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                   sounds.playClick();
                   sendChatMessage(user.username, user.avatar || 'orange', emoji);
                 }}
-                className="px-2 py-0.5 rounded-lg bg-[#191433] hover:bg-[#2b2254] text-[11px] text-slate-200 cursor-pointer transition-all active:scale-90"
+                className={`px-2 py-0.5 rounded-lg text-[11px] cursor-pointer transition-all active:scale-90 ${
+                  isLight
+                    ? 'bg-slate-200 hover:bg-slate-300 text-slate-800'
+                    : 'bg-[#191433] hover:bg-[#2b2254] text-slate-200'
+                }`}
               >
                 {emoji}
               </button>
@@ -1200,13 +1332,19 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           </div>
 
           {/* Chat Input Form */}
-          <form onSubmit={handleSendChat} className="p-2.5 bg-[#141026] border-t border-[#2e2554] flex items-center gap-2 flex-shrink-0">
+          <form onSubmit={handleSendChat} className={`p-2.5 border-t flex items-center gap-2 flex-shrink-0 ${
+            isLight ? 'bg-white border-slate-200' : 'bg-[#141026] border-[#2e2554]'
+          }`}>
             <input
               type="text"
               value={chatInput}
               onChange={e => setChatInput(e.target.value)}
               placeholder="Say something..."
-              className="flex-1 bg-[#0e0a1e] border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#7059e2]"
+              className={`flex-1 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-[#7059e2] border ${
+                isLight
+                  ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400'
+                  : 'bg-[#0e0a1e] border-slate-800 text-white placeholder-slate-500'
+              }`}
             />
             <button
               type="submit"
@@ -1222,22 +1360,30 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       {/* Forfeit / Bankrupt Confirmation Modal */}
       {showForfeitConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-fade-in">
-          <div className="w-full max-w-sm bg-[#1a122e] border border-rose-500/50 rounded-2xl shadow-[0_12px_45px_rgba(0,0,0,0.85)] p-5 overflow-hidden flex flex-col gap-4">
-            <div className="flex items-center gap-3 text-rose-400 border-b border-slate-800 pb-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-950/80 border border-rose-600/60 flex items-center justify-center text-xl flex-shrink-0">
+          <div className={`w-full max-w-sm rounded-2xl shadow-[0_12px_45px_rgba(0,0,0,0.85)] p-5 overflow-hidden flex flex-col gap-4 border ${
+            isLight ? 'bg-white border-rose-200' : 'bg-[#1a122e] border-rose-500/50'
+          }`}>
+            <div className={`flex items-center gap-3 border-b pb-3 ${
+              isLight ? 'text-rose-600 border-slate-100' : 'text-rose-400 border-slate-800'
+            }`}>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0 border ${
+                isLight ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-rose-950/80 border-rose-600/60'
+              }`}>
                 ⚠️
               </div>
               <div>
-                <h3 className="font-heading font-black text-base text-white">
+                <h3 className={`font-heading font-black text-base ${isLight ? 'text-slate-900' : 'text-white'}`}>
                   Confirm Forfeit
                 </h3>
-                <p className="text-xs text-rose-300 font-medium">
+                <p className={`text-xs font-medium ${isLight ? 'text-rose-600' : 'text-rose-300'}`}>
                   Declare bankruptcy & surrender match
                 </p>
               </div>
             </div>
 
-            <div className="text-xs text-slate-300 bg-slate-950/70 p-3 rounded-xl border border-slate-800/80 leading-relaxed">
+            <div className={`text-xs p-3 rounded-xl border leading-relaxed ${
+              isLight ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-slate-950/70 border-slate-800/80 text-slate-300'
+            }`}>
               Are you sure you want to forfeit? You will surrender all your cash and owned properties, declare bankruptcy, and be eliminated from the current match.
             </div>
 
@@ -1247,7 +1393,11 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                   sounds.playClick();
                   setShowForfeitConfirmModal(false);
                 }}
-                className="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 font-bold text-xs text-slate-200 cursor-pointer transition-all active:scale-95 border border-slate-700"
+                className={`py-2.5 rounded-xl font-bold text-xs cursor-pointer transition-all active:scale-95 border ${
+                  isLight
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                }`}
               >
                 Keep Playing
               </button>

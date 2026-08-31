@@ -37,6 +37,13 @@ interface UserContextType {
   loginWithGoogle: (email?: string, name?: string, avatar?: string) => void;
   loginWithSocial: (provider: 'github' | 'discord' | 'apple') => void;
   loginWithEmail: (email: string) => void;
+  syncClerkUser: (clerkData: {
+    id: string;
+    email?: string;
+    username?: string;
+    fullName?: string;
+    imageUrl?: string;
+  }) => void;
   logoutUser: () => void;
   isLoggedIn: boolean;
   isAuthModalOpen: boolean;
@@ -48,67 +55,39 @@ interface UserContextType {
 
 const DEFAULT_USER: UserProfile = {
   id: 'usr_' + Math.random().toString(36).substring(2, 9),
-  username: 'sahi',
-  email: 'sahi@gmail.com',
+  username: 'Player',
+  email: '',
   avatar: 'orange',
-  avatarFrame: 'pfp_neon',
-  diceSkin: 'dice_golden',
-  mapSkin: 'worldwide',
-  title: 'Novice Landlord',
-  coins: 450, // starter coins to try store
-  walletBalance: 50.00, // $50 starter wager wallet balance
-  leaguePoints: 750, // Gold Tier
-  leagueTier: 'Gold',
-  level: 4,
-  xp: 320,
-  maxXp: 600,
+  avatarFrame: undefined,
+  diceSkin: 'dice_classic',
+  mapSkin: 'classic',
+  title: 'Rookie Landlord',
+  coins: 0, // Fresh new user starts with 0 coins
+  walletBalance: 0.00, // $0.00 initial deposit amount
+  leaguePoints: 0, // Bronze Tier
+  leagueTier: 'Bronze',
+  level: 1,
+  xp: 0,
+  maxXp: 100,
   inventory: {
-    appearances: ['orange', 'bu', 'navy', 'apple', 'fire'],
-    maps: ['classic', 'worldwide', 'cyber_neon', 'death_valley', 'lucky'],
-    profilePictures: ['pfp_neon', 'pfp_crown', 'pfp_fire', 'pfp_cosmic', 'pfp_diamond', 'pfp_electric', 'pfp_rgb', 'pfp_dragon'],
-    diceSkins: ['dice_golden', 'dice_neon', 'dice_ruby', 'dice_magma', 'dice_cyber', 'dice_cosmic', 'dice_rainbow', 'dice_dragon']
+    appearances: ['orange'],
+    maps: ['classic'],
+    profilePictures: [],
+    diceSkins: ['dice_classic']
   },
   stats: {
-    gamesPlayed: 14,
-    gamesWon: 8,
-    winStreak: 2,
-    bestWinStreak: 4,
-    totalEarningsUsd: 152.00,
-    totalCoinsEarned: 880,
-    monopoliesBuilt: 11,
-    bankruptciesCaused: 9,
-    rentCollectedTotal: 18450
+    gamesPlayed: 0,
+    gamesWon: 0,
+    winStreak: 0,
+    bestWinStreak: 0,
+    totalEarningsUsd: 0.00,
+    totalCoinsEarned: 0,
+    monopoliesBuilt: 0,
+    bankruptciesCaused: 0,
+    rentCollectedTotal: 0
   },
-  badges: [
-    { ...BADGES_LIST[0], unlockedAt: '2026-08-20' },
-    { ...BADGES_LIST[4], unlockedAt: '2026-08-22' }
-  ],
-  matchHistory: [
-    {
-      id: 'mh_1',
-      roomName: 'High Stakes NYC',
-      date: 'Yesterday',
-      placement: 1,
-      totalPlayers: 4,
-      betAmount: 10,
-      payout: 38,
-      netWorth: 4250,
-      lpChange: 45,
-      durationMinutes: 12
-    },
-    {
-      id: 'mh_2',
-      roomName: 'Casual Quick #402',
-      date: '2 days ago',
-      placement: 2,
-      totalPlayers: 4,
-      betAmount: 0,
-      payout: 0,
-      netWorth: 2100,
-      lpChange: 15,
-      durationMinutes: 18
-    }
-  ]
+  badges: [],
+  matchHistory: []
 };
 
 function calculateLeagueTier(lp: number): LeagueTier {
@@ -125,33 +104,27 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem('proprush_user_profile') || localStorage.getItem('richup_user_profile');
+    // Check clean version flag to reset legacy mock profiles (which had $50 balance and 450 coins)
+    const cleanFlag = localStorage.getItem('proprush_clean_account_v1');
+    if (!cleanFlag) {
+      localStorage.removeItem('proprush_user_profile');
+      localStorage.removeItem('richup_user_profile');
+      localStorage.setItem('proprush_clean_account_v1', 'true');
+      return DEFAULT_USER;
+    }
+
+    const saved = localStorage.getItem('proprush_user_profile');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        const mergedDiceSkins = Array.from(new Set([
-          ...(DEFAULT_USER.inventory.diceSkins || []),
-          ...(parsed.inventory?.diceSkins || [])
-        ]));
-        const mergedMaps = Array.from(new Set([
-          ...(DEFAULT_USER.inventory.maps || []),
-          ...(parsed.inventory?.maps || [])
-        ]));
-        const mergedFrames = Array.from(new Set([
-          ...(DEFAULT_USER.inventory.profilePictures || []),
-          ...(parsed.inventory?.profilePictures || [])
-        ]));
-
         return {
           ...DEFAULT_USER,
           ...parsed,
-          diceSkin: parsed.diceSkin || 'dice_golden',
           inventory: {
-            ...DEFAULT_USER.inventory,
-            ...(parsed.inventory || {}),
-            diceSkins: mergedDiceSkins,
-            maps: mergedMaps,
-            profilePictures: mergedFrames
+            appearances: parsed.inventory?.appearances || ['orange'],
+            maps: parsed.inventory?.maps || ['classic'],
+            profilePictures: parsed.inventory?.profilePictures || [],
+            diceSkins: parsed.inventory?.diceSkins || ['dice_classic']
           }
         };
       } catch (e) {
@@ -193,12 +166,63 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const userName = name || userEmail.split('@')[0];
     setIsLoggedIn(true);
     localStorage.setItem('proprush_clerk_auth', 'true');
-    setUser(prev => ({
-      ...prev,
+    
+    const storageKey = `proprush_user_${userEmail.toLowerCase()}`;
+    const savedUserStr = localStorage.getItem(storageKey);
+    if (savedUserStr) {
+      try {
+        const parsed = JSON.parse(savedUserStr);
+        setUser({
+          ...DEFAULT_USER,
+          ...parsed,
+          email: userEmail,
+          username: userName,
+          avatar: avatar || parsed.avatar || 'orange'
+        });
+        if (pendingAction) {
+          setTimeout(() => {
+            pendingAction();
+            setPendingAction(null);
+          }, 100);
+        }
+        return;
+      } catch (e) {
+        console.error('Error loading saved user', e);
+      }
+    }
+
+    const freshUser: UserProfile = {
+      ...DEFAULT_USER,
+      id: 'usr_' + Math.random().toString(36).substring(2, 9),
       email: userEmail,
       username: userName,
-      avatar: avatar || prev.avatar
-    }));
+      avatar: avatar || 'orange',
+      walletBalance: 0.00,
+      coins: 0,
+      inventory: {
+        appearances: ['orange'],
+        maps: ['classic'],
+        profilePictures: [],
+        diceSkins: ['dice_classic']
+      },
+      stats: {
+        gamesPlayed: 0,
+        gamesWon: 0,
+        winStreak: 0,
+        bestWinStreak: 0,
+        totalEarningsUsd: 0.00,
+        totalCoinsEarned: 0,
+        monopoliesBuilt: 0,
+        bankruptciesCaused: 0,
+        rentCollectedTotal: 0
+      },
+      badges: [],
+      matchHistory: []
+    };
+
+    localStorage.setItem(storageKey, JSON.stringify(freshUser));
+    setUser(freshUser);
+
     if (pendingAction) {
       setTimeout(() => {
         pendingAction();
@@ -209,29 +233,81 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginWithSocial = (provider: 'github' | 'discord' | 'apple') => {
     const defaultEmail = `${user.username.toLowerCase()}@${provider}.auth`;
-    setIsLoggedIn(true);
-    localStorage.setItem('proprush_clerk_auth', 'true');
-    setUser(prev => ({
-      ...prev,
-      email: defaultEmail
-    }));
-    if (pendingAction) {
-      setTimeout(() => {
-        pendingAction();
-        setPendingAction(null);
-      }, 100);
-    }
+    loginWithGoogle(defaultEmail, user.username);
   };
 
   const loginWithEmail = (email: string) => {
     const name = email.split('@')[0] || 'Player';
+    loginWithGoogle(email, name);
+  };
+
+  const syncClerkUser = (clerkData: {
+    id: string;
+    email?: string;
+    username?: string;
+    fullName?: string;
+    imageUrl?: string;
+  }) => {
     setIsLoggedIn(true);
     localStorage.setItem('proprush_clerk_auth', 'true');
-    setUser(prev => ({
-      ...prev,
-      email,
-      username: name
-    }));
+    setUser(prev => {
+      const email = clerkData.email || prev.email;
+      const username = clerkData.fullName || clerkData.username || (clerkData.email ? clerkData.email.split('@')[0] : prev.username || 'Player');
+      
+      const storageKey = `proprush_user_${clerkData.id}`;
+      const savedUserStr = localStorage.getItem(storageKey);
+      if (savedUserStr) {
+        try {
+          const parsed = JSON.parse(savedUserStr);
+          return {
+            ...DEFAULT_USER,
+            ...parsed,
+            id: clerkData.id,
+            clerkUserId: clerkData.id,
+            email,
+            username,
+            profilePictureUrl: clerkData.imageUrl || parsed.profilePictureUrl
+          };
+        } catch (e) {
+          console.error('Error parsing stored user data for clerk user', e);
+        }
+      }
+
+      // Fresh user state for new Clerk accounts (0 deposit, 0 coins, starter items only)
+      const freshUser: UserProfile = {
+        ...DEFAULT_USER,
+        id: clerkData.id,
+        clerkUserId: clerkData.id,
+        email,
+        username,
+        profilePictureUrl: clerkData.imageUrl,
+        walletBalance: 0.00,
+        coins: 0,
+        inventory: {
+          appearances: ['orange'],
+          maps: ['classic'],
+          profilePictures: [],
+          diceSkins: ['dice_classic']
+        },
+        stats: {
+          gamesPlayed: 0,
+          gamesWon: 0,
+          winStreak: 0,
+          bestWinStreak: 0,
+          totalEarningsUsd: 0.00,
+          totalCoinsEarned: 0,
+          monopoliesBuilt: 0,
+          bankruptciesCaused: 0,
+          rentCollectedTotal: 0
+        },
+        badges: [],
+        matchHistory: []
+      };
+
+      localStorage.setItem(storageKey, JSON.stringify(freshUser));
+      return freshUser;
+    });
+
     if (pendingAction) {
       setTimeout(() => {
         pendingAction();
@@ -256,6 +332,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     localStorage.setItem('proprush_user_profile', JSON.stringify(user));
+    if (user.clerkUserId) {
+      localStorage.setItem(`proprush_user_${user.clerkUserId}`, JSON.stringify(user));
+    } else if (user.email) {
+      localStorage.setItem(`proprush_user_${user.email.toLowerCase()}`, JSON.stringify(user));
+    }
   }, [user]);
 
   const updateUser = (updates: Partial<UserProfile>) => {
@@ -531,6 +612,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginWithGoogle,
         loginWithSocial,
         loginWithEmail,
+        syncClerkUser,
         logoutUser,
         isLoggedIn,
         isAuthModalOpen,

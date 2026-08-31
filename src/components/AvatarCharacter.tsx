@@ -3,6 +3,7 @@ import React from 'react';
 interface AvatarProps {
   avatarId: string;
   frameId?: string; // 'pfp_crown' | 'pfp_neon' | 'pfp_fire' | 'pfp_diamond' | 'pfp_cosmic' | 'pfp_electric' | 'pfp_rgb' | 'pfp_void' | 'pfp_sakura' | 'pfp_dragon' | 'none'
+  profilePictureUrl?: string;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
   isAnimated?: boolean;
@@ -11,6 +12,7 @@ interface AvatarProps {
 export const AvatarCharacter: React.FC<AvatarProps> = ({
   avatarId,
   frameId,
+  profilePictureUrl,
   size = 'md',
   className = '',
   isAnimated = true
@@ -48,6 +50,22 @@ export const AvatarCharacter: React.FC<AvatarProps> = ({
   }[size];
 
   const renderSkinContent = () => {
+    if (profilePictureUrl) {
+      return (
+        <div className={`relative ${sizeClasses} rounded-full overflow-hidden shadow-md border border-purple-400/60 bg-slate-900`}>
+          <img
+            src={profilePictureUrl}
+            alt="User avatar"
+            referrerPolicy="no-referrer"
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              (e.currentTarget as HTMLElement).style.display = 'none';
+            }}
+          />
+        </div>
+      );
+    }
+
     switch (avatarId) {
       case 'orange':
       case 'classic':

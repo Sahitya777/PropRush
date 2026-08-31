@@ -3,6 +3,7 @@ import { BoardTile, GameRoom, Player } from '../types/game';
 import { BoardTileView } from './BoardTileView';
 import { DiceRoller } from './DiceRoller';
 import { AvatarCharacter } from './AvatarCharacter';
+import { useTheme } from '../context/ThemeContext';
 
 interface GameBoardProps {
   tiles: BoardTile[];
@@ -39,6 +40,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   onStartGame,
   isLobbyMode = false
 }) => {
+  const { isLight } = useTheme();
   const currentTurnPlayer = room.players.find(p => p.id === room.currentTurnPlayerId);
   const isMyTurn = currentTurnPlayer && !currentTurnPlayer.isBot;
 
@@ -86,7 +88,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   const recentLogs = room.logs.slice(0, 3);
 
   return (
-    <div className="w-full h-full max-h-full aspect-square bg-[#0c0919] p-1.5 sm:p-2 rounded-2xl border border-[#2b2447] shadow-[0_0_50px_rgba(0,0,0,0.85)] relative flex flex-col justify-between select-none">
+    <div className={`w-full h-full max-h-full aspect-square p-1.5 sm:p-2 rounded-2xl border relative flex flex-col justify-between select-none ${
+      isLight
+        ? 'bg-slate-100 border-slate-300 shadow-xl'
+        : 'bg-[#0c0919] border-[#2b2447] shadow-[0_0_50px_rgba(0,0,0,0.85)]'
+    }`}>
       {/* 11x11 Grid Container */}
       <div className="grid grid-cols-11 grid-rows-11 w-full h-full gap-0.5 sm:gap-1">
         {Array.from({ length: 11 }).map((_, row) =>
@@ -99,11 +105,17 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                 return (
                   <div
                     key="board-center-arena"
-                    className="col-span-9 row-span-9 bg-gradient-to-br from-[#151026]/98 via-[#18132c]/98 to-[#100c1e]/98 rounded-xl border border-[#3b3260]/60 p-2 sm:p-4 flex flex-col justify-between relative overflow-hidden backdrop-blur-md"
+                    className={`col-span-9 row-span-9 rounded-xl border p-2 sm:p-4 flex flex-col justify-between relative overflow-hidden backdrop-blur-md ${
+                      isLight
+                        ? 'bg-gradient-to-br from-slate-50 via-white to-slate-100 border-slate-200 shadow-inner text-slate-800'
+                        : 'bg-gradient-to-br from-[#151026]/98 via-[#18132c]/98 to-[#100c1e]/98 border-[#3b3260]/60 text-white'
+                    }`}
                   >
                     {/* Background Subtle Watermark */}
-                    <div className="absolute inset-0 flex items-center justify-center opacity-4 pointer-events-none select-none">
-                      <div className="text-7xl sm:text-9xl font-black font-heading text-white tracking-widest">
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
+                      <div className={`text-7xl sm:text-9xl font-black font-heading tracking-widest ${
+                        isLight ? 'text-slate-900/5' : 'text-white opacity-4'
+                      }`}>
                         PROPRUSH
                       </div>
                     </div>
@@ -111,13 +123,21 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                     {/* Top Center Bar: Resort Jackpot & Turbo Speed Toggle */}
                     <div className="flex items-center justify-between z-10">
                       {/* Vacation Resort Pool */}
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300">
+                      <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border ${
+                        isLight
+                          ? 'bg-amber-50 border-amber-300 text-amber-900'
+                          : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                      }`}>
                         <span className="text-base sm:text-lg">🏖️</span>
                         <div>
-                          <div className="text-[9px] uppercase font-bold text-amber-400/80 leading-none">
+                          <div className={`text-[9px] uppercase font-bold leading-none ${
+                            isLight ? 'text-amber-800' : 'text-amber-400/80'
+                          }`}>
                             Resort Pool
                           </div>
-                          <div className="text-xs sm:text-sm font-extrabold font-mono-code text-amber-300">
+                          <div className={`text-xs sm:text-sm font-extrabold font-mono-code ${
+                            isLight ? 'text-amber-900' : 'text-amber-300'
+                          }`}>
                             ${room.freeParkingPool}
                           </div>
                         </div>
@@ -129,6 +149,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                         className={`px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-bold font-mono-code border transition-all cursor-pointer ${
                           room.fastSpeed
                             ? 'bg-[#7059e2] text-white border-[#8e76f7] shadow-[0_0_10px_rgba(112,89,226,0.5)]'
+                            : isLight
+                            ? 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100 shadow-xs'
                             : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-700'
                         }`}
                         title="Toggle 2x animation fast mode"
@@ -163,13 +185,13 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                           >
                             Start Game
                           </button>
-                          <span className="text-xs text-slate-400 font-mono-code">
+                          <span className={`text-xs font-mono-code ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                             Joined room {room.code}
                           </span>
                         </div>
                       )}
 
-                      {/* Active Turn Actions (Roll, Buy Property, End Turn, Jail Options) */}
+                      {/* Active Turn Actions (Roll, Buy Property, End Turn, Jail Decisions) */}
                       {!isLobbyMode && (
                         <div className="flex flex-col items-center gap-2">
                           {/* 1. Unclaimed Property Buy / Pass Decision */}
@@ -186,7 +208,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                               <button
                                 id="btn-end-turn-pass"
                                 onClick={onEndTurn}
-                                className="px-4 py-2 rounded-xl text-xs sm:text-sm font-heading font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer shadow-md flex items-center gap-1.5"
+                                className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-heading font-bold cursor-pointer shadow-md flex items-center gap-1.5 transition-all ${
+                                  isLight
+                                    ? 'bg-slate-200 hover:bg-slate-300 text-slate-800 border border-slate-300'
+                                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                                }`}
                               >
                                 <span>✓</span> End turn
                               </button>
@@ -248,19 +274,25 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                     </div>
 
                     {/* Bottom Center Area: Live Game Announcement Feed */}
-                    <div className="w-full bg-[#100c1e]/80 border border-[#2b2447]/60 rounded-xl p-2 z-10 flex flex-col gap-1 max-h-16 overflow-hidden">
+                    <div className={`w-full border rounded-xl p-2 z-10 flex flex-col gap-1 max-h-16 overflow-hidden ${
+                      isLight
+                        ? 'bg-white/90 border-slate-200 shadow-xs'
+                        : 'bg-[#100c1e]/80 border-[#2b2447]/60'
+                    }`}>
                       {recentLogs.length > 0 ? (
                         recentLogs.map(log => (
                           <div
                             key={log.id}
-                            className="text-[10px] sm:text-[11px] text-slate-300 font-medium leading-tight truncate flex items-center gap-1.5"
+                            className={`text-[10px] sm:text-[11px] font-medium leading-tight truncate flex items-center gap-1.5 ${
+                              isLight ? 'text-slate-700' : 'text-slate-300'
+                            }`}
                           >
-                            <span className="text-[#a390ff] font-bold">›</span>
+                            <span className="text-[#7059e2] font-bold">›</span>
                             <span>{log.text}</span>
                           </div>
                         ))
                       ) : (
-                        <div className="text-[10px] text-slate-500">
+                        <div className={`text-[10px] ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
                           Game started with a randomized players order. Good luck!
                         </div>
                       )}
