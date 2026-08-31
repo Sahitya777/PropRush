@@ -1,6 +1,6 @@
 {
-  "name": "PropRush - Fast-Paced Multiplayer Real Estate & Economy Rush",
-  "description": "PropRush is a fast-paced multiplayer property trading and real estate economy game. Roll dice, trade properties, build hotels, collect rents, and bankrupt rivals in intense multiplayer rooms.",
+  "name": "PropRush - Fast-Paced Multiplayer Real Estate & Property Monopoly Game",
+  "description": "Play PropRush, the premier multiplayer property monopoly and real estate economy board game. Roll dice, trade property deeds, build empires, collect rent, and bankrupt rivals online with friends in real-time.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

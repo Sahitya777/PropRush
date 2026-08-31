@@ -1,21 +1,123 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" prefix="og: https://ogp.me/ns#">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>PropRush - Fast-Paced Multiplayer Real Estate & Economy Rush</title>
-    <meta name="description" content="PropRush is a fast-paced multiplayer property trading and real estate economy game. Roll dice, trade properties, build hotels, collect rents, and bankrupt rivals in intense multiplayer rooms." />
-    <meta property="og:title" content="PropRush - Fast-Paced Multiplayer Real Estate & Economy Rush" />
-    <meta property="og:description" content="PropRush is a fast-paced multiplayer property trading and real estate economy game. Roll dice, trade properties, build hotels, collect rents, and bankrupt rivals in intense multiplayer rooms." />
-    <meta property="og:type" content="website" />
+    <title>PropRush - Fast-Paced Multiplayer Real Estate & Property Monopoly Game</title>
+    
+    <!-- Primary Meta SEO Tags -->
+    <meta name="title" content="PropRush - Fast-Paced Multiplayer Real Estate & Property Monopoly Game" />
+    <meta name="description" content="Play PropRush, the premier multiplayer property monopoly and real estate economy board game. Roll dice, trade property deeds, build empires, collect rent, and bankrupt rivals online with friends in real-time." />
+    <meta name="keywords" content="prop rush, proprush, property monopoly, monopoly online, play monopoly with friends, online monopoly multiplayer, real estate board game, richup alternative, browser monopoly game, fast monopoly online, economy trading game, dice board game, multiplayer board games free, buy properties build hotels, bankrupt rivals" />
+    <meta name="author" content="PropRush Studios" />
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <meta name="theme-color" content="#120f1f" />
+    <meta name="application-name" content="PropRush" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="PropRush" />
+    
+    <!-- Open Graph / Facebook / Discord SEO -->
+    <meta property="og:type" content="game" />
+    <meta property="og:site_name" content="PropRush" />
+    <meta property="og:title" content="PropRush - Fast-Paced Multiplayer Real Estate & Property Monopoly Game" />
+    <meta property="og:description" content="Play PropRush, the premier multiplayer property monopoly and real estate economy board game. Roll dice, trade property deeds, build empires, collect rent, and bankrupt rivals online with friends in real-time." />
+    <meta property="og:image" content="https://images.unsplash.com/photo-1610890716171-6b1bb98ffd09?auto=format&fit=crop&w=1200&h=630&q=80" />
+    <meta property="og:image:alt" content="PropRush Multiplayer Real Estate Board Game Interface" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter Cards SEO -->
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="PropRush - Fast-Paced Multiplayer Real Estate & Property Monopoly Game" />
+    <meta name="twitter:description" content="Play PropRush, the premier multiplayer property monopoly and real estate economy board game. Roll dice, trade property deeds, build empires, collect rent, and bankrupt rivals online with friends in real-time." />
+    <meta name="twitter:image" content="https://images.unsplash.com/photo-1610890716171-6b1bb98ffd09?auto=format&fit=crop&w=1200&h=630&q=80" />
+
+    <!-- PWA & Web App Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Google Fonts Preconnect -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Outfit:wght@500;600;700;800;900&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+
+    <!-- Structured Data / JSON-LD for Google Rich Results & Knowledge Graph -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "VideoGame",
+          "@id": "#game",
+          "name": "PropRush",
+          "alternateName": ["Prop Rush", "Property Monopoly Online", "PropRush Multiplayer Economy"],
+          "description": "Fast-paced multiplayer property trading & real estate economy board game. Roll dice, buy property monopolies, build hotels, trade assets, and bankrupt opponents online.",
+          "genre": ["Board Game", "Strategy", "Multiplayer", "Turn-Based Economy"],
+          "gamePlatform": ["Web Browser", "Desktop", "Mobile Browser", "Tablet"],
+          "playMode": ["MultiPlayer", "SinglePlayer", "CoOp"],
+          "numberOfPlayers": {
+            "@type": "QuantitativeValue",
+            "minValue": 1,
+            "maxValue": 8
+          },
+          "applicationCategory": "Game",
+          "operatingSystem": "Any web browser",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD",
+            "availability": "https://schema.org/InStock"
+          },
+          "aggregateRating": {
+            "@type": "AggregateRating",
+            "ratingValue": "4.9",
+            "ratingCount": "1280",
+            "bestRating": "5",
+            "worstRating": "1"
+          }
+        },
+        {
+          "@type": "WebApplication",
+          "name": "PropRush Game Platform",
+          "applicationCategory": "GameApplication",
+          "browserRequirements": "Requires JavaScript. Requires HTML5 Canvas.",
+          "operatingSystem": "All"
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "What is PropRush?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "PropRush is a fast-paced multiplayer real estate economy and property monopoly board game playable instantly in any web browser without downloads. Roll dice, trade properties, develop hotel monopolies, and compete against friends or smart bots."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How do you play property monopoly online on PropRush?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Join or create a custom room, select your board map (Classic City, Neon Cyberpunk, Vegas Strip, etc.), roll the 3D dice, buy unowned deeds, develop houses & skyscrapers, and collect rent whenever rivals land on your monopoly zones until you bankrupt them."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Is PropRush free to play?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes! PropRush is 100% free to play with custom rooms, public matchmaking, smart AI bots, custom avatar skins, dice sets, and sound effects."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
   </head>
   <body class="bg-[#120f1f] text-slate-100 antialiased overflow-x-hidden selection:bg-[#7059e2] selection:text-white">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

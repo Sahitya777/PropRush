@@ -6,7 +6,7 @@ import { AvatarCharacter } from './AvatarCharacter';
 import { sounds } from '../utils/audio';
 
 interface HeaderNavbarProps {
-  currentView: 'home' | 'game' | 'store' | 'profile';
+  currentView: 'home' | 'game' | 'store' | 'profile' | '404';
   onNavigate: (view: 'home' | 'store' | 'profile') => void;
   onOpenWallet: () => void;
   onOpenRules?: () => void;

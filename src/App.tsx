@@ -6,6 +6,7 @@ import { HomeLobbyView } from './views/HomeLobbyView';
 import { GameRoomView } from './views/GameRoomView';
 import { StoreView } from './views/StoreView';
 import { ProfileView } from './views/ProfileView';
+import { NotFoundView } from './views/NotFoundView';
 import { WalletModal } from './components/WalletModal';
 import { RulesModal } from './components/RulesModal';
 import { ClerkAuthModal } from './components/ClerkAuthModal';
@@ -17,11 +18,29 @@ import { findActiveRoomByCode } from './utils/activeRoomsRegistry';
 import { verifyStripeSession } from './utils/stripeClient';
 import { fireConfetti } from './utils/confetti';
 
+function getInitialView(): 'home' | 'game' | 'store' | 'profile' | '404' {
+  if (typeof window === 'undefined') return 'home';
+  const path = window.location.pathname.toLowerCase();
+  const params = new URLSearchParams(window.location.search);
+  const viewParam = params.get('view')?.toLowerCase();
+
+  if (viewParam === '404' || path === '/404') return '404';
+  if (viewParam === 'store' || path === '/store') return 'store';
+  if (viewParam === 'profile' || path === '/profile') return 'profile';
+  if (viewParam === 'home' || path === '/' || path === '/index.html' || path === '') return 'home';
+
+  // If path is a custom unrecognized subpath (and not root or index.html), route to 404
+  if (path !== '/' && path !== '/index.html' && path.length > 1 && !path.startsWith('/api')) {
+    return '404';
+  }
+  return 'home';
+}
+
 function AppContent() {
   const { user, deductBuyIn, depositFunds } = useUser();
   const { isClerkAvailable } = useClerkConfig();
   const { isLight } = useTheme();
-  const [currentView, setCurrentView] = useState<'home' | 'game' | 'store' | 'profile'>('home');
+  const [currentView, setCurrentView] = useState<'home' | 'game' | 'store' | 'profile' | '404'>(getInitialView);
   const [activeRoomConfig, setActiveRoomConfig] = useState<{
     roomCode: string;
     roomName: string;
@@ -37,6 +56,24 @@ function AppContent() {
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [depositNotification, setDepositNotification] = useState<string | null>(null);
+
+  const navigateTo = (view: 'home' | 'store' | 'profile' | '404') => {
+    sounds.playClick();
+    setCurrentView(view);
+    try {
+      const url = view === 'home' ? '/' : `/?view=${view}`;
+      window.history.pushState({ view }, '', url);
+    } catch {}
+  };
+
+  // Sync on popstate (Back / Forward browser buttons)
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentView(getInitialView());
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Check URL parameters for active room or Stripe Checkout redirect return
   useEffect(() => {
@@ -101,7 +138,7 @@ function AppContent() {
             fillWithBots: true
           });
         } else {
-          // If code is not an active room, clean up URL parameter without creating phantom room
+          // If code is not an active room, route to 404 or clean up parameter
           try {
             window.history.replaceState({}, '', window.location.pathname);
           } catch {}
@@ -182,8 +219,7 @@ function AppContent() {
         <HeaderNavbar
           currentView={currentView}
           onNavigate={view => {
-            sounds.playClick();
-            setCurrentView(view);
+            navigateTo(view);
           }}
           onOpenWallet={() => {
             sounds.playClick();
@@ -195,7 +231,7 @@ function AppContent() {
           }}
           onOpenAuth={() => {
             sounds.playClick();
-            setCurrentView('profile');
+            navigateTo('profile');
           }}
           isMuted={isMuted}
           onToggleMute={handleToggleMute}
@@ -222,7 +258,7 @@ function AppContent() {
           <HomeLobbyView
             onJoinRoom={handleJoinRoom}
             onOpenWallet={() => setIsWalletOpen(true)}
-            onOpenStore={() => setCurrentView('store')}
+            onOpenStore={() => navigateTo('store')}
           />
         )}
 
@@ -239,6 +275,46 @@ function AppContent() {
         {currentView === 'store' && <StoreView />}
 
         {currentView === 'profile' && <ProfileView />}
+
+        {currentView === '404' && (
+          <NotFoundView
+            onNavigateHome={() => navigateTo('home')}
+            onNavigateStore={() => navigateTo('store')}
+            onNavigateProfile={() => navigateTo('profile')}
+            onJoinRoomByCode={(code) => {
+              const activeMatch = getActiveMatch();
+              if (activeMatch && activeMatch.roomConfig.roomCode.toLowerCase() === code.toLowerCase()) {
+                handleJoinRoom(activeMatch.roomConfig);
+              } else {
+                const found = findActiveRoomByCode(code);
+                if (found) {
+                  handleJoinRoom({
+                    roomCode: found.code,
+                    roomName: found.name,
+                    maxPlayers: found.max,
+                    betAmount: found.bet,
+                    initialCash: found.initialCash || 1500,
+                    turnTimeSeconds: found.turnTime,
+                    boardTheme: found.map.toLowerCase(),
+                    fillWithBots: true
+                  });
+                } else {
+                  // Connect directly with default parameters
+                  handleJoinRoom({
+                    roomCode: code,
+                    roomName: `Room ${code}`,
+                    maxPlayers: 4,
+                    betAmount: 0,
+                    initialCash: 1500,
+                    turnTimeSeconds: 30,
+                    boardTheme: 'classic',
+                    fillWithBots: true
+                  });
+                }
+              }
+            }}
+          />
+        )}
       </main>
 
       {/* Footer sleek minimalism (hidden during active game) */}
@@ -265,16 +341,24 @@ function AppContent() {
                 Wagers & Fees
               </button>
               <button
-                onClick={() => setCurrentView('store')}
+                onClick={() => navigateTo('store')}
                 className="hover:text-[#7059e2] cursor-pointer transition-colors"
               >
                 Custom Cosmetics
               </button>
               <button
-                onClick={() => setCurrentView('profile')}
+                onClick={() => navigateTo('profile')}
                 className="hover:text-[#7059e2] cursor-pointer transition-colors"
               >
                 Rankings & Stats
+              </button>
+              <button
+                onClick={() => navigateTo('404')}
+                className="hover:text-rose-400 cursor-pointer transition-colors opacity-75 hover:opacity-100 flex items-center gap-1"
+                title="Preview 404 Jail page"
+              >
+                <span>🚨</span>
+                <span>404 Jail</span>
               </button>
             </div>
           </div>

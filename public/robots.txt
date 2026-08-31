@@ -1,0 +1,8 @@
+# robots.txt for PropRush - Multiplayer Real Estate Economy & Property Monopoly Game
+User-agent: *
+Allow: /
+Allow: /api/stripe/status
+Disallow: /api/stripe/create-checkout-session
+Disallow: /api/stripe/verify-session
+
+Sitemap: https://ais-dev-dqgmksmjpjj4grzjei44zu-682762973785.asia-southeast1.run.app/sitemap.xml
