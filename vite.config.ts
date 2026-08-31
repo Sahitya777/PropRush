@@ -1,23 +1,11 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import { defineConfig, Plugin } from 'vite';
-import { viteStripeMiddleware } from './src/server/stripeApi';
-
-function stripeApiPlugin(): Plugin {
-  return {
-    name: 'vite-plugin-stripe-api',
-    configureServer(server) {
-      server.middlewares.use((req, res, next) => {
-        viteStripeMiddleware(req, res, next);
-      });
-    },
-  };
-}
+import { defineConfig } from 'vite';
 
 export default defineConfig(() => {
   return {
-    plugins: [react(), tailwindcss(), stripeApiPlugin()],
+    plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
