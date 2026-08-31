@@ -47,6 +47,78 @@ export interface BoardTile {
   taxAmount?: number;
 }
 
+export interface PlayerDetailedStats {
+  turns: number;
+  movesCount: number;
+  doublesRolled: number;
+  rentPaid: number;
+  rentCollected: number;
+  propertiesBought: number;
+  housesBuilt: number;
+  hotelsBuilt: number;
+  taxesPaid: number;
+  jailVisits: number;
+  passGoCount: number;
+  peakCash: number;
+  peakNetWorth: number;
+  luckScore?: number;
+  mortgagesCount?: number;
+  tradesCompleted?: number;
+}
+
+export interface MatchRoundSnapshot {
+  round: number;
+  label: string;
+  [key: string]: number | string;
+}
+
+export interface MatchDiceStat {
+  sum: number;
+  count: number;
+  expectedPercent: number;
+  actualPercent: number;
+}
+
+export interface MatchAward {
+  id: string;
+  title: string;
+  badge: string;
+  recipientId: string;
+  recipientName: string;
+  recipientAvatar: string;
+  description: string;
+  value: string;
+}
+
+export interface MatchKeyEvent {
+  id: string;
+  round: number;
+  time: string;
+  title: string;
+  description: string;
+  type: 'monopoly' | 'bankruptcy' | 'huge_rent' | 'jail_sentence' | 'jackpot' | 'trade' | 'auction';
+  impact: string;
+  playerId?: string;
+}
+
+export interface MatchAnalytics {
+  matchId: string;
+  roomName: string;
+  totalRounds: number;
+  durationSeconds: number;
+  totalEconomyVolume: number;
+  totalRentTransacted: number;
+  totalTaxesCollected: number;
+  totalHousesBuilt: number;
+  totalHotelsBuilt: number;
+  totalPropertiesSold: number;
+  timeline: MatchRoundSnapshot[];
+  diceDistribution: MatchDiceStat[];
+  playerStats: Record<string, PlayerDetailedStats>;
+  awards: MatchAward[];
+  keyEvents: MatchKeyEvent[];
+}
+
 export interface Player {
   id: string;
   name: string;
@@ -66,15 +138,7 @@ export interface Player {
   properties: number[]; // tile ids owned
   mortgaged: number[]; // tile ids mortgaged
   houses: Record<number, number>; // tileId -> number of houses (1-4) or 5 for hotel
-  stats?: {
-    turns: number;
-    doublesRolled: number;
-    rentPaid: number;
-    rentCollected: number;
-    propertiesBought: number;
-    housesBuilt: number;
-    peakCash: number;
-  };
+  stats?: PlayerDetailedStats;
 }
 
 export type TurnPhase = 
@@ -166,6 +230,9 @@ export interface GameRoom {
   fastSpeed: boolean; // 2x animation speeds
   startedAt?: number;
   endedAt?: number;
+  currentRound?: number;
+  roundHistory?: MatchRoundSnapshot[];
+  analytics?: MatchAnalytics;
   pendingCard?: {
     type: 'chance' | 'chest';
     title: string;
