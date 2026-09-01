@@ -10,6 +10,8 @@ import { getActiveMatch, clearActiveMatch, formatRemainingTime, ActiveSavedMatch
 import {
   getAllActiveRooms,
   findActiveRoomByCode,
+  findActiveRoomByCodeAsync,
+  refreshActiveRoomsFromServer,
   registerActiveRoom,
   ActiveRoomInfo
 } from '../utils/activeRoomsRegistry';
@@ -64,14 +66,21 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
   // Active rooms registry state
   const [activeRooms, setActiveRooms] = useState<ActiveRoomInfo[]>(() => getAllActiveRooms());
 
-  // Periodically refresh active rooms
+  // Periodically refresh active rooms from server and local store
   useEffect(() => {
-    const refreshRooms = () => {
-      setActiveRooms(getAllActiveRooms());
+    let isMounted = true;
+    const refreshRooms = async () => {
+      const serverList = await refreshActiveRoomsFromServer();
+      if (isMounted && serverList) {
+        setActiveRooms(serverList);
+      }
     };
     refreshRooms();
-    const interval = setInterval(refreshRooms, 3000);
-    return () => clearInterval(interval);
+    const interval = setInterval(refreshRooms, 2500);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   // Active match reconnection state
@@ -236,7 +245,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
     setShowCreateModal(false);
   };
 
-  const handleJoinByCode = (e: React.FormEvent) => {
+  const handleJoinByCode = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanCode = extractRoomCode(roomCodeInput);
     if (!cleanCode) {
@@ -256,8 +265,8 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       return;
     }
 
-    // 2. Validate against currently active rooms
-    const foundRoom = findActiveRoomByCode(cleanCode);
+    // 2. Validate against active rooms (checks local cache + server)
+    const foundRoom = await findActiveRoomByCodeAsync(cleanCode);
     if (!foundRoom) {
       // Reject random, non-existent or inactive room codes!
       sounds.playBankrupt();

@@ -14,7 +14,7 @@ import { ClerkUserSync } from './components/ClerkUserSync';
 import { useClerkConfig } from './context/ClerkIntegration';
 import { sounds } from './utils/audio';
 import { getActiveMatch } from './utils/reconnectStorage';
-import { findActiveRoomByCode } from './utils/activeRoomsRegistry';
+import { findActiveRoomByCode, findActiveRoomByCodeAsync } from './utils/activeRoomsRegistry';
 import { verifyStripeSession } from './utils/stripeClient';
 import { fireConfetti } from './utils/confetti';
 
@@ -125,24 +125,25 @@ function AppContent() {
       if (activeMatch && activeMatch.roomConfig.roomCode.toLowerCase() === roomParam.toLowerCase()) {
         handleJoinRoom(activeMatch.roomConfig);
       } else {
-        const found = findActiveRoomByCode(roomParam);
-        if (found) {
-          handleJoinRoom({
-            roomCode: found.code,
-            roomName: found.name,
-            maxPlayers: found.max,
-            betAmount: found.bet,
-            initialCash: found.initialCash || 1500,
-            turnTimeSeconds: found.turnTime,
-            boardTheme: found.map.toLowerCase(),
-            fillWithBots: true
-          });
-        } else {
-          // If code is not an active room, route to 404 or clean up parameter
-          try {
-            window.history.replaceState({}, '', window.location.pathname);
-          } catch {}
-        }
+        findActiveRoomByCodeAsync(roomParam).then(found => {
+          if (found) {
+            handleJoinRoom({
+              roomCode: found.code,
+              roomName: found.name,
+              maxPlayers: found.max,
+              betAmount: found.bet,
+              initialCash: found.initialCash || 1500,
+              turnTimeSeconds: found.turnTime,
+              boardTheme: found.map.toLowerCase(),
+              fillWithBots: !found.isCustom
+            });
+          } else {
+            // If code is not an active room, route to 404 or clean up parameter
+            try {
+              window.history.replaceState({}, '', window.location.pathname);
+            } catch {}
+          }
+        });
       }
     }
   }, []);

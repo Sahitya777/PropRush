@@ -216,7 +216,389 @@ app.get("/api/stripe/verify-session", async (req: Request, res: Response): Promi
 });
 
 // ==========================================
-// 4. VITE MIDDLEWARE (Full-Stack Express + Vite)
+// 4. CROSS-BROWSER & CROSS-DEVICE MULTIPLAYER ROOM API
+// ==========================================
+export interface ServerRoom {
+  code: string;
+  name: string;
+  hostId: string;
+  isPrivate: boolean;
+  maxPlayers: number;
+  betAmount: number;
+  initialCash: number;
+  turnTimeSeconds: number;
+  boardTheme: string;
+  fillWithBots: boolean;
+  status: 'waiting' | 'playing' | 'gameover' | 'finished';
+  players: any[];
+  currentTurnPlayerId: string;
+  currentTurnIndex: number;
+  turnPhase: string;
+  turnTimer: number;
+  lastDice: [number, number];
+  isDouble: boolean;
+  consecutiveDoubles: number;
+  doubleCount: number;
+  freeParkingPool: number;
+  auction: any | null;
+  activeTrade: any | null;
+  pendingCard: any | null;
+  winner: any | null;
+  logs: any[];
+  chatMessages: any[];
+  version: number;
+  createdAt: number;
+  updatedAt: number;
+  isCustom?: boolean;
+}
+
+const serverRooms = new Map<string, ServerRoom>();
+
+// Initialize default active rooms into server memory
+const defaultRooms: ServerRoom[] = [
+  {
+    code: 'lnu17',
+    name: 'High Stakes NYC Arena',
+    hostId: 'host_admin_nyc',
+    isPrivate: false,
+    maxPlayers: 4,
+    betAmount: 100,
+    initialCash: 1500,
+    turnTimeSeconds: 15,
+    boardTheme: 'classic',
+    fillWithBots: true,
+    status: 'playing',
+    players: [
+      { id: 'p_admin', name: 'NYC Tycoon', avatar: 'navy', color: '#3b82f6', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, getOutOfJailCards: 0, properties: [], mortgaged: [], houses: {}, isBankrupt: false, isBot: false, isHost: true },
+      { id: 'b_wallstreet', name: 'WallStreet_Wolf', avatar: 'king', color: '#ec4899', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, getOutOfJailCards: 0, properties: [], mortgaged: [], houses: {}, isBankrupt: false, isBot: true, isHost: false },
+      { id: 'b_empire', name: 'Empire_Builder', avatar: 'vip', color: '#10b981', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, getOutOfJailCards: 0, properties: [], mortgaged: [], houses: {}, isBankrupt: false, isBot: true, isHost: false }
+    ],
+    currentTurnPlayerId: 'p_admin',
+    currentTurnIndex: 0,
+    turnPhase: 'roll',
+    turnTimer: 15,
+    lastDice: [2, 3],
+    isDouble: false,
+    consecutiveDoubles: 0,
+    doubleCount: 0,
+    freeParkingPool: 100,
+    auction: null,
+    activeTrade: null,
+    pendingCard: null,
+    winner: null,
+    logs: [
+      { id: 'l1', timestamp: '12:00:00', text: 'High Stakes NYC Arena room ready for action.', type: 'info' }
+    ],
+    chatMessages: [
+      { id: 'c1', sender: 'System', avatar: 'navy', text: 'Welcome to NYC High Stakes Arena ($100 Wager).', time: '12:00' }
+    ],
+    version: 1,
+    createdAt: Date.now() - 10 * 60 * 1000,
+    updatedAt: Date.now(),
+    isCustom: false
+  },
+  {
+    code: 'tokyo88',
+    name: 'Tokyo Fast 2x Blitz',
+    hostId: 'host_kenji',
+    isPrivate: false,
+    maxPlayers: 4,
+    betAmount: 0,
+    initialCash: 1500,
+    turnTimeSeconds: 10,
+    boardTheme: 'cyber',
+    fillWithBots: true,
+    status: 'playing',
+    players: [
+      { id: 'p_kenji', name: 'Kenji', avatar: 'cyber', color: '#8b5cf6', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, getOutOfJailCards: 0, properties: [], mortgaged: [], houses: {}, isBankrupt: false, isBot: false, isHost: true },
+      { id: 'b_shibuya', name: 'Shibuya_Drifter', avatar: 'neon', color: '#06b6d4', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, getOutOfJailCards: 0, properties: [], mortgaged: [], houses: {}, isBankrupt: false, isBot: true, isHost: false }
+    ],
+    currentTurnPlayerId: 'p_kenji',
+    currentTurnIndex: 0,
+    turnPhase: 'roll',
+    turnTimer: 10,
+    lastDice: [3, 4],
+    isDouble: false,
+    consecutiveDoubles: 0,
+    doubleCount: 0,
+    freeParkingPool: 100,
+    auction: null,
+    activeTrade: null,
+    pendingCard: null,
+    winner: null,
+    logs: [
+      { id: 'l1', timestamp: '12:00:00', text: 'Tokyo Fast 2x Blitz active.', type: 'info' }
+    ],
+    chatMessages: [
+      { id: 'c1', sender: 'System', avatar: 'cyber', text: 'Tokyo Blitz 10s Fast Turns Activated.', time: '12:00' }
+    ],
+    version: 1,
+    createdAt: Date.now() - 15 * 60 * 1000,
+    updatedAt: Date.now(),
+    isCustom: false
+  },
+  {
+    code: 'whale50',
+    name: 'Grandmaster Diamond Table',
+    hostId: 'host_victor',
+    isPrivate: false,
+    maxPlayers: 4,
+    betAmount: 500,
+    initialCash: 1500,
+    turnTimeSeconds: 20,
+    boardTheme: 'worldwide',
+    fillWithBots: true,
+    status: 'playing',
+    players: [
+      { id: 'p_victor', name: 'Victor_Mogul', avatar: 'king', color: '#f59e0b', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, getOutOfJailCards: 0, properties: [], mortgaged: [], houses: {}, isBankrupt: false, isBot: false, isHost: true },
+      { id: 'b_dubai', name: 'Dubai_Sheikh', avatar: 'gold', color: '#e11d48', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, getOutOfJailCards: 0, properties: [], mortgaged: [], houses: {}, isBankrupt: false, isBot: true, isHost: false },
+      { id: 'b_monaco', name: 'Monaco_Baron', avatar: 'navy', color: '#84cc16', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, getOutOfJailCards: 0, properties: [], mortgaged: [], houses: {}, isBankrupt: false, isBot: true, isHost: false }
+    ],
+    currentTurnPlayerId: 'p_victor',
+    currentTurnIndex: 0,
+    turnPhase: 'roll',
+    turnTimer: 20,
+    lastDice: [4, 4],
+    isDouble: true,
+    consecutiveDoubles: 1,
+    doubleCount: 1,
+    freeParkingPool: 100,
+    auction: null,
+    activeTrade: null,
+    pendingCard: null,
+    winner: null,
+    logs: [
+      { id: 'l1', timestamp: '12:00:00', text: 'Grandmaster Diamond Table active ($500 Wager).', type: 'info' }
+    ],
+    chatMessages: [
+      { id: 'c1', sender: 'System', avatar: 'gold', text: 'Grandmaster High Stakes Diamond Table ($500 Wager).', time: '12:00' }
+    ],
+    version: 1,
+    createdAt: Date.now() - 20 * 60 * 1000,
+    updatedAt: Date.now(),
+    isCustom: false
+  }
+];
+
+defaultRooms.forEach(r => serverRooms.set(r.code.toLowerCase(), r));
+
+// GET /api/rooms - List all active rooms for lobby & quick join
+app.get("/api/rooms", (_req: Request, res: Response) => {
+  const list = Array.from(serverRooms.values()).map(r => ({
+    code: r.code,
+    name: r.name,
+    host: r.players.find(p => p.id === r.hostId)?.name || 'Host',
+    hostAvatar: r.players.find(p => p.id === r.hostId)?.avatar || 'orange',
+    players: r.players.length,
+    max: r.maxPlayers,
+    bet: r.betAmount,
+    turnTime: r.turnTimeSeconds,
+    map: r.boardTheme === 'cyber' ? 'Cyber Neon' : r.boardTheme === 'worldwide' ? 'Worldwide' : 'Classic',
+    status: r.status,
+    createdAt: r.createdAt,
+    initialCash: r.initialCash,
+    isCustom: r.isCustom ?? true
+  }));
+  res.json({ rooms: list });
+});
+
+// GET /api/rooms/:code - Retrieve live room state
+app.get("/api/rooms/:code", (req: Request, res: Response): void => {
+  const code = (req.params.code || '').trim().toLowerCase();
+  const room = serverRooms.get(code);
+  if (!room) {
+    res.status(404).json({ exists: false, error: `Room ${code} not found` });
+    return;
+  }
+  res.json({ exists: true, room });
+});
+
+// POST /api/rooms - Create or register a custom room
+app.post("/api/rooms", (req: Request, res: Response): void => {
+  try {
+    const raw = req.body;
+    const code = (raw.code || raw.roomCode || 'room_' + Math.random().toString(36).substring(2, 7)).trim().toLowerCase();
+    
+    const existing = serverRooms.get(code);
+    const now = Date.now();
+    const newRoom: ServerRoom = {
+      code,
+      name: raw.name || raw.roomName || 'Custom Room',
+      hostId: raw.hostId || (raw.players && raw.players[0]?.id) || 'host_user',
+      isPrivate: Boolean(raw.isPrivate),
+      maxPlayers: raw.maxPlayers || raw.max || 4,
+      betAmount: typeof raw.betAmount === 'number' ? raw.betAmount : (typeof raw.bet === 'number' ? raw.bet : 0),
+      initialCash: raw.initialCash || 1500,
+      turnTimeSeconds: raw.turnTimeSeconds || raw.turnTime || 15,
+      boardTheme: raw.boardTheme || raw.map || 'classic',
+      fillWithBots: Boolean(raw.fillWithBots),
+      status: raw.status || 'waiting',
+      players: raw.players || [],
+      currentTurnPlayerId: raw.currentTurnPlayerId || (raw.players && raw.players[0]?.id) || '',
+      currentTurnIndex: raw.currentTurnIndex || 0,
+      turnPhase: raw.turnPhase || 'roll',
+      turnTimer: raw.turnTimer || raw.turnTimeSeconds || 15,
+      lastDice: raw.lastDice || [1, 2],
+      isDouble: Boolean(raw.isDouble),
+      consecutiveDoubles: raw.consecutiveDoubles || 0,
+      doubleCount: raw.doubleCount || 0,
+      freeParkingPool: raw.freeParkingPool || 100,
+      auction: raw.auction || null,
+      activeTrade: raw.activeTrade || null,
+      pendingCard: raw.pendingCard || null,
+      winner: raw.winner || null,
+      logs: raw.logs || [
+        { id: 'l_' + now, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), text: `Room ${code} created. Waiting for players...`, type: 'info' }
+      ],
+      chatMessages: raw.chatMessages || [
+        { id: 'c_' + now, sender: 'System', avatar: 'navy', text: `Welcome to room ${code}!`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+      ],
+      version: existing ? existing.version + 1 : 1,
+      createdAt: existing ? existing.createdAt : now,
+      updatedAt: now,
+      isCustom: true
+    };
+
+    serverRooms.set(code, newRoom);
+    res.json({ success: true, room: newRoom });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to create room' });
+  }
+});
+
+// POST /api/rooms/:code/join - Join player to room
+app.post("/api/rooms/:code/join", (req: Request, res: Response): void => {
+  const code = (req.params.code || '').trim().toLowerCase();
+  const { player } = req.body;
+
+  if (!player || !player.id) {
+    res.status(400).json({ error: 'Player data with id is required' });
+    return;
+  }
+
+  let room = serverRooms.get(code);
+  if (!room) {
+    res.status(404).json({ error: `Room ${code} does not exist or has ended.` });
+    return;
+  }
+
+  // Check if player already in room
+  const existingPlayerIndex = room.players.findIndex(p => p.id === player.id);
+  const now = Date.now();
+
+  if (existingPlayerIndex >= 0) {
+    // Update existing player info
+    room.players[existingPlayerIndex] = {
+      ...room.players[existingPlayerIndex],
+      ...player,
+      name: player.name || room.players[existingPlayerIndex].name
+    };
+  } else {
+    // Check max players
+    if (room.players.length >= room.maxPlayers) {
+      res.status(400).json({ error: `Room is full (${room.players.length}/${room.maxPlayers} players).` });
+      return;
+    }
+
+    const playerColors = ['#3b82f6', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4'];
+    const assignedColor = player.color || playerColors[room.players.length % playerColors.length];
+    
+    const newPlayer = {
+      id: player.id,
+      name: player.name || 'Player',
+      avatar: player.avatar || 'orange',
+      avatarFrame: player.avatarFrame,
+      diceSkin: player.diceSkin || 'dice_golden',
+      color: assignedColor,
+      cash: room.initialCash,
+      netWorth: room.initialCash,
+      position: 0,
+      inJail: false,
+      jailTurns: 0,
+      getOutOfJailCards: 0,
+      properties: [],
+      mortgaged: [],
+      houses: {},
+      isBankrupt: false,
+      isBot: Boolean(player.isBot),
+      isHost: room.players.length === 0 || room.hostId === player.id
+    };
+
+    room.players.push(newPlayer);
+    room.logs.unshift({
+      id: 'l_' + now,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      text: `👋 ${newPlayer.name} joined the room! (${room.players.length}/${room.maxPlayers})`,
+      type: 'info'
+    });
+  }
+
+  room.version += 1;
+  room.updatedAt = now;
+  serverRooms.set(code, room);
+
+  res.json({ success: true, room });
+});
+
+// POST /api/rooms/:code/state - Host or active client updates game state
+app.post("/api/rooms/:code/state", (req: Request, res: Response): void => {
+  const code = (req.params.code || '').trim().toLowerCase();
+  const { room: updatedRoom } = req.body;
+
+  if (!updatedRoom) {
+    res.status(400).json({ error: 'Room state required' });
+    return;
+  }
+
+  const existing = serverRooms.get(code);
+  const now = Date.now();
+
+  const merged: ServerRoom = {
+    ...existing,
+    ...updatedRoom,
+    code,
+    version: (existing ? existing.version : 0) + 1,
+    updatedAt: now
+  };
+
+  serverRooms.set(code, merged);
+  res.json({ success: true, version: merged.version });
+});
+
+// POST /api/rooms/:code/chat - Append chat message
+app.post("/api/rooms/:code/chat", (req: Request, res: Response): void => {
+  const code = (req.params.code || '').trim().toLowerCase();
+  const { message } = req.body;
+
+  if (!message || !message.text) {
+    res.status(400).json({ error: 'Valid chat message required' });
+    return;
+  }
+
+  const room = serverRooms.get(code);
+  if (!room) {
+    res.status(404).json({ error: 'Room not found' });
+    return;
+  }
+
+  const chatEntry = {
+    id: message.id || 'c_' + Date.now(),
+    sender: message.sender || 'Player',
+    avatar: message.avatar || 'orange',
+    text: message.text,
+    time: message.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  };
+
+  room.chatMessages = [...(room.chatMessages || []).slice(-40), chatEntry];
+  room.version += 1;
+  room.updatedAt = Date.now();
+
+  serverRooms.set(code, room);
+  res.json({ success: true, message: chatEntry, chatMessages: room.chatMessages });
+});
+
+// ==========================================
+// 5. VITE MIDDLEWARE (Full-Stack Express + Vite)
 // ==========================================
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

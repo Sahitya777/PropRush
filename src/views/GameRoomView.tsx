@@ -12,6 +12,13 @@ import { AvatarCharacter } from '../components/AvatarCharacter';
 import { sounds } from '../utils/audio';
 import { saveActiveMatch, getActiveMatch, markDisconnected, clearActiveMatch } from '../utils/reconnectStorage';
 import { updateActiveRoomPlayerCount } from '../utils/activeRoomsRegistry';
+import {
+  fetchServerRoom,
+  createServerRoom,
+  joinServerRoom,
+  syncServerRoomState,
+  sendServerChatMessage
+} from '../utils/serverRoomSync';
 
 interface GameRoomViewProps {
   roomConfig: {
@@ -241,6 +248,22 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       updateActiveRoomPlayerCount(roomConfig.roomCode, 1);
     } catch {}
 
+    // Register room on server so other devices/browsers can immediately find & join it
+    createServerRoom({
+      code: initialCustomRoom.code,
+      name: initialCustomRoom.name,
+      hostId: user.id,
+      maxPlayers: initialCustomRoom.maxPlayers,
+      betAmount: initialCustomRoom.betAmount,
+      initialCash: roomConfig.initialCash,
+      turnTimeSeconds: roomConfig.turnTimeSeconds,
+      boardTheme: roomConfig.boardTheme,
+      status: 'waiting',
+      players: initialCustomRoom.players,
+      isPrivate: initialCustomRoom.isPrivate,
+      fillWithBots: false
+    } as any).catch(() => {});
+
     return initialCustomRoom;
   });
 
@@ -277,10 +300,23 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     }));
   };
 
+  // Central room broadcast and server state sync
+  const broadcastAndSync = (updatedRoom: GameRoom, eventType: 'SYNC_ROOM' | 'GAME_STARTED' = 'SYNC_ROOM') => {
+    try {
+      localStorage.setItem(customRoomStorageKey, JSON.stringify(updatedRoom));
+      updateActiveRoomPlayerCount(roomConfig.roomCode, updatedRoom.players.length);
+      const channel = new BroadcastChannel(`proprush_sync_${roomConfig.roomCode.toLowerCase()}`);
+      channel.postMessage({ type: eventType, room: updatedRoom });
+      channel.close();
+    } catch {}
+    syncServerRoomState(roomConfig.roomCode, updatedRoom).catch(() => {});
+  };
+
   // Turn timer ref
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const isRollingRef = useRef<boolean>(false);
   const lastLogRef = useRef<{ text: string; time: number }>({ text: '', time: 0 });
+  const serverVersionRef = useRef<number>(0);
 
   // Auto-save active match whenever room or chat state updates
   useEffect(() => {
@@ -289,25 +325,48 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     }
   }, [room, chatMessages, roomConfig]);
 
-  // BroadcastChannel and localStorage multi-tab sync for custom rooms
+  // Real-Time Cross-Device Server Sync + Multi-Tab BroadcastChannel
   useEffect(() => {
+    let isMounted = true;
     const channelName = `proprush_sync_${roomConfig.roomCode.toLowerCase()}`;
     let channel: BroadcastChannel | null = null;
     try {
       channel = new BroadcastChannel(channelName);
     } catch {}
 
-    // Broadcast our join presence to all tabs/windows
+    const myPlayerPayload: Partial<Player> = {
+      id: user.id,
+      name: user.username,
+      avatar: user.avatar || 'orange',
+      avatarFrame: user.avatarFrame,
+      diceSkin: user.diceSkin || 'dice_golden',
+      color: playerColors[0],
+      isHost: room.hostId === user.id
+    };
+
+    // 1. Join room on server (ensures player presence exists across devices)
+    joinServerRoom(roomConfig.roomCode, myPlayerPayload).then(serverRoom => {
+      if (!isMounted || !serverRoom) return;
+      if (serverRoom.players && serverRoom.players.length > 0) {
+        setRoom(prev => {
+          if (serverRoom.status === 'playing' && prev.status === 'waiting') {
+            sounds.playDiceRoll();
+          }
+          return {
+            ...prev,
+            ...serverRoom,
+            players: serverRoom.players
+          };
+        });
+      }
+    });
+
+    // 2. Broadcast presence to local tabs
     if (channel) {
       channel.postMessage({
         type: 'PLAYER_JOINED',
         player: {
-          id: user.id,
-          name: user.username,
-          avatar: user.avatar || 'orange',
-          avatarFrame: user.avatarFrame,
-          diceSkin: user.diceSkin || 'dice_golden',
-          color: playerColors[0],
+          ...myPlayerPayload,
           cash: roomConfig.initialCash,
           netWorth: roomConfig.initialCash,
           position: 0,
@@ -318,8 +377,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           mortgaged: [],
           houses: {},
           isBankrupt: false,
-          isBot: false,
-          isHost: false
+          isBot: false
         }
       });
 
@@ -358,11 +416,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
             if (prev.hostId === user.id) {
               sounds.playPassGo();
-              try {
-                localStorage.setItem(customRoomStorageKey, JSON.stringify(updatedRoom));
-                updateActiveRoomPlayerCount(roomConfig.roomCode, updatedPlayers.length);
-                channel?.postMessage({ type: 'SYNC_ROOM', room: updatedRoom });
-              } catch {}
+              broadcastAndSync(updatedRoom);
             }
             return updatedRoom;
           });
@@ -376,11 +430,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               totalPrizePool: roomConfig.betAmount * updatedPlayers.length
             };
             if (prev.hostId === user.id) {
-              try {
-                localStorage.setItem(customRoomStorageKey, JSON.stringify(updatedRoom));
-                updateActiveRoomPlayerCount(roomConfig.roomCode, updatedPlayers.length);
-                channel?.postMessage({ type: 'SYNC_ROOM', room: updatedRoom });
-              } catch {}
+              broadcastAndSync(updatedRoom);
             }
             return updatedRoom;
           });
@@ -395,6 +445,58 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       };
     }
 
+    // 3. Periodic Server Polling Interval (Every 800ms for fast cross-device updates)
+    const pollInterval = setInterval(async () => {
+      if (!isMounted || isRollingRef.current) return;
+
+      try {
+        const sRoom: any = await fetchServerRoom(roomConfig.roomCode);
+        if (!sRoom || !isMounted) return;
+
+        setRoom(prev => {
+          const wasWaiting = prev.status === 'waiting';
+          const isNowPlaying = sRoom.status === 'playing';
+
+          if (wasWaiting && isNowPlaying) {
+            sounds.playDiceRoll();
+            addLog(`🚀 Match launched by room creator! Game in progress.`, 'info');
+          }
+
+          const playersCountDiff = prev.players.length !== sRoom.players?.length;
+          const statusDiff = prev.status !== sRoom.status;
+          const turnDiff = prev.currentTurnPlayerId !== sRoom.currentTurnPlayerId || prev.currentTurnIndex !== sRoom.currentTurnIndex;
+          const hasNewerVersion = sRoom.version && sRoom.version > serverVersionRef.current;
+
+          if (playersCountDiff || statusDiff || turnDiff || hasNewerVersion) {
+            if (sRoom.version) serverVersionRef.current = sRoom.version;
+            return {
+              ...prev,
+              ...sRoom,
+              players: sRoom.players || prev.players,
+              logs: sRoom.logs && sRoom.logs.length > 0 ? sRoom.logs : prev.logs
+            };
+          }
+          return prev;
+        });
+
+        // Sync incoming server chat messages
+        if (sRoom.chatMessages && Array.isArray(sRoom.chatMessages) && sRoom.chatMessages.length > 0) {
+          setChatMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id));
+            const newOnes = sRoom.chatMessages.filter((m: any) => !existingIds.has(m.id));
+            if (newOnes.length > 0) {
+              const unreadFromOthers = newOnes.filter((m: any) => m.sender !== user.username).length;
+              if (unreadFromOthers > 0 && !isChatOpen) {
+                setUnreadChatCount(c => c + unreadFromOthers);
+              }
+              return [...prev, ...newOnes].slice(-40);
+            }
+            return prev;
+          });
+        }
+      } catch {}
+    }, 800);
+
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === customRoomStorageKey && e.newValue) {
         try {
@@ -406,6 +508,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     window.addEventListener('storage', handleStorageChange);
 
     return () => {
+      isMounted = false;
+      clearInterval(pollInterval);
       window.removeEventListener('storage', handleStorageChange);
       if (channel) {
         channel.postMessage({ type: 'PLAYER_LEFT', playerId: user.id });
@@ -443,14 +547,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     };
 
     setRoom(updatedRoom);
-
-    // Save and Broadcast to all connected windows/tabs
-    try {
-      localStorage.setItem(customRoomStorageKey, JSON.stringify(updatedRoom));
-      const channel = new BroadcastChannel(`proprush_sync_${roomConfig.roomCode.toLowerCase()}`);
-      channel.postMessage({ type: 'GAME_STARTED', room: updatedRoom });
-      channel.close();
-    } catch {}
+    broadcastAndSync(updatedRoom, 'GAME_STARTED');
   };
 
   // Host Action: Add an AI Bot to fill an empty slot (Optional)
@@ -486,14 +583,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
     setRoom(updatedRoom);
     sounds.playClick();
-
-    try {
-      localStorage.setItem(customRoomStorageKey, JSON.stringify(updatedRoom));
-      updateActiveRoomPlayerCount(roomConfig.roomCode, updatedRoom.players.length);
-      const channel = new BroadcastChannel(`proprush_sync_${roomConfig.roomCode.toLowerCase()}`);
-      channel.postMessage({ type: 'SYNC_ROOM', room: updatedRoom });
-      channel.close();
-    } catch {}
+    broadcastAndSync(updatedRoom);
   };
 
   // Host Action: Remove player or bot from waiting room
@@ -507,14 +597,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     };
     setRoom(updatedRoom);
     sounds.playClick();
-
-    try {
-      localStorage.setItem(customRoomStorageKey, JSON.stringify(updatedRoom));
-      updateActiveRoomPlayerCount(roomConfig.roomCode, updatedPlayers.length);
-      const channel = new BroadcastChannel(`proprush_sync_${roomConfig.roomCode.toLowerCase()}`);
-      channel.postMessage({ type: 'SYNC_ROOM', room: updatedRoom });
-      channel.close();
-    } catch {}
+    broadcastAndSync(updatedRoom);
   };
 
   // Log on resumption
@@ -577,7 +660,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
       const nextPlayer = prev.players[nextIndex];
 
-      return {
+      const updated: GameRoom = {
         ...prev,
         currentTurnIndex: nextIndex,
         currentTurnPlayerId: nextPlayer.id,
@@ -587,6 +670,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         doubleCount: 0,
         pendingCard: null
       };
+      broadcastAndSync(updated);
+      return updated;
     });
   };
 
@@ -611,11 +696,15 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     });
 
     setMatchSummaryStats(statsResult);
-    setRoom(prev => ({
-      ...prev,
-      status: 'finished',
-      winner: winner.name
-    }));
+    setRoom(prev => {
+      const updated: GameRoom = {
+        ...prev,
+        status: 'finished',
+        winner: winner.name
+      };
+      broadcastAndSync(updated);
+      return updated;
+    });
   };
 
   // Handle dice rolling and tile resolution
@@ -819,7 +908,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       const updatedPlayers = [...prev.players];
       updatedPlayers[currentPlayerIndex] = player;
 
-      return {
+      const updatedRoom: GameRoom = {
         ...prev,
         players: updatedPlayers,
         lastDice: [d1, d2],
@@ -829,6 +918,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         pendingCard,
         freeParkingPool
       };
+      broadcastAndSync(updatedRoom);
+      return updatedRoom;
     });
   };
 
@@ -852,11 +943,13 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       const updatedPlayers = [...prev.players];
       updatedPlayers[currentPlayerIndex] = player;
 
-      return {
+      const updated: GameRoom = {
         ...prev,
         players: updatedPlayers,
         turnPhase: 'action'
       };
+      broadcastAndSync(updated);
+      return updated;
     });
   };
 
@@ -872,7 +965,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       addLog(`🔨 ${player.name} passed on ${tile.name}. Speed Auction started!`, 'auction');
       sounds.playAuction();
 
-      return {
+      const updated: GameRoom = {
         ...prev,
         turnPhase: 'auction',
         auction: {
@@ -885,6 +978,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           bidHistory: []
         }
       };
+      broadcastAndSync(updated);
+      return updated;
     });
   };
 
@@ -898,7 +993,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       sounds.playCashRegister();
       addLog(`🔨 ${bidder.name} bid $${amount} for ${tiles[prev.auction.tileId].name}.`, 'auction');
 
-      return {
+      const updated: GameRoom = {
         ...prev,
         auction: {
           ...prev.auction,
@@ -911,6 +1006,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           ]
         }
       };
+      broadcastAndSync(updated);
+      return updated;
     });
   };
 
@@ -928,12 +1025,14 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
       const updated = [...prev.players];
       updated[prev.currentTurnIndex] = p;
-      return {
+      const updatedRoom: GameRoom = {
         ...prev,
         players: updated,
         freeParkingPool: prev.freeParkingPool + 50,
         turnPhase: 'roll'
       };
+      broadcastAndSync(updatedRoom);
+      return updatedRoom;
     });
   };
 
@@ -949,7 +1048,9 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
       const updated = [...prev.players];
       updated[prev.currentTurnIndex] = p;
-      return { ...prev, players: updated, turnPhase: 'roll' };
+      const updatedRoom: GameRoom = { ...prev, players: updated, turnPhase: 'roll' };
+      broadcastAndSync(updatedRoom);
+      return updatedRoom;
     });
   };
 
@@ -989,7 +1090,9 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       sounds.playBuild();
 
       const updated = prev.players.map(x => (x.id === p.id ? p : x));
-      return { ...prev, players: updated };
+      const updatedRoom: GameRoom = { ...prev, players: updated };
+      broadcastAndSync(updatedRoom);
+      return updatedRoom;
     });
   };
 
@@ -1018,7 +1121,9 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       addLog(`🏚️ ${p.name} sold a building on ${tile.name} for $${refund}.`, 'buy');
 
       const updated = prev.players.map(x => (x.id === p.id ? p : x));
-      return { ...prev, players: updated };
+      const updatedRoom: GameRoom = { ...prev, players: updated };
+      broadcastAndSync(updatedRoom);
+      return updatedRoom;
     });
   };
 
@@ -1046,7 +1151,9 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       addLog(`📑 ${p.name} mortgaged ${tile.name} for $${tile.mortgageValue}.`, 'buy');
 
       const updated = prev.players.map(x => (x.id === p.id ? p : x));
-      return { ...prev, players: updated };
+      const updatedRoom: GameRoom = { ...prev, players: updated };
+      broadcastAndSync(updatedRoom);
+      return updatedRoom;
     });
   };
 
@@ -1070,7 +1177,9 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       addLog(`💵 ${p.name} unmortgaged ${tile.name} for $${cost}.`, 'buy');
 
       const updated = prev.players.map(x => (x.id === p.id ? p : x));
-      return { ...prev, players: updated };
+      const updatedRoom: GameRoom = { ...prev, players: updated };
+      broadcastAndSync(updatedRoom);
+      return updatedRoom;
     });
   };
 
@@ -1087,6 +1196,12 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     if (!isChatOpen && sender !== user.username) {
       setUnreadChatCount(prev => prev + 1);
     }
+    try {
+      const channel = new BroadcastChannel(`proprush_sync_${roomConfig.roomCode.toLowerCase()}`);
+      channel.postMessage({ type: 'CHAT_MESSAGE', message: newMsg });
+      channel.close();
+    } catch {}
+    sendServerChatMessage(roomConfig.roomCode, newMsg).catch(() => {});
   };
 
   // Active 30-Second Turn Countdown Effect
@@ -1113,7 +1228,11 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     const current = room.players.find(p => p.id === room.currentTurnPlayerId);
     if (!current || current.isBankrupt || current.isBot) return;
 
-    // Timeout expired for human player! Auto execute current phase action
+    // Timeout expired for human player! Auto execute only if it is my turn or if I am host (for disconnected player fallback)
+    const isMyTurn = current.id === user.id;
+    const isHost = room.hostId === user.id;
+    if (!isMyTurn && !isHost) return;
+
     if (room.turnPhase === 'roll') {
       handleRollDice();
     } else if (room.turnPhase === 'jail_decision') {
@@ -1127,11 +1246,15 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     } else if (room.turnPhase === 'action') {
       nextTurn();
     }
-  }, [room.turnTimer, room.turnPhase, room.status, room.currentTurnPlayerId]);
+  }, [room.turnTimer, room.turnPhase, room.status, room.currentTurnPlayerId, user.id, room.hostId]);
 
-  // Bot Turn Automation
+  // Bot Turn Automation (Host authoritative to prevent multiple tabs/devices from running bot turns simultaneously)
   useEffect(() => {
     if (room.status !== 'playing') return;
+    const isHost = room.hostId === user.id;
+    // Only the room host executes bot AI turns so actions are never duplicated
+    if (!isHost) return;
+
     const current = room.players.find(p => p.id === room.currentTurnPlayerId);
     if (!current || !current.isBot || current.isBankrupt) return;
 
