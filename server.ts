@@ -421,6 +421,13 @@ app.post("/api/rooms", (req: Request, res: Response): void => {
     
     const existing = serverRooms.get(code);
     const now = Date.now();
+
+    // If an active room already exists with this code, do not reset it! Return existing room.
+    if (existing && existing.status !== 'finished') {
+      res.json({ success: true, room: existing });
+      return;
+    }
+
     const newRoom: ServerRoom = {
       code,
       name: raw.name || raw.roomName || 'Custom Room',
@@ -453,8 +460,8 @@ app.post("/api/rooms", (req: Request, res: Response): void => {
       chatMessages: raw.chatMessages || [
         { id: 'c_' + now, sender: 'System', avatar: 'navy', text: `Welcome to room ${code}!`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
       ],
-      version: existing ? existing.version + 1 : 1,
-      createdAt: existing ? existing.createdAt : now,
+      version: 1,
+      createdAt: now,
       updatedAt: now,
       isCustom: true
     };
@@ -483,11 +490,11 @@ app.post("/api/rooms/:code/join", (req: Request, res: Response): void => {
   }
 
   // Check if player already in room
-  const existingPlayerIndex = room.players.findIndex(p => p.id === player.id);
+  let existingPlayerIndex = room.players.findIndex(p => p.id === player.id);
   const now = Date.now();
 
   if (existingPlayerIndex >= 0) {
-    // Update existing player info
+    // If it's the exact same player reconnecting/updating
     room.players[existingPlayerIndex] = {
       ...room.players[existingPlayerIndex],
       ...player,
@@ -503,10 +510,17 @@ app.post("/api/rooms/:code/join", (req: Request, res: Response): void => {
     const playerColors = ['#3b82f6', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4'];
     const assignedColor = player.color || playerColors[room.players.length % playerColors.length];
     
+    // Auto-disambiguate username if duplicate in same room (e.g. testing in 2 tabs)
+    let displayName = player.name || 'Player';
+    const sameNameCount = room.players.filter(p => p.name === displayName || p.name.startsWith(displayName + ' ')).length;
+    if (sameNameCount > 0) {
+      displayName = `${displayName} (${sameNameCount + 1})`;
+    }
+
     const newPlayer = {
       id: player.id,
-      name: player.name || 'Player',
-      avatar: player.avatar || 'orange',
+      name: displayName,
+      avatar: player.avatar || (room.players.length % 2 === 1 ? 'purple' : 'orange'),
       avatarFrame: player.avatarFrame,
       diceSkin: player.diceSkin || 'dice_golden',
       color: assignedColor,
@@ -521,7 +535,7 @@ app.post("/api/rooms/:code/join", (req: Request, res: Response): void => {
       houses: {},
       isBankrupt: false,
       isBot: Boolean(player.isBot),
-      isHost: room.players.length === 0 || room.hostId === player.id
+      isHost: room.players.length === 0 || (room.hostId === player.id && room.players.length === 0)
     };
 
     room.players.push(newPlayer);

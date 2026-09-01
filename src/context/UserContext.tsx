@@ -53,9 +53,22 @@ interface UserContextType {
   requireAuth: (reason: string, onAuthenticated: () => void) => void;
 }
 
+const getTabSessionId = (): string => {
+  try {
+    let tabId = sessionStorage.getItem('proprush_tab_pid');
+    if (!tabId) {
+      tabId = 'usr_' + Math.random().toString(36).substring(2, 8) + '_' + Date.now().toString(36);
+      sessionStorage.setItem('proprush_tab_pid', tabId);
+    }
+    return tabId;
+  } catch {
+    return 'usr_' + Math.random().toString(36).substring(2, 8);
+  }
+};
+
 const DEFAULT_USER: UserProfile = {
-  id: 'usr_' + Math.random().toString(36).substring(2, 9),
-  username: 'Player',
+  id: getTabSessionId(),
+  username: 'Sahitya',
   email: '',
   avatar: 'orange',
   avatarFrame: undefined,
@@ -120,6 +133,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return {
           ...DEFAULT_USER,
           ...parsed,
+          id: getTabSessionId(),
           inventory: {
             appearances: parsed.inventory?.appearances || ['orange'],
             maps: parsed.inventory?.maps || ['classic'],

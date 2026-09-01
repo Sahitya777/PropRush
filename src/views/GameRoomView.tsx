@@ -248,22 +248,6 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       updateActiveRoomPlayerCount(roomConfig.roomCode, 1);
     } catch {}
 
-    // Register room on server so other devices/browsers can immediately find & join it
-    createServerRoom({
-      code: initialCustomRoom.code,
-      name: initialCustomRoom.name,
-      hostId: user.id,
-      maxPlayers: initialCustomRoom.maxPlayers,
-      betAmount: initialCustomRoom.betAmount,
-      initialCash: roomConfig.initialCash,
-      turnTimeSeconds: roomConfig.turnTimeSeconds,
-      boardTheme: roomConfig.boardTheme,
-      status: 'waiting',
-      players: initialCustomRoom.players,
-      isPrivate: initialCustomRoom.isPrivate,
-      fillWithBots: false
-    } as any).catch(() => {});
-
     return initialCustomRoom;
   });
 
@@ -344,19 +328,76 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       isHost: room.hostId === user.id
     };
 
-    // 1. Join room on server (ensures player presence exists across devices)
-    joinServerRoom(roomConfig.roomCode, myPlayerPayload).then(serverRoom => {
-      if (!isMounted || !serverRoom) return;
-      if (serverRoom.players && serverRoom.players.length > 0) {
-        setRoom(prev => {
-          if (serverRoom.status === 'playing' && prev.status === 'waiting') {
-            sounds.playDiceRoll();
-          }
-          return {
+    // 1. Initial Room Discovery & Join on Server
+    fetchServerRoom(roomConfig.roomCode).then(serverRoom => {
+      if (!isMounted) return;
+      if (serverRoom) {
+        // Room already exists on server!
+        if (serverRoom.hostId === user.id) {
+          // I am the host
+          setRoom(prev => ({
             ...prev,
             ...serverRoom,
             players: serverRoom.players
-          };
+          }));
+        } else {
+          // I am a joining player
+          joinServerRoom(roomConfig.roomCode, myPlayerPayload).then(joinedRoom => {
+            if (!isMounted || !joinedRoom) return;
+            setRoom(prev => ({
+              ...prev,
+              ...joinedRoom,
+              players: joinedRoom.players
+            }));
+            const joinedAny = joinedRoom as any;
+            if (joinedAny.chatMessages && Array.isArray(joinedAny.chatMessages)) {
+              setChatMessages(joinedAny.chatMessages);
+            }
+          });
+        }
+      } else {
+        // Room does not exist yet on server -> Create it as Host
+        createServerRoom({
+          code: roomConfig.roomCode,
+          name: roomConfig.roomName,
+          hostId: user.id,
+          maxPlayers: roomConfig.maxPlayers,
+          betAmount: roomConfig.betAmount,
+          initialCash: roomConfig.initialCash,
+          turnTimeSeconds: roomConfig.turnTimeSeconds,
+          boardTheme: roomConfig.boardTheme,
+          status: 'waiting',
+          players: [
+            {
+              id: user.id,
+              name: user.username,
+              avatar: user.avatar || 'orange',
+              avatarFrame: user.avatarFrame,
+              diceSkin: user.diceSkin || 'dice_golden',
+              color: playerColors[0],
+              cash: roomConfig.initialCash,
+              netWorth: roomConfig.initialCash,
+              position: 0,
+              inJail: false,
+              jailTurns: 0,
+              getOutOfJailCards: 0,
+              properties: [],
+              mortgaged: [],
+              houses: {},
+              isBankrupt: false,
+              isBot: false,
+              isHost: true
+            }
+          ],
+          isPrivate: false,
+          fillWithBots: false
+        } as any).then(created => {
+          if (!isMounted || !created) return;
+          setRoom(prev => ({
+            ...prev,
+            ...created,
+            players: created.players
+          }));
         });
       }
     });
@@ -445,7 +486,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       };
     }
 
-    // 3. Periodic Server Polling Interval (Every 800ms for fast cross-device updates)
+    // 3. Periodic Server Polling Interval (Every 600ms for fast cross-device updates)
     const pollInterval = setInterval(async () => {
       if (!isMounted || isRollingRef.current) return;
 
@@ -462,17 +503,18 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
             addLog(`🚀 Match launched by room creator! Game in progress.`, 'info');
           }
 
-          const playersCountDiff = prev.players.length !== sRoom.players?.length;
+          const playersCountDiff = prev.players.length !== (sRoom.players?.length || 0);
           const statusDiff = prev.status !== sRoom.status;
-          const turnDiff = prev.currentTurnPlayerId !== sRoom.currentTurnPlayerId || prev.currentTurnIndex !== sRoom.currentTurnIndex;
+          const turnDiff = prev.currentTurnPlayerId !== sRoom.currentTurnPlayerId || prev.turnPhase !== sRoom.turnPhase || prev.currentTurnIndex !== sRoom.currentTurnIndex;
           const hasNewerVersion = sRoom.version && sRoom.version > serverVersionRef.current;
+          const logsDiff = sRoom.logs && sRoom.logs.length > prev.logs.length;
 
-          if (playersCountDiff || statusDiff || turnDiff || hasNewerVersion) {
+          if (playersCountDiff || statusDiff || turnDiff || hasNewerVersion || logsDiff) {
             if (sRoom.version) serverVersionRef.current = sRoom.version;
             return {
               ...prev,
               ...sRoom,
-              players: sRoom.players || prev.players,
+              players: sRoom.players && sRoom.players.length > 0 ? sRoom.players : prev.players,
               logs: sRoom.logs && sRoom.logs.length > 0 ? sRoom.logs : prev.logs
             };
           }
