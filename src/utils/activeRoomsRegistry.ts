@@ -123,6 +123,26 @@ export function registerActiveRoom(room: Omit<ActiveRoomInfo, 'createdAt'>): voi
 }
 
 /**
+ * Updates the player count of an active room in the registry.
+ */
+export function updateActiveRoomPlayerCount(code: string, playersCount: number): void {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const currentRooms: ActiveRoomInfo[] = JSON.parse(raw);
+    const updated = currentRooms.map(r => {
+      if (r.code.toLowerCase() === code.trim().toLowerCase()) {
+        return { ...r, players: playersCount };
+      }
+      return r;
+    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  } catch (err) {
+    console.error('Failed to update active room player count:', err);
+  }
+}
+
+/**
  * Removes a room from the registry when completed or disbanded.
  */
 export function removeActiveRoom(code: string): void {

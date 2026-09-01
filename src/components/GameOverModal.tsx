@@ -53,7 +53,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   }, [isWinner]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-fade-in overflow-y-auto">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-3 pt-14 pb-8 sm:p-6 sm:pt-18 sm:pb-10 bg-black/85 backdrop-blur-md animate-fade-in overflow-y-auto">
       <MatchStatsAnalyticsModal
         room={room}
         myPlayerId={myPlayerId}

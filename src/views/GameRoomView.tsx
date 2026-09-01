@@ -11,6 +11,7 @@ import { GameOverModal } from '../components/GameOverModal';
 import { AvatarCharacter } from '../components/AvatarCharacter';
 import { sounds } from '../utils/audio';
 import { saveActiveMatch, getActiveMatch, markDisconnected, clearActiveMatch } from '../utils/reconnectStorage';
+import { updateActiveRoomPlayerCount } from '../utils/activeRoomsRegistry';
 
 interface GameRoomViewProps {
   roomConfig: {
@@ -50,15 +51,137 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     savedActive.room.status === 'playing'
   );
 
-  // Create initial players
-  const botNames = ['bu', 'CryptoBaron', 'PixelTycoon', 'QueenVee'];
+  // Constants & Bot definitions
+  const botNames = ['bu', 'CryptoBaron', 'PixelTycoon', 'QueenVee', 'DiamondAce'];
   const botAvatars = ['bu', 'apple', 'ghost', 'cyber', 'king'];
   const botFrames = ['pfp_neon', 'pfp_crown', 'pfp_fire', 'pfp_diamond'];
   const botDiceSkins = ['dice_neon', 'dice_ruby', 'dice_magma', 'dice_cyber', 'dice_cosmic', 'dice_rainbow', 'dice_dragon'];
   const playerColors = ['#ff7844', '#b066fe', '#10b981', '#06b6d4', '#ec4899', '#eab308'];
 
-  const initialPlayers: Player[] = [
-    {
+  const customRoomStorageKey = `proprush_custom_room_${roomConfig.roomCode.toLowerCase()}`;
+
+  // Master Room State (Restores from saved active match or waiting lobby)
+  const [room, setRoom] = useState<GameRoom>(() => {
+    if (isResuming && savedActive) {
+      return savedActive.room;
+    }
+
+    // 1. Quick Play / Bots mode enabled:
+    if (roomConfig.fillWithBots) {
+      const initialPlayers: Player[] = [
+        {
+          id: user.id,
+          name: user.username,
+          avatar: user.avatar || 'orange',
+          avatarFrame: user.avatarFrame,
+          diceSkin: user.diceSkin || 'dice_golden',
+          color: playerColors[0],
+          cash: roomConfig.initialCash,
+          netWorth: roomConfig.initialCash,
+          position: 0,
+          inJail: false,
+          jailTurns: 0,
+          getOutOfJailCards: 0,
+          properties: [],
+          mortgaged: [],
+          houses: {},
+          isBankrupt: false,
+          isBot: false,
+          isHost: true
+        }
+      ];
+
+      for (let i = 1; i < roomConfig.maxPlayers; i++) {
+        initialPlayers.push({
+          id: 'bot_' + i,
+          name: botNames[i - 1] || `Tycoon_${i}`,
+          avatar: botAvatars[i - 1] || 'bu',
+          avatarFrame: botFrames[i - 1] || undefined,
+          diceSkin: botDiceSkins[(i - 1) % botDiceSkins.length],
+          color: playerColors[i % playerColors.length],
+          cash: roomConfig.initialCash,
+          netWorth: roomConfig.initialCash,
+          position: 0,
+          inJail: false,
+          jailTurns: 0,
+          getOutOfJailCards: 0,
+          properties: [],
+          mortgaged: [],
+          houses: {},
+          isBankrupt: false,
+          isBot: true
+        });
+      }
+
+      return {
+        id: roomConfig.roomCode,
+        name: roomConfig.roomName,
+        code: roomConfig.roomCode,
+        hostId: user.id,
+        players: initialPlayers,
+        status: 'playing', // Active game ready to roll
+        currentTurnPlayerId: user.id,
+        currentTurnIndex: 0,
+        turnPhase: 'roll',
+        turnTimer: roomConfig.turnTimeSeconds || 15,
+        lastDice: [1, 2],
+        isDouble: false,
+        doubleCount: 0,
+        freeParkingPool: 100,
+        auction: null,
+        activeTrade: null,
+        pendingCard: null,
+        logs: [
+          { id: 'l1', timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), text: `Game started with a randomized players order. Good luck!`, type: 'info' }
+        ],
+        betAmount: roomConfig.betAmount,
+        totalPrizePool: roomConfig.betAmount * roomConfig.maxPlayers,
+        platformFeeRate: 0.05,
+        boardTheme: roomConfig.boardTheme,
+        fastSpeed: true
+      };
+    }
+
+    // 2. Custom Room for Real Players (fillWithBots = false):
+    // Check if room was already stored in localStorage
+    try {
+      const stored = localStorage.getItem(customRoomStorageKey);
+      if (stored) {
+        const parsed: GameRoom = JSON.parse(stored);
+        const playerExists = parsed.players.some(p => p.id === user.id);
+        if (!playerExists && parsed.players.length < roomConfig.maxPlayers) {
+          const colorIdx = parsed.players.length % playerColors.length;
+          const newPlayer: Player = {
+            id: user.id,
+            name: user.username,
+            avatar: user.avatar || 'orange',
+            avatarFrame: user.avatarFrame,
+            diceSkin: user.diceSkin || 'dice_golden',
+            color: playerColors[colorIdx],
+            cash: roomConfig.initialCash,
+            netWorth: roomConfig.initialCash,
+            position: 0,
+            inJail: false,
+            jailTurns: 0,
+            getOutOfJailCards: 0,
+            properties: [],
+            mortgaged: [],
+            houses: {},
+            isBankrupt: false,
+            isBot: false,
+            isHost: parsed.players.length === 0
+          };
+          parsed.players.push(newPlayer);
+          parsed.totalPrizePool = roomConfig.betAmount * parsed.players.length;
+          localStorage.setItem(customRoomStorageKey, JSON.stringify(parsed));
+          updateActiveRoomPlayerCount(roomConfig.roomCode, parsed.players.length);
+        }
+        return parsed;
+      }
+    } catch {}
+
+    // First player (Host) creates custom room in waiting state:
+    const hostPlayer: Player = {
       id: user.id,
       name: user.username,
       avatar: user.avatar || 'orange',
@@ -77,63 +200,48 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       isBankrupt: false,
       isBot: false,
       isHost: true
-    }
-  ];
+    };
 
-  for (let i = 1; i < roomConfig.maxPlayers; i++) {
-    initialPlayers.push({
-      id: 'bot_' + i,
-      name: botNames[i - 1] || `Tycoon_${i}`,
-      avatar: botAvatars[i - 1] || 'bu',
-      avatarFrame: botFrames[i - 1] || undefined,
-      diceSkin: botDiceSkins[(i - 1) % botDiceSkins.length],
-      color: playerColors[i % playerColors.length],
-      cash: roomConfig.initialCash,
-      netWorth: roomConfig.initialCash,
-      position: 0,
-      inJail: false,
-      jailTurns: 0,
-      getOutOfJailCards: 0,
-      properties: [],
-      mortgaged: [],
-      houses: {},
-      isBankrupt: false,
-      isBot: true
-    });
-  }
-
-  // Master Room State (Restores from saved active match if rejoining within 2 mins)
-  const [room, setRoom] = useState<GameRoom>(() => {
-    if (isResuming && savedActive) {
-      return savedActive.room;
-    }
-    return {
+    const initialCustomRoom: GameRoom = {
       id: roomConfig.roomCode,
       name: roomConfig.roomName,
       code: roomConfig.roomCode,
       hostId: user.id,
-      players: initialPlayers,
-      status: 'playing', // Active game ready to roll
+      isPrivate: roomConfig.isPrivate ?? false,
+      maxPlayers: roomConfig.maxPlayers || 4,
+      players: [hostPlayer],
+      status: 'waiting', // Waiting in lobby for real players
       currentTurnPlayerId: user.id,
       currentTurnIndex: 0,
       turnPhase: 'roll',
       turnTimer: roomConfig.turnTimeSeconds || 15,
+      turnTimeLimit: roomConfig.turnTimeSeconds || 15,
       lastDice: [1, 2],
       isDouble: false,
+      consecutiveDoubles: 0,
       doubleCount: 0,
-      freeParkingPool: 100, // starting resort pool
+      freeParkingPool: 100,
       auction: null,
       activeTrade: null,
       pendingCard: null,
+      messages: [],
+      winner: null,
       logs: [
-        { id: 'l1', timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), text: `Game started with a randomized players order. Good luck!`, type: 'info' }
+        { id: 'l1', timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), text: `Custom Room created by ${user.username}. Waiting for real players to join...`, type: 'info' }
       ],
       betAmount: roomConfig.betAmount,
-      totalPrizePool: roomConfig.betAmount * roomConfig.maxPlayers,
+      totalPrizePool: roomConfig.betAmount * 1,
       platformFeeRate: 0.05,
       boardTheme: roomConfig.boardTheme,
       fastSpeed: true
     };
+
+    try {
+      localStorage.setItem(customRoomStorageKey, JSON.stringify(initialCustomRoom));
+      updateActiveRoomPlayerCount(roomConfig.roomCode, 1);
+    } catch {}
+
+    return initialCustomRoom;
   });
 
   const [tiles] = useState<BoardTile[]>(BASE_BOARD_TILES);
@@ -180,6 +288,234 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       saveActiveMatch(room, roomConfig, chatMessages);
     }
   }, [room, chatMessages, roomConfig]);
+
+  // BroadcastChannel and localStorage multi-tab sync for custom rooms
+  useEffect(() => {
+    const channelName = `proprush_sync_${roomConfig.roomCode.toLowerCase()}`;
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel(channelName);
+    } catch {}
+
+    // Broadcast our join presence to all tabs/windows
+    if (channel) {
+      channel.postMessage({
+        type: 'PLAYER_JOINED',
+        player: {
+          id: user.id,
+          name: user.username,
+          avatar: user.avatar || 'orange',
+          avatarFrame: user.avatarFrame,
+          diceSkin: user.diceSkin || 'dice_golden',
+          color: playerColors[0],
+          cash: roomConfig.initialCash,
+          netWorth: roomConfig.initialCash,
+          position: 0,
+          inJail: false,
+          jailTurns: 0,
+          getOutOfJailCards: 0,
+          properties: [],
+          mortgaged: [],
+          houses: {},
+          isBankrupt: false,
+          isBot: false,
+          isHost: false
+        }
+      });
+
+      channel.onmessage = (event) => {
+        const data = event.data;
+        if (!data || !data.type) return;
+
+        if (data.type === 'SYNC_ROOM' && data.room) {
+          setRoom(data.room);
+        } else if (data.type === 'GAME_STARTED' && data.room) {
+          sounds.playDiceRoll();
+          setRoom(data.room);
+          addLog(`🚀 Match launched by room creator! Game in progress.`, 'info');
+        } else if (data.type === 'PLAYER_JOINED' && data.player) {
+          setRoom(prev => {
+            if (prev.status !== 'waiting') return prev;
+            if (prev.players.some(p => p.id === data.player.id)) return prev;
+            if (prev.players.length >= roomConfig.maxPlayers) return prev;
+
+            const assignedColor = playerColors[prev.players.length % playerColors.length];
+            const updatedPlayers = [...prev.players, { ...data.player, color: assignedColor, isHost: false }];
+            const updatedRoom: GameRoom = {
+              ...prev,
+              players: updatedPlayers,
+              totalPrizePool: roomConfig.betAmount * updatedPlayers.length,
+              logs: [
+                {
+                  id: 'log_join_' + Date.now(),
+                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  text: `👋 ${data.player.name} joined the room! (${updatedPlayers.length}/${roomConfig.maxPlayers})`,
+                  type: 'info'
+                },
+                ...prev.logs
+              ]
+            };
+
+            if (prev.hostId === user.id) {
+              sounds.playPassGo();
+              try {
+                localStorage.setItem(customRoomStorageKey, JSON.stringify(updatedRoom));
+                updateActiveRoomPlayerCount(roomConfig.roomCode, updatedPlayers.length);
+                channel?.postMessage({ type: 'SYNC_ROOM', room: updatedRoom });
+              } catch {}
+            }
+            return updatedRoom;
+          });
+        } else if (data.type === 'PLAYER_LEFT') {
+          setRoom(prev => {
+            if (prev.status !== 'waiting') return prev;
+            const updatedPlayers = prev.players.filter(p => p.id !== data.playerId);
+            const updatedRoom: GameRoom = {
+              ...prev,
+              players: updatedPlayers,
+              totalPrizePool: roomConfig.betAmount * updatedPlayers.length
+            };
+            if (prev.hostId === user.id) {
+              try {
+                localStorage.setItem(customRoomStorageKey, JSON.stringify(updatedRoom));
+                updateActiveRoomPlayerCount(roomConfig.roomCode, updatedPlayers.length);
+                channel?.postMessage({ type: 'SYNC_ROOM', room: updatedRoom });
+              } catch {}
+            }
+            return updatedRoom;
+          });
+        } else if (data.type === 'CHAT_MESSAGE') {
+          if (data.message && data.message.sender !== user.username) {
+            setChatMessages(prev => [...prev.slice(-30), data.message]);
+            if (!isChatOpen) {
+              setUnreadChatCount(c => c + 1);
+            }
+          }
+        }
+      };
+    }
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === customRoomStorageKey && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setRoom(parsed);
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      if (channel) {
+        channel.postMessage({ type: 'PLAYER_LEFT', playerId: user.id });
+        channel.close();
+      }
+    };
+  }, [roomConfig.roomCode]);
+
+  // Host Action: Start Match (Gated to Creator only with minimum 2 players)
+  const handleHostStartGame = () => {
+    if (room.players.length < 2) {
+      sounds.playBankrupt();
+      alert('A minimum of 2 players is required to start the match. Please invite another player with your room code/link, or add an AI bot.');
+      return;
+    }
+
+    sounds.playDiceRoll();
+    const updatedRoom: GameRoom = {
+      ...room,
+      status: 'playing',
+      currentTurnPlayerId: room.players[0].id,
+      currentTurnIndex: 0,
+      turnPhase: 'roll',
+      turnTimer: roomConfig.turnTimeSeconds || 15,
+      totalPrizePool: room.betAmount * room.players.length,
+      logs: [
+        {
+          id: 'log_start_' + Date.now(),
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          text: `🚀 Match started by room creator ${user.username}! All ${room.players.length} players ready to roll.`,
+          type: 'info'
+        },
+        ...room.logs
+      ]
+    };
+
+    setRoom(updatedRoom);
+
+    // Save and Broadcast to all connected windows/tabs
+    try {
+      localStorage.setItem(customRoomStorageKey, JSON.stringify(updatedRoom));
+      const channel = new BroadcastChannel(`proprush_sync_${roomConfig.roomCode.toLowerCase()}`);
+      channel.postMessage({ type: 'GAME_STARTED', room: updatedRoom });
+      channel.close();
+    } catch {}
+  };
+
+  // Host Action: Add an AI Bot to fill an empty slot (Optional)
+  const handleAddBotToLobby = () => {
+    if (room.players.length >= roomConfig.maxPlayers) return;
+    const botIdx = room.players.length;
+    const newBot: Player = {
+      id: 'bot_' + Date.now().toString(36),
+      name: botNames[(botIdx - 1) % botNames.length] || `Tycoon_${botIdx}`,
+      avatar: botAvatars[(botIdx - 1) % botAvatars.length] || 'bu',
+      avatarFrame: botFrames[(botIdx - 1) % botFrames.length] || undefined,
+      diceSkin: botDiceSkins[(botIdx - 1) % botDiceSkins.length],
+      color: playerColors[botIdx % playerColors.length],
+      cash: roomConfig.initialCash,
+      netWorth: roomConfig.initialCash,
+      position: 0,
+      inJail: false,
+      jailTurns: 0,
+      getOutOfJailCards: 0,
+      properties: [],
+      mortgaged: [],
+      houses: {},
+      isBankrupt: false,
+      isBot: true,
+      isHost: false
+    };
+
+    const updatedRoom: GameRoom = {
+      ...room,
+      players: [...room.players, newBot],
+      totalPrizePool: room.betAmount * (room.players.length + 1)
+    };
+
+    setRoom(updatedRoom);
+    sounds.playClick();
+
+    try {
+      localStorage.setItem(customRoomStorageKey, JSON.stringify(updatedRoom));
+      updateActiveRoomPlayerCount(roomConfig.roomCode, updatedRoom.players.length);
+      const channel = new BroadcastChannel(`proprush_sync_${roomConfig.roomCode.toLowerCase()}`);
+      channel.postMessage({ type: 'SYNC_ROOM', room: updatedRoom });
+      channel.close();
+    } catch {}
+  };
+
+  // Host Action: Remove player or bot from waiting room
+  const handleRemovePlayerFromLobby = (playerId: string) => {
+    if (room.hostId !== user.id) return;
+    const updatedPlayers = room.players.filter(p => p.id !== playerId);
+    const updatedRoom: GameRoom = {
+      ...room,
+      players: updatedPlayers,
+      totalPrizePool: room.betAmount * updatedPlayers.length
+    };
+    setRoom(updatedRoom);
+    sounds.playClick();
+
+    try {
+      localStorage.setItem(customRoomStorageKey, JSON.stringify(updatedRoom));
+      updateActiveRoomPlayerCount(roomConfig.roomCode, updatedPlayers.length);
+      const channel = new BroadcastChannel(`proprush_sync_${roomConfig.roomCode.toLowerCase()}`);
+      channel.postMessage({ type: 'SYNC_ROOM', room: updatedRoom });
+      channel.close();
+    } catch {}
+  };
 
   // Log on resumption
   useEffect(() => {
@@ -1012,8 +1348,9 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               onUseJailCard={handleUseJailCard}
               onEndTurn={nextTurn}
               onToggleSpeed={() => setRoom(r => ({ ...r, fastSpeed: !r.fastSpeed }))}
-              onStartGame={() => setRoom(r => ({ ...r, status: 'playing' }))}
+              onStartGame={handleHostStartGame}
               isLobbyMode={room.status === 'waiting'}
+              isHost={room.hostId === user.id}
             />
           </div>
         </div>
@@ -1506,7 +1843,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               ...prev,
               status: 'playing',
               winner: undefined,
-              players: initialPlayers.map(p => ({
+              players: prev.players.map(p => ({
                 ...p,
                 cash: roomConfig.initialCash,
                 netWorth: roomConfig.initialCash,

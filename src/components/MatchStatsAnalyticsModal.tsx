@@ -38,6 +38,7 @@ import { GameRoom, Player, MatchAnalytics } from '../types/game';
 import { BASE_BOARD_TILES } from '../data/boardTiles';
 import { calculateMatchAnalytics, GROUP_COLORS } from '../utils/matchAnalytics';
 import { AvatarCharacter } from './AvatarCharacter';
+import { ShareVictoryModal } from './ShareVictoryModal';
 import { useTheme } from '../context/ThemeContext';
 import { sounds } from '../utils/audio';
 
@@ -64,7 +65,7 @@ export const MatchStatsAnalyticsModal: React.FC<MatchStatsAnalyticsModalProps> =
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [timelineMetric, setTimelineMetric] = useState<'netWorth' | 'cash' | 'props'>('netWorth');
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>(myPlayerId || room.players[0]?.id || '');
-  const [copiedReport, setCopiedReport] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   // Synthesize or retrieve analytics
   const analytics: MatchAnalytics = room.analytics || calculateMatchAnalytics(room);
@@ -84,26 +85,6 @@ export const MatchStatsAnalyticsModal: React.FC<MatchStatsAnalyticsModalProps> =
 
   // Format currency
   const fmt = (val: number | undefined) => `$${(val || 0).toLocaleString()}`;
-
-  // Copy Match Report
-  const handleCopyReport = () => {
-    sounds.playClick();
-    const reportText = `👑 PROPRUSH MATCH REPORT: ${room.name}
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-🏆 Champion: ${winner?.name} (${fmt(winner?.netWorth)})
-🎮 Rounds: ${analytics.totalRounds} | Total Economy: ${fmt(analytics.totalEconomyVolume)}
-🏦 Total Rent Transacted: ${fmt(analytics.totalRentTransacted)}
-🏗️ Houses & Hotels Built: ${analytics.totalHousesBuilt} Houses, ${analytics.totalHotelsBuilt} Hotels
-
-📊 FINAL STANDINGS:
-${rankedPlayers.map((p, i) => `${i + 1}. ${p.name}: ${p.isBankrupt ? 'BANKRUPT ☠️' : fmt(p.netWorth)} (${p.properties.length} Props)`).join('\n')}
-
-🎲 Play fast-paced multiplayer monopoly on PropRush!`;
-
-    navigator.clipboard?.writeText(reportText);
-    setCopiedReport(true);
-    setTimeout(() => setCopiedReport(false), 2500);
-  };
 
   // Color palette for charts
   const playerColorMap: Record<string, string> = {
@@ -154,174 +135,159 @@ ${rankedPlayers.map((p, i) => `${i + 1}. ${p.name}: ${p.isBankrupt ? 'BANKRUPT �
   });
 
   return (
-    <div className="w-full max-w-5xl rounded-3xl border shadow-2xl overflow-hidden flex flex-col max-h-[92vh] text-left transition-all animate-fade-in bg-white dark:bg-[#15102a] border-slate-200 dark:border-purple-500/30 text-slate-800 dark:text-slate-100">
+    <div className="w-full max-w-4xl rounded-2xl sm:rounded-3xl border shadow-2xl overflow-hidden flex flex-col max-h-[88vh] text-left transition-all animate-fade-in bg-white dark:bg-[#120d24] border-slate-200/80 dark:border-purple-500/20 text-slate-800 dark:text-slate-100">
       
-      {/* Top Header & Match Summary Banner */}
-      <div className="p-4 sm:p-6 bg-gradient-to-r from-purple-900/90 via-indigo-950/90 to-purple-950/90 text-white border-b border-purple-500/20 relative">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-400 to-yellow-300 flex items-center justify-center text-2xl shadow-lg shadow-amber-500/30">
-              👑
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-300 bg-amber-400/20 px-2 py-0.5 rounded-full border border-amber-400/30">
-                  Match Concluded
-                </span>
-                <span className="text-xs text-purple-200 font-mono-code">
-                  {analytics.totalRounds} Rounds • {Math.floor(analytics.durationSeconds / 60)}m {analytics.durationSeconds % 60}s
-                </span>
-              </div>
-              <h2 className="text-xl sm:text-2xl font-heading font-black tracking-tight text-white flex items-center gap-2">
-                <span>{room.name || 'PropRush Match'}</span>
-                <span className="text-sm font-normal text-purple-300 font-sans">Analytics & Standings</span>
+      {/* Sleek, Clean Top Header */}
+      <div className="px-6 py-5 sm:px-8 sm:py-6 bg-slate-50/90 dark:bg-[#181230]/95 border-b border-slate-200/80 dark:border-purple-900/40 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="w-11 h-11 rounded-2xl bg-amber-400/15 border border-amber-400/30 flex items-center justify-center text-2xl shrink-0 shadow-sm">
+            👑
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h2 className="text-lg sm:text-2xl font-heading font-black tracking-tight text-slate-900 dark:text-white truncate">
+                {room.name || 'PropRush Match'}
               </h2>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-300 bg-amber-400/10 px-2.5 py-0.5 rounded-full border border-amber-400/30">
+                Concluded
+              </span>
             </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono-code flex items-center gap-2 flex-wrap">
+              <span>{analytics.totalRounds} Rounds</span>
+              <span>•</span>
+              <span>{Math.floor(analytics.durationSeconds / 60)}m {analytics.durationSeconds % 60}s</span>
+              <span>•</span>
+              <span>Economy Volume: <strong className="text-slate-700 dark:text-slate-300">{fmt(analytics.totalEconomyVolume)}</strong></span>
+            </p>
           </div>
+        </div>
 
-          {/* Quick Actions in Header */}
-          <div className="flex items-center gap-2">
+        {/* Action Controls */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <button
+            onClick={() => {
+              sounds.playClick();
+              setShowShareModal(true);
+            }}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white border border-purple-400/30 text-xs font-bold font-heading flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shadow-md shadow-purple-500/25"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            <span>Share Report</span>
+          </button>
+          {onClose && (
             <button
-              onClick={handleCopyReport}
-              className="px-3 py-2 rounded-xl bg-purple-800/60 hover:bg-purple-700/80 border border-purple-400/30 text-xs font-bold font-heading text-purple-100 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+              onClick={onClose}
+              className="w-9 h-9 rounded-xl bg-slate-200/70 hover:bg-slate-300 dark:bg-white/10 dark:hover:bg-white/20 text-slate-600 dark:text-white flex items-center justify-center cursor-pointer transition-colors text-sm font-bold shadow-sm"
+              title="Close"
             >
-              {copiedReport ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Share2 className="w-3.5 h-3.5" />}
-              <span>{copiedReport ? 'Report Copied!' : 'Share Report'}</span>
+              ✕
             </button>
-            {onClose && (
+          )}
+        </div>
+      </div>
+
+      {/* Spacious Navigation Tabs Bar with Dedicated Padding & Gap */}
+      <div className="px-6 py-4 sm:px-8 border-b bg-slate-100/60 dark:bg-[#150f2b]/80 border-slate-200/80 dark:border-purple-900/30">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
+          {[
+            { id: 'overview', label: '🏆 Standings', icon: Trophy },
+            { id: 'timeline', label: '📈 Timeline', icon: TrendingUp },
+            { id: 'properties', label: '🏢 Portfolios', icon: Building2 },
+            { id: 'dice', label: '🎲 Dice Stats', icon: Dices },
+            { id: 'economy', label: '💰 Economy', icon: DollarSign },
+            { id: 'awards', label: '🎖️ Awards', icon: Award },
+            { id: 'logs', label: '📜 Action Log', icon: History }
+          ].map(tab => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
               <button
-                onClick={onClose}
-                className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center cursor-pointer transition-colors"
-                title="Close"
+                key={tab.id}
+                onClick={() => {
+                  sounds.playClick();
+                  setActiveTab(tab.id as TabType);
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-bold font-heading whitespace-nowrap flex items-center gap-2 transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-[#7059e2] text-white shadow-md shadow-purple-500/25 scale-[1.02]'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-purple-900/40'
+                }`}
               >
-                ✕
+                <Icon className="w-3.5 h-3.5" />
+                <span>{tab.label}</span>
               </button>
-            )}
-          </div>
-        </div>
-
-        {/* Global Key Stats Bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 mt-4 pt-4 border-t border-purple-500/20">
-          <div className="bg-white/5 backdrop-blur-sm p-2.5 rounded-xl border border-white/10">
-            <div className="text-[10px] uppercase font-bold text-purple-300">Total Economy Volume</div>
-            <div className="text-sm sm:text-base font-black font-mono-code text-emerald-400">
-              {fmt(analytics.totalEconomyVolume)}
-            </div>
-          </div>
-          <div className="bg-white/5 backdrop-blur-sm p-2.5 rounded-xl border border-white/10">
-            <div className="text-[10px] uppercase font-bold text-purple-300">Total Rent Transacted</div>
-            <div className="text-sm sm:text-base font-black font-mono-code text-amber-300">
-              {fmt(analytics.totalRentTransacted)}
-            </div>
-          </div>
-          <div className="bg-white/5 backdrop-blur-sm p-2.5 rounded-xl border border-white/10">
-            <div className="text-[10px] uppercase font-bold text-purple-300">Empire Buildings</div>
-            <div className="text-sm sm:text-base font-black font-mono-code text-sky-300">
-              {analytics.totalHousesBuilt} 🟢 / {analytics.totalHotelsBuilt} 🔴
-            </div>
-          </div>
-          <div className="bg-white/5 backdrop-blur-sm p-2.5 rounded-xl border border-white/10">
-            <div className="text-[10px] uppercase font-bold text-purple-300">Taxes & Pot Won</div>
-            <div className="text-sm sm:text-base font-black font-mono-code text-rose-300">
-              {fmt(analytics.totalTaxesCollected)}
-            </div>
-          </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* Navigation Tab Bar */}
-      <div className="flex items-center gap-1 sm:gap-2 px-3 sm:px-6 py-2.5 border-b overflow-x-auto no-scrollbar bg-slate-50 dark:bg-[#1a1435] border-slate-200 dark:border-purple-900/40">
-        {[
-          { id: 'overview', label: '🏆 Standings & Podium', icon: Trophy },
-          { id: 'timeline', label: '📈 Net Worth Timeline', icon: TrendingUp },
-          { id: 'properties', label: '🏢 Property Portfolios', icon: Building2 },
-          { id: 'dice', label: '🎲 Dice & Movement', icon: Dices },
-          { id: 'economy', label: '💰 Economy & Rent', icon: DollarSign },
-          { id: 'awards', label: '🎖️ Match Awards', icon: Award },
-          { id: 'logs', label: '📜 Match Highlights', icon: History }
-        ].map(tab => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => {
-                sounds.playClick();
-                setActiveTab(tab.id as TabType);
-              }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold font-heading whitespace-nowrap flex items-center gap-1.5 transition-all cursor-pointer ${
-                isActive
-                  ? 'bg-[#7059e2] text-white shadow-md shadow-purple-500/25 scale-[1.02]'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-purple-900/20'
-              }`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Main Tab Content Body */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+      {/* Main Tab Body with Generous Breathing Room */}
+      <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6">
 
         {/* TAB 1: OVERVIEW & PODIUM */}
         {activeTab === 'overview' && (
           <div className="space-y-6 animate-fade-in">
-            {/* Champion Podium Box */}
-            <div className="p-4 sm:p-6 rounded-3xl border relative overflow-hidden bg-gradient-to-r from-amber-500/10 via-yellow-500/10 to-amber-500/10 border-amber-400/40 dark:border-amber-400/30">
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="relative">
-                    <AvatarCharacter avatarId={winner?.avatar || 'navy'} size="lg" />
-                    <span className="absolute -bottom-1 -right-1 text-2xl">👑</span>
+            
+            {/* Champion Box */}
+            <div className="p-5 sm:p-6 rounded-2xl border bg-gradient-to-r from-amber-500/[0.07] via-amber-400/[0.04] to-transparent border-amber-400/30 flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-4">
+                <div className="relative shrink-0">
+                  <AvatarCharacter avatarId={winner?.avatar || 'navy'} size="md" />
+                  <span className="absolute -bottom-1 -right-1 text-xl">👑</span>
+                </div>
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                    <span>Champion</span>
+                    {winner?.id === myPlayerId && (
+                      <span className="bg-amber-400 text-slate-900 px-1.5 py-0.2 rounded text-[9px] font-black">
+                        YOU
+                      </span>
+                    )}
                   </div>
-                  <div>
-                    <div className="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
-                      <span>1st Place Champion</span>
-                      {winner?.id === myPlayerId && <span className="bg-amber-400 text-slate-900 px-1.5 py-0.2 rounded text-[10px] font-black">YOU</span>}
-                    </div>
-                    <h3 className="text-2xl sm:text-3xl font-heading font-black tracking-tight text-slate-900 dark:text-white">
-                      {winner?.name}
-                    </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-mono-code">
-                      Final Net Worth: <strong className="text-emerald-600 dark:text-emerald-400 text-sm">{fmt(winner?.netWorth)}</strong> ({winner?.properties.length} properties owned)
-                    </p>
+                  <h3 className="text-xl sm:text-2xl font-heading font-black tracking-tight text-slate-900 dark:text-white mt-0.5">
+                    {winner?.name}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono-code">
+                    Final Net Worth: <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{fmt(winner?.netWorth)}</strong> • {winner?.properties.length} Properties
+                  </p>
+                </div>
+              </div>
+
+              {/* Prize Payout Box */}
+              {room.betAmount > 0 ? (
+                <div className="text-right px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25">
+                  <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase">
+                    Payout (95%)
+                  </div>
+                  <div className="text-xl font-black font-mono-code text-emerald-600 dark:text-emerald-300">
+                    +{fmt(Math.round(room.totalPrizePool * (1 - room.platformFeeRate) * 100) / 100)}
+                  </div>
+                  <div className="text-[10px] text-slate-400">
+                    Pool: {fmt(room.totalPrizePool)}
                   </div>
                 </div>
-
-                {/* Prize Payout Box */}
-                {room.betAmount > 0 ? (
-                  <div className="text-right px-4 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30">
-                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wide">
-                      Winner Prize Payout (95%)
-                    </div>
-                    <div className="text-xl sm:text-2xl font-black font-mono-code text-emerald-600 dark:text-emerald-300">
-                      +{fmt(Math.round(room.totalPrizePool * (1 - room.platformFeeRate) * 100) / 100)}
-                    </div>
-                    <div className="text-[9px] text-slate-500 dark:text-slate-400">
-                      Pool: {fmt(room.totalPrizePool)} ($50 wager × 4)
-                    </div>
+              ) : (
+                <div className="text-right px-4 py-2.5 rounded-xl bg-purple-500/10 border border-purple-500/25">
+                  <div className="text-[10px] text-purple-600 dark:text-purple-400 font-bold uppercase">
+                    Casual Match
                   </div>
-                ) : (
-                  <div className="text-right px-4 py-3 rounded-2xl bg-purple-500/10 border border-purple-500/30">
-                    <div className="text-[10px] text-purple-600 dark:text-purple-400 font-bold uppercase">
-                      Casual Match Victory
-                    </div>
-                    <div className="text-lg font-black font-mono-code text-purple-600 dark:text-purple-300">
-                      +150 LP & +75 🪙
-                    </div>
+                  <div className="text-base font-black font-mono-code text-purple-600 dark:text-purple-300">
+                    +150 LP & +75 🪙
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
-            {/* Full Ranked Leaderboard Cards */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Final Standings & Performance Breakdown
-              </h4>
-              <div className="grid grid-cols-1 gap-2.5">
+            {/* Standings List */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between px-1">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Standings & Performance
+                </h4>
+                <span className="text-xs text-slate-400 font-mono-code">{players.length} Players</span>
+              </div>
+
+              <div className="divide-y divide-slate-200/70 dark:divide-purple-900/30 rounded-2xl border border-slate-200/80 dark:border-purple-900/30 overflow-hidden bg-slate-50/50 dark:bg-purple-950/20">
                 {rankedPlayers.map((player, idx) => {
                   const pStats = analytics.playerStats[player.id] || ({} as any);
                   const isMe = player.id === myPlayerId;
@@ -330,17 +296,15 @@ ${rankedPlayers.map((p, i) => `${i + 1}. ${p.name}: ${p.isBankrupt ? 'BANKRUPT �
                   return (
                     <div
                       key={player.id}
-                      className={`p-3.5 sm:p-4 rounded-2xl border flex items-center justify-between flex-wrap gap-3 transition-all ${
+                      className={`p-3.5 sm:p-4 flex items-center justify-between flex-wrap gap-3 transition-colors ${
                         isMe
-                          ? 'bg-[#7059e2]/10 border-[#7059e2] shadow-sm'
-                          : isFirst
-                          ? 'bg-amber-50/50 dark:bg-amber-500/5 border-amber-300 dark:border-amber-500/30'
-                          : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800'
+                          ? 'bg-[#7059e2]/10 dark:bg-[#7059e2]/15'
+                          : 'hover:bg-slate-100/60 dark:hover:bg-purple-900/20'
                       }`}
                     >
-                      <div className="flex items-center gap-3.5 min-w-[200px]">
+                      <div className="flex items-center gap-3.5 min-w-[180px]">
                         <span className={`font-heading font-black text-sm w-5 text-center ${
-                          idx === 0 ? 'text-amber-500 text-lg' : idx === 1 ? 'text-slate-400 text-base' : idx === 2 ? 'text-amber-700' : 'text-slate-500'
+                          idx === 0 ? 'text-amber-500 text-base' : idx === 1 ? 'text-slate-400' : idx === 2 ? 'text-amber-700' : 'text-slate-400'
                         }`}>
                           #{idx + 1}
                         </span>
@@ -349,42 +313,40 @@ ${rankedPlayers.map((p, i) => `${i + 1}. ${p.name}: ${p.isBankrupt ? 'BANKRUPT �
                           <div className="font-heading font-bold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
                             <span>{player.name}</span>
                             {isMe && (
-                              <span className="text-[10px] bg-[#7059e2] text-white px-1.5 py-0.2 rounded font-bold">
+                              <span className="text-[9px] bg-[#7059e2] text-white px-1.5 py-0.2 rounded font-bold">
                                 YOU
                               </span>
                             )}
                             {player.isBankrupt && (
-                              <span className="text-[9px] bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 px-1.5 py-0.2 rounded font-bold">
-                                Bankrupt ☠️
+                              <span className="text-[9px] bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20 px-1.5 py-0.2 rounded font-bold">
+                                Bankrupt
                               </span>
                             )}
                           </div>
-                          <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2 mt-0.5">
-                            <span>{player.properties.length} Properties</span>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2 mt-0.5 font-mono-code">
+                            <span>{player.properties.length} Props</span>
                             <span>•</span>
                             <span>{pStats.housesBuilt || 0} Houses</span>
-                            <span>•</span>
-                            <span>{pStats.hotelsBuilt || 0} Hotels</span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Stat Metrics Columns */}
-                      <div className="flex items-center gap-4 sm:gap-6 font-mono-code text-xs">
-                        <div className="text-right">
-                          <div className="text-[9px] uppercase font-bold text-slate-400">Cash Flow</div>
+                      {/* Stat Metrics */}
+                      <div className="flex items-center gap-5 sm:gap-8 font-mono-code text-xs">
+                        <div className="text-right hidden sm:block">
+                          <div className="text-[9px] uppercase font-bold text-slate-400">Cash</div>
                           <div className="font-bold text-slate-700 dark:text-slate-300">
                             {fmt(player.cash)}
                           </div>
                         </div>
-                        <div className="text-right">
-                          <div className="text-[9px] uppercase font-bold text-slate-400">Rent Harvested</div>
+                        <div className="text-right hidden sm:block">
+                          <div className="text-[9px] uppercase font-bold text-slate-400">Rent Collected</div>
                           <div className="font-bold text-emerald-600 dark:text-emerald-400">
                             +{fmt(pStats.rentCollected || 0)}
                           </div>
                         </div>
-                        <div className="text-right min-w-[90px]">
-                          <div className="text-[9px] uppercase font-bold text-slate-400">Final Net Worth</div>
+                        <div className="text-right min-w-[85px]">
+                          <div className="text-[9px] uppercase font-bold text-slate-400">Net Worth</div>
                           <div className="font-black text-sm text-slate-900 dark:text-white">
                             {fmt(player.netWorth)}
                           </div>
@@ -396,39 +358,27 @@ ${rankedPlayers.map((p, i) => `${i + 1}. ${p.name}: ${p.isBankrupt ? 'BANKRUPT �
               </div>
             </div>
 
-            {/* Quick Match Highlights Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="p-4 rounded-2xl border bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800">
-                <div className="text-2xl mb-1">🏦</div>
-                <div className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Top Rent Extractor</div>
-                <div className="text-base font-black font-heading mt-1 text-slate-900 dark:text-white">
-                  {rankedPlayers[0]?.name}
+            {/* Concise 3-Metric Summary Bar */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+              <div className="p-4 rounded-2xl border bg-slate-50/60 dark:bg-purple-950/20 border-slate-200/80 dark:border-purple-900/30">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Rent Transacted</div>
+                <div className="text-lg font-black font-mono-code mt-1 text-emerald-600 dark:text-emerald-400">
+                  {fmt(analytics.totalRentTransacted)}
                 </div>
-                <p className="text-xs text-emerald-600 dark:text-emerald-400 font-mono-code mt-0.5">
-                  +{fmt(analytics.playerStats[rankedPlayers[0]?.id]?.rentCollected || 0)} collected
-                </p>
               </div>
 
-              <div className="p-4 rounded-2xl border bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800">
-                <div className="text-2xl mb-1">🏗️</div>
-                <div className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Empire Construction</div>
-                <div className="text-base font-black font-heading mt-1 text-slate-900 dark:text-white">
-                  {analytics.totalHousesBuilt} Houses & {analytics.totalHotelsBuilt} Hotels
+              <div className="p-4 rounded-2xl border bg-slate-50/60 dark:bg-purple-950/20 border-slate-200/80 dark:border-purple-900/30">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Houses & Hotels Built</div>
+                <div className="text-lg font-black font-mono-code mt-1 text-slate-900 dark:text-white">
+                  {analytics.totalHousesBuilt} 🟢 / {analytics.totalHotelsBuilt} 🔴
                 </div>
-                <p className="text-xs text-purple-600 dark:text-purple-400 mt-0.5">
-                  Built across {analytics.totalRounds} active rounds
-                </p>
               </div>
 
-              <div className="p-4 rounded-2xl border bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800">
-                <div className="text-2xl mb-1">🎲</div>
-                <div className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Luckiest Roller</div>
-                <div className="text-base font-black font-heading mt-1 text-slate-900 dark:text-white">
-                  {rankedPlayers[0]?.name}
+              <div className="p-4 rounded-2xl border bg-slate-50/60 dark:bg-purple-950/20 border-slate-200/80 dark:border-purple-900/30">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Taxes & Pot Won</div>
+                <div className="text-lg font-black font-mono-code mt-1 text-amber-600 dark:text-amber-400">
+                  {fmt(analytics.totalTaxesCollected)}
                 </div>
-                <p className="text-xs text-amber-600 dark:text-amber-400 font-mono-code mt-0.5">
-                  Luck Index: {analytics.playerStats[rankedPlayers[0]?.id]?.luckScore || 92}/100
-                </p>
               </div>
             </div>
           </div>
@@ -443,7 +393,7 @@ ${rankedPlayers.map((p, i) => `${i + 1}. ${p.name}: ${p.isBankrupt ? 'BANKRUPT �
                   Round-by-Round Trajectory
                 </h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Track dynamic wealth growth, property acquisitions, and turning points throughout the match
+                  Track dynamic wealth growth, property acquisitions, and turning points
                 </p>
               </div>
 
@@ -451,8 +401,8 @@ ${rankedPlayers.map((p, i) => `${i + 1}. ${p.name}: ${p.isBankrupt ? 'BANKRUPT �
               <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
                 {[
                   { id: 'netWorth', label: 'Net Worth ($)' },
-                  { id: 'cash', label: 'Cash on Hand ($)' },
-                  { id: 'props', label: 'Properties Owned (#)' }
+                  { id: 'cash', label: 'Cash ($)' },
+                  { id: 'props', label: 'Deeds (#)' }
                 ].map(m => (
                   <button
                     key={m.id}
@@ -472,22 +422,22 @@ ${rankedPlayers.map((p, i) => `${i + 1}. ${p.name}: ${p.isBankrupt ? 'BANKRUPT �
               </div>
             </div>
 
-            {/* Recharts Area / Line Chart Container */}
-            <div className="h-72 sm:h-80 w-full p-3 rounded-2xl border bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800">
+            {/* Recharts Area Chart Container */}
+            <div className="h-64 sm:h-72 w-full p-4 rounded-2xl border bg-slate-50/50 dark:bg-purple-950/20 border-slate-200/80 dark:border-purple-900/30">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartTimelineData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
+                <AreaChart data={chartTimelineData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
                   <defs>
                     {players.map((p, idx) => {
                       const color = playerColorMap[p.id] || '#7059e2';
                       return (
                         <linearGradient key={p.id} id={`grad_${p.id}`} x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={color} stopOpacity={0.4} />
+                          <stop offset="5%" stopColor={color} stopOpacity={0.3} />
                           <stop offset="95%" stopColor={color} stopOpacity={0.0} />
                         </linearGradient>
                       );
                     })}
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke={isLight ? '#e2e8f0' : '#332959'} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={isLight ? '#e2e8f0' : '#2d2250'} />
                   <XAxis dataKey="round" stroke={isLight ? '#64748b' : '#94a3b8'} fontSize={11} />
                   <YAxis
                     stroke={isLight ? '#64748b' : '#94a3b8'}
@@ -523,14 +473,14 @@ ${rankedPlayers.map((p, i) => `${i + 1}. ${p.name}: ${p.isBankrupt ? 'BANKRUPT �
               </ResponsiveContainer>
             </div>
 
-            {/* Turning Point Milestone Callouts */}
+            {/* Turning Point Milestones */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
               {analytics.keyEvents.slice(0, 4).map(ev => (
                 <div
                   key={ev.id}
-                  className="p-3 rounded-xl border bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 flex items-start gap-3"
+                  className="p-3.5 rounded-xl border bg-slate-50/60 dark:bg-purple-950/20 border-slate-200/80 dark:border-purple-900/30 flex items-start gap-3"
                 >
-                  <div className="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 font-bold flex items-center justify-center text-xs shrink-0 font-mono-code">
+                  <div className="w-7 h-7 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-300 font-bold flex items-center justify-center text-xs shrink-0 font-mono-code">
                     R{ev.round}
                   </div>
                   <div>
@@ -597,7 +547,7 @@ ${rankedPlayers.map((p, i) => `${i + 1}. ${p.name}: ${p.isBankrupt ? 'BANKRUPT �
                           {selectedPlayer.name}'s Real Estate Empire
                         </div>
                         <div className="text-xs text-slate-500 dark:text-slate-400">
-                          {ownedTiles.length} Deeds Owned • {Object.values(selectedPlayer.houses || {}).filter(h => h > 0 && h < 5).length} Houses • {Object.values(selectedPlayer.houses || {}).filter(h => h === 5).length} Luxury Hotels
+                          {ownedTiles.length} Deeds Owned • {Object.values(selectedPlayer.houses || {}).filter((h: any) => Number(h) > 0 && Number(h) < 5).length} Houses • {Object.values(selectedPlayer.houses || {}).filter((h: any) => Number(h) === 5).length} Luxury Hotels
                         </div>
                       </div>
                     </div>
@@ -967,8 +917,20 @@ ${rankedPlayers.map((p, i) => `${i + 1}. ${p.name}: ${p.isBankrupt ? 'BANKRUPT �
 
       {/* Bottom Footer Actions */}
       <div className="p-4 sm:p-5 border-t bg-slate-50 dark:bg-[#130e26] border-slate-200 dark:border-purple-900/40 flex items-center justify-between flex-wrap gap-3">
-        <div className="text-xs text-slate-500 dark:text-slate-400">
-          Match ID: <code className="font-mono-code text-[11px] text-purple-400">{room.id}</code>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              sounds.playClick();
+              setShowShareModal(true);
+            }}
+            className="px-3.5 py-2 rounded-xl bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/40 dark:hover:bg-purple-800/50 border border-purple-300/60 dark:border-purple-500/40 text-purple-700 dark:text-purple-200 font-heading font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shadow-sm"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            <span>Share Victory Card & Tweet</span>
+          </button>
+          <div className="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">
+            Match ID: <code className="font-mono-code text-[11px] text-purple-400">{room.id}</code>
+          </div>
         </div>
 
         <div className="flex items-center gap-2.5">
@@ -990,6 +952,16 @@ ${rankedPlayers.map((p, i) => `${i + 1}. ${p.name}: ${p.isBankrupt ? 'BANKRUPT �
           )}
         </div>
       </div>
+
+      {/* Share Victory Modal Popup */}
+      {showShareModal && (
+        <ShareVictoryModal
+          room={room}
+          analytics={analytics}
+          myPlayerId={myPlayerId}
+          onClose={() => setShowShareModal(false)}
+        />
+      )}
 
     </div>
   );

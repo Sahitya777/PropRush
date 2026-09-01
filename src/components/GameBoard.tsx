@@ -21,6 +21,7 @@ interface GameBoardProps {
   onToggleSpeed?: () => void;
   onStartGame?: () => void;
   isLobbyMode?: boolean;
+  isHost?: boolean;
 }
 
 export const GameBoard: React.FC<GameBoardProps> = ({
@@ -38,7 +39,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   onEndTurn,
   onToggleSpeed,
   onStartGame,
-  isLobbyMode = false
+  isLobbyMode = false,
+  isHost = true
 }) => {
   const { isLight } = useTheme();
   const currentTurnPlayer = room.players.find(p => p.id === room.currentTurnPlayerId);
@@ -175,19 +177,48 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                         />
                       </div>
 
-                      {/* In Lobby Mode: Big Start Game Button */}
+                      {/* In Lobby Mode: Big Start Game Button (Gated to Creator only with min 2 players) */}
                       {isLobbyMode && (
-                        <div className="flex flex-col items-center gap-2 animate-fade-in">
-                          <button
-                            id="btn-start-game-center"
-                            onClick={onStartGame}
-                            className="px-8 py-3 rounded-2xl font-heading font-extrabold text-base bg-gradient-to-r from-[#7059e2] to-[#9179ff] hover:from-[#6047d8] hover:to-[#8066f2] text-white shadow-[0_0_25px_rgba(112,89,226,0.6)] cursor-pointer transition-all transform active:scale-95"
-                          >
-                            Start Game
-                          </button>
-                          <span className={`text-xs font-mono-code ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                            Joined room {room.code}
-                          </span>
+                        <div className="flex flex-col items-center gap-2.5 animate-fade-in p-2 text-center max-w-xs">
+                          {isHost ? (
+                            room.players.length < 2 ? (
+                              <div className="flex flex-col items-center gap-1.5">
+                                <button
+                                  disabled
+                                  id="btn-start-game-center-disabled"
+                                  className="px-6 py-2.5 rounded-2xl font-heading font-extrabold text-sm bg-slate-800 border border-slate-700 text-slate-500 cursor-not-allowed opacity-75 shadow-none"
+                                >
+                                  🔒 Start Game (Min 2 Players)
+                                </button>
+                                <span className="text-[11px] text-amber-400 font-bold">
+                                  Waiting for 1 more player to join...
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center gap-1.5">
+                                <button
+                                  id="btn-start-game-center"
+                                  onClick={onStartGame}
+                                  className="px-8 py-3 rounded-2xl font-heading font-extrabold text-base bg-gradient-to-r from-emerald-500 via-[#7059e2] to-[#9179ff] hover:from-emerald-400 hover:to-[#8066f2] text-white shadow-[0_0_25px_rgba(112,89,226,0.65)] cursor-pointer transition-all transform active:scale-95 animate-pulse"
+                                >
+                                  🚀 Start Game ({room.players.length} Ready)
+                                </button>
+                                <span className={`text-[11px] font-mono-code ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                                  Click to launch match for all players
+                                </span>
+                              </div>
+                            )
+                          ) : (
+                            <div className="flex flex-col items-center gap-1.5">
+                              <div className="text-xs font-heading font-bold text-purple-300 flex items-center gap-1.5">
+                                <span className="animate-spin text-sm">⏳</span>
+                                <span>Waiting for Room Creator to start...</span>
+                              </div>
+                              <span className={`text-[11px] font-mono-code ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                                {room.players.length} players in room {room.code}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       )}
 

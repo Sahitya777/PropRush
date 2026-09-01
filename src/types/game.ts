@@ -174,8 +174,9 @@ export interface TradeOffer {
 export interface GameLogEntry {
   id: string;
   timestamp: string;
-  type: 'roll' | 'buy' | 'rent' | 'jail' | 'chance' | 'chest' | 'build' | 'mortgage' | 'bankrupt' | 'win' | 'trade' | 'auction' | 'tax';
-  message: string;
+  type: 'roll' | 'buy' | 'rent' | 'jail' | 'chance' | 'chest' | 'build' | 'mortgage' | 'bankrupt' | 'win' | 'trade' | 'auction' | 'tax' | 'info' | 'move' | 'card';
+  message?: string;
+  text?: string;
   playerId?: string;
   amount?: number;
 }
@@ -204,6 +205,7 @@ export type BoardMapTheme =
 
 export interface GameRoom {
   id: string;
+  code?: string;
   name: string;
   hostId: string;
   isPrivate: boolean;
@@ -211,15 +213,17 @@ export interface GameRoom {
   betAmount: number; // $0 to $100 wager per player
   totalPrizePool: number;
   platformFeeRate: number; // 0.05 (5%)
-  status: 'lobby' | 'playing' | 'gameover' | 'finished';
+  status: 'lobby' | 'waiting' | 'playing' | 'gameover' | 'finished';
   players: Player[];
   currentTurnPlayerId: string;
+  currentTurnIndex?: number;
   turnTimer: number; // remaining seconds
   turnTimeLimit: number; // 15, 25, 40 seconds
   turnPhase: TurnPhase;
   lastDice: [number, number];
   isDouble: boolean;
   consecutiveDoubles: number;
+  doubleCount?: number;
   freeParkingPool: number;
   boardTheme: BoardMapTheme;
   auction: AuctionState | null;

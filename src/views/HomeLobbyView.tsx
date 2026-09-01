@@ -3,6 +3,8 @@ import { useUser } from '../context/UserContext';
 import { useTheme } from '../context/ThemeContext';
 import { GameRoom, Player } from '../types/game';
 import { AvatarCharacter } from '../components/AvatarCharacter';
+import { MatchStatsAnalyticsModal } from '../components/MatchStatsAnalyticsModal';
+import { generateSampleCompletedMatch } from '../utils/matchAnalytics';
 import { sounds } from '../utils/audio';
 import { getActiveMatch, clearActiveMatch, formatRemainingTime, ActiveSavedMatch } from '../utils/reconnectStorage';
 import {
@@ -57,6 +59,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [isJoinErrorShaking, setIsJoinErrorShaking] = useState(false);
+  const [sampleCompletedMatch, setSampleCompletedMatch] = useState<GameRoom | null>(null);
 
   // Active rooms registry state
   const [activeRooms, setActiveRooms] = useState<ActiveRoomInfo[]>(() => getAllActiveRooms());
@@ -113,7 +116,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
   const [initialCash, setInitialCash] = useState<number>(1500);
   const [turnTimeSeconds, setTurnTimeSeconds] = useState<number>(15);
   const [boardTheme, setBoardTheme] = useState<string>('classic');
-  const [fillWithBots, setFillWithBots] = useState<boolean>(true);
+  const [fillWithBots, setFillWithBots] = useState<boolean>(false);
 
   const handleQuickPlay = (bet: number = 0, timer: number = 15) => {
     if (bet > 0) {
@@ -286,7 +289,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       initialCash: foundRoom.initialCash || 1500,
       turnTimeSeconds: foundRoom.turnTime,
       boardTheme: foundRoom.map.toLowerCase(),
-      fillWithBots: true
+      fillWithBots: !foundRoom.isCustom
     });
   };
 
@@ -311,7 +314,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       initialCash: room.initialCash || 1500,
       turnTimeSeconds: room.turnTime,
       boardTheme: room.map.toLowerCase(),
-      fillWithBots: true
+      fillWithBots: !room.isCustom
     });
   };
 
@@ -458,6 +461,19 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
           >
             <span>💰</span>
             <span>$10 STAKES MATCH</span>
+          </button>
+
+          <button
+            id="btn-sample-completed-game"
+            onClick={() => {
+              sounds.playDiceRoll();
+              setSampleCompletedMatch(generateSampleCompletedMatch());
+            }}
+            className="px-5 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-400 text-white font-heading font-black text-sm shadow-[0_0_20px_rgba(245,158,11,0.4)] cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-2"
+            title="Inspect full match stats, graphs, timeline, dice bell curve & property breakdown for a finished game"
+          >
+            <span>📊</span>
+            <span>DEMO FINISHED GAME</span>
           </button>
         </div>
 
@@ -1035,6 +1051,23 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Sample Completed Match Analytics Preview Modal */}
+      {sampleCompletedMatch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-fade-in overflow-y-auto">
+          <MatchStatsAnalyticsModal
+            room={sampleCompletedMatch}
+            myPlayerId={user.id}
+            onClose={() => setSampleCompletedMatch(null)}
+            onReturnHome={() => setSampleCompletedMatch(null)}
+            onPlayAgain={() => {
+              setSampleCompletedMatch(null);
+              handleQuickPlay(0, 15);
+            }}
+            isStandalonePreview={true}
+          />
         </div>
       )}
     </div>
