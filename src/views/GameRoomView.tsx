@@ -44,7 +44,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   onToggleMute,
   onOpenRules
 }) => {
-  const { user, recordMatchResult, equipItem, updateUser } = useUser();
+  const { user, recordMatchResult, equipItem, updateUser, depositFunds } = useUser();
   const { isLight, toggleTheme } = useTheme();
 
   // Mobile / Tablet Tab switch: 'board' or 'stats'
@@ -503,6 +503,18 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           sounds.playDiceRoll();
           setRoom(data.room);
           addLog(`🚀 Match launched by room creator! Game in progress.`, 'info');
+        } else if (data.type === 'PLAYER_KICKED' && data.room) {
+          if (room.status === 'waiting' && !isCurrentUserHost) {
+            const isStillIn = data.room.players?.some((p: any) => p.id === user.id);
+            if (!isStillIn) {
+              depositFunds(roomConfig.betAmount, 'room_kick_refund');
+              sounds.playPayRent();
+              alert(`You were removed from the room lobby by the host. Your buy-in of $${roomConfig.betAmount} has been refunded to your wallet.`);
+              onLeaveRoom();
+              return;
+            }
+          }
+          setRoom(data.room);
         } else if (data.type === 'PLAYER_JOINED' && data.player) {
           setRoom(prev => {
             if (prev.status !== 'waiting') return prev;
@@ -568,6 +580,19 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         setRoom(prev => {
           const wasWaiting = prev.status === 'waiting';
           const isNowPlaying = sRoom.status === 'playing';
+
+          // Check if current user got kicked by host from lobby
+          if (wasWaiting && !isCurrentUserHost) {
+            const wasInRoom = prev.players.some(p => p.id === user.id);
+            const isStillInRoom = sRoom.players?.some((p: any) => p.id === user.id);
+            if (wasInRoom && !isStillInRoom) {
+              depositFunds(roomConfig.betAmount, 'room_kick_refund');
+              sounds.playPayRent();
+              alert(`You were removed from the room lobby by the host. Your buy-in of $${roomConfig.betAmount} has been refunded to your wallet.`);
+              onLeaveRoom();
+              return prev;
+            }
+          }
 
           if (wasWaiting && isNowPlaying) {
             sounds.playDiceRoll();
@@ -1941,6 +1966,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               onEndTurn={nextTurn}
               onToggleSpeed={() => setRoom(r => ({ ...r, fastSpeed: !r.fastSpeed }))}
               onStartGame={handleHostStartGame}
+              onKickPlayer={handleRemovePlayerFromLobby}
               isLobbyMode={room.status === 'waiting'}
               isHost={isCurrentUserHost}
             />
@@ -2016,8 +2042,21 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                       </div>
                     </div>
 
-                    {/* Cash & Turn Indicator */}
+                    {/* Cash & Turn Indicator / Host Kick Button in Lobby */}
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      {room.status === 'waiting' && isCurrentUserHost && !isPlayerHost && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemovePlayerFromLobby(p.id);
+                          }}
+                          className="px-2 py-0.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white text-[10px] font-bold border border-rose-500/30 transition-all cursor-pointer shadow-xs active:scale-95"
+                          title={`Kick ${p.name} from room`}
+                        >
+                          Kick ✕
+                        </button>
+                      )}
+
                       <div className="text-right">
                         <div className={`text-xs font-mono-code font-extrabold ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>
                           ${p.cash}
@@ -2109,7 +2148,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                     Give: -${room.activeTrade.requestedCash} {room.activeTrade.requestedProperties.length > 0 && `& ${room.activeTrade.requestedProperties.length} prop(s)`}
                   </div>
                 </div>
-                <div className="flex gap-1.5 pt-1">
+                <div className="flex flex-wrap gap-1.5 pt-1">
                   <button
                     onClick={() => setShowTradeModal(true)}
                     className="flex-1 py-1 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] cursor-pointer transition-all"
@@ -2168,6 +2207,38 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                     className="py-1 px-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-[10px] cursor-pointer transition-all"
                   >
                     Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Spectator Active Trade Card (Visible to all other players in the game) */}
+            {room.activeTrade && 
+             (room.activeTrade.toPlayerId !== (myPlayer?.id || user.id)) && 
+             (room.activeTrade.fromPlayerId !== (myPlayer?.id || user.id)) && (
+              <div className={`p-2.5 rounded-xl border text-xs space-y-1.5 ${
+                isLight ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-slate-900/80 border-slate-800 text-slate-200'
+              }`}>
+                <div className="flex items-center justify-between font-bold text-[11px] text-[#7059e2]">
+                  <span className="flex items-center gap-1">👁️ Live Deal</span>
+                  <span className="text-[10px] text-slate-400 truncate max-w-[120px]">
+                    {room.players.find(p => p.id === room.activeTrade?.fromPlayerId)?.name || 'Sender'} ➔ {room.players.find(p => p.id === room.activeTrade?.toPlayerId)?.name || 'Receiver'}
+                  </span>
+                </div>
+                <div className="text-[10px] space-y-0.5 font-medium">
+                  <div className="text-emerald-500">
+                    Offers: +${room.activeTrade.offeredCash} {room.activeTrade.offeredProperties.length > 0 && `& ${room.activeTrade.offeredProperties.length} prop(s)`}
+                  </div>
+                  <div className="text-amber-400">
+                    Requests: ${room.activeTrade.requestedCash} {room.activeTrade.requestedProperties.length > 0 && `& ${room.activeTrade.requestedProperties.length} prop(s)`}
+                  </div>
+                </div>
+                <div className="flex gap-1.5 pt-0.5">
+                  <button
+                    onClick={() => setShowTradeModal(true)}
+                    className="w-full py-1 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[10px] cursor-pointer transition-all border border-slate-700"
+                  >
+                    View Trade Deal (Spectator)
                   </button>
                 </div>
               </div>
@@ -2495,14 +2566,23 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           tiles={tiles}
           myPlayerId={myPlayer?.id || user.id}
           onSendTradeOffer={(offer) => {
+            const resolvedOffer = {
+              fromPlayerId: offer.fromPlayerId || myPlayer?.id || user.id,
+              toPlayerId: offer.toPlayerId,
+              offeredCash: offer.offeredCash,
+              offeredProperties: offer.offeredProperties,
+              requestedCash: offer.requestedCash,
+              requestedProperties: offer.requestedProperties
+            };
             setRoom(prev => {
-              const updated: GameRoom = { ...prev, activeTrade: offer };
+              const updated: GameRoom = { ...prev, activeTrade: resolvedOffer };
               broadcastAndSync(updated, 'TRADE_OFFERED');
               return updated;
             });
             setShowTradeModal(false);
             const targetPlayer = room.players.find(p => p.id === offer.toPlayerId);
-            addLog(`🤝 Trade proposal sent to ${targetPlayer?.name || 'player'}.`, 'info');
+            const senderPlayer = room.players.find(p => p.id === (offer.fromPlayerId || myPlayer?.id || user.id));
+            addLog(`🤝 Trade proposal sent by ${senderPlayer?.name || 'Player'} to ${targetPlayer?.name || 'player'}.`, 'info');
             sounds.playCashRegister();
           }}
           onAcceptTrade={() => {

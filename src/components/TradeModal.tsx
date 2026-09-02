@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { GameRoom, Player, BoardTile } from '../types/game';
+import React, { useState, useEffect } from 'react';
+import { GameRoom, BoardTile } from '../types/game';
 import { GROUP_COLORS } from '../data/boardTiles';
 import { AvatarCharacter } from './AvatarCharacter';
 import { useTheme } from '../context/ThemeContext';
@@ -10,6 +10,7 @@ interface TradeModalProps {
   tiles: BoardTile[];
   myPlayerId: string;
   onSendTradeOffer: (offer: {
+    fromPlayerId?: string;
     toPlayerId: string;
     offeredCash: number;
     offeredProperties: number[];
@@ -41,6 +42,14 @@ export const TradeModal: React.FC<TradeModalProps> = ({
   const resolvedMyId = myPlayer?.id || myPlayerId;
   const otherPlayers = room.players.filter(p => p.id !== resolvedMyId && !p.isBankrupt);
 
+  const activeTrade = room.activeTrade;
+  const isIncomingTrade = Boolean(activeTrade && (activeTrade.toPlayerId === resolvedMyId || activeTrade.toPlayerId === myPlayerId));
+  const isOutgoingTrade = Boolean(activeTrade && (activeTrade.fromPlayerId === resolvedMyId || activeTrade.fromPlayerId === myPlayerId));
+  const isSpectator = Boolean(activeTrade && !isIncomingTrade && !isOutgoingTrade);
+
+  // Counter-offer edit state
+  const [isEditingCounterOffer, setIsEditingCounterOffer] = useState(false);
+
   const [targetPlayerId, setTargetPlayerId] = useState<string>(
     otherPlayers[0]?.id || ''
   );
@@ -50,18 +59,31 @@ export const TradeModal: React.FC<TradeModalProps> = ({
   const [requestedProperties, setRequestedProperties] = useState<number[]>([]);
 
   // Keep target player valid if other players list changes
-  React.useEffect(() => {
-    if ((!targetPlayerId || !otherPlayers.some(p => p.id === targetPlayerId)) && otherPlayers.length > 0) {
-      setTargetPlayerId(otherPlayers[0].id);
+  useEffect(() => {
+    if (!isEditingCounterOffer) {
+      if ((!targetPlayerId || !otherPlayers.some(p => p.id === targetPlayerId)) && otherPlayers.length > 0) {
+        setTargetPlayerId(otherPlayers[0].id);
+      }
     }
-  }, [otherPlayers, targetPlayerId]);
-
-  const activeTrade = room.activeTrade;
-  const isIncomingTrade = Boolean(activeTrade && (activeTrade.toPlayerId === resolvedMyId || activeTrade.toPlayerId === myPlayerId));
-  const isOutgoingTrade = Boolean(activeTrade && (activeTrade.fromPlayerId === resolvedMyId || activeTrade.fromPlayerId === myPlayerId));
+  }, [otherPlayers, targetPlayerId, isEditingCounterOffer]);
 
   if (!myPlayer) return null;
   const targetPlayer = room.players.find(p => p.id === targetPlayerId) || otherPlayers[0];
+
+  const startCounterOffer = () => {
+    if (!activeTrade) return;
+    sounds.playClick();
+    // Swap roles: target is the original sender
+    setTargetPlayerId(activeTrade.fromPlayerId);
+    // You offer what they requested from you
+    setOfferedCash(Math.min(myPlayer.cash, activeTrade.requestedCash || 0));
+    setOfferedProperties([...activeTrade.requestedProperties.filter(id => myPlayer.properties.includes(id))]);
+    // You request what they originally offered to you
+    const senderPlayer = room.players.find(p => p.id === activeTrade.fromPlayerId);
+    setRequestedCash(Math.min(senderPlayer?.cash || 0, activeTrade.offeredCash || 0));
+    setRequestedProperties([...activeTrade.offeredProperties.filter(id => senderPlayer?.properties.includes(id) ?? true)]);
+    setIsEditingCounterOffer(true);
+  };
 
   const toggleOfferedProp = (id: number) => {
     sounds.playClick();
@@ -81,6 +103,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
     if (!targetPlayerId) return;
     sounds.playCashRegister();
     onSendTradeOffer({
+      fromPlayerId: resolvedMyId,
       toPlayerId: targetPlayerId,
       offeredCash,
       offeredProperties,
@@ -88,6 +111,9 @@ export const TradeModal: React.FC<TradeModalProps> = ({
       requestedProperties
     });
   };
+
+  const senderPlayer = activeTrade ? room.players.find(p => p.id === activeTrade.fromPlayerId) : null;
+  const receiverPlayer = activeTrade ? room.players.find(p => p.id === activeTrade.toPlayerId) : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
@@ -102,9 +128,19 @@ export const TradeModal: React.FC<TradeModalProps> = ({
             <span className="text-2xl">🤝</span>
             <div>
               <h2 className={`font-heading font-black text-base sm:text-lg ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                PLAYER TRADE NEGOTIATION
+                {isSpectator 
+                  ? 'LIVE TRADE NEGOTIATION (SPECTATOR VIEW)' 
+                  : isEditingCounterOffer
+                  ? 'EDIT DEAL & COUNTER OFFER'
+                  : 'PLAYER TRADE NEGOTIATION'}
               </h2>
-              <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Swap properties and balance cash</p>
+              <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                {isSpectator 
+                  ? 'Observing live trade terms between players' 
+                  : isEditingCounterOffer
+                  ? `Modify trade terms to send a revised counter-offer to ${senderPlayer?.name || 'Player'}`
+                  : 'Swap properties and balance cash to build monopolies'}
+              </p>
             </div>
           </div>
           <button
@@ -117,8 +153,95 @@ export const TradeModal: React.FC<TradeModalProps> = ({
           </button>
         </div>
 
-        {/* Outgoing Trade Review Stage */}
-        {isOutgoingTrade ? (
+        {/* 1. SPECTATOR VIEW: Visible to all other players in the room */}
+        {isSpectator && activeTrade ? (
+          <div className={`space-y-4 p-4 rounded-xl border ${
+            isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#201938] border-slate-700'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">👁️</span>
+                <div>
+                  <h4 className={`font-heading font-bold text-sm ${isLight ? 'text-slate-900' : 'text-[#b4a4ff]'}`}>
+                    Active Deal: {senderPlayer?.name || 'Player'} ➔ {receiverPlayer?.name || 'Player'}
+                  </h4>
+                  <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Waiting for {receiverPlayer?.name || 'recipient'} to accept, decline, or counter-offer.
+                  </p>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                View Only
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              {/* Left: What Sender is Offering */}
+              <div className={`p-3 rounded-xl border ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900/70 border-slate-800'}`}>
+                <div className="text-emerald-600 dark:text-emerald-400 font-bold mb-1 flex items-center justify-between">
+                  <span>{senderPlayer?.name || 'Sender'} OFFERS:</span>
+                  <span className="font-mono-code">${activeTrade.offeredCash}</span>
+                </div>
+                <div className="mt-2 space-y-1">
+                  {activeTrade.offeredProperties.map(id => {
+                    const t = tiles[id];
+                    const g = t?.group ? GROUP_COLORS[t.group] : null;
+                    return (
+                      <div key={id} className="flex items-center gap-2 p-1 rounded bg-black/5 dark:bg-white/5">
+                        {g && <span className={`w-2.5 h-2.5 rounded-full ${g.bg}`} />}
+                        <span className="font-medium">{t?.name || `Tile #${id}`}</span>
+                      </div>
+                    );
+                  })}
+                  {activeTrade.offeredProperties.length === 0 && (
+                    <span className="text-slate-400 italic">No properties offered</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Right: What Sender Requests */}
+              <div className={`p-3 rounded-xl border ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900/70 border-slate-800'}`}>
+                <div className="text-amber-600 dark:text-amber-400 font-bold mb-1 flex items-center justify-between">
+                  <span>REQUESTS FROM {receiverPlayer?.name || 'Recipient'}:</span>
+                  <span className="font-mono-code">${activeTrade.requestedCash}</span>
+                </div>
+                <div className="mt-2 space-y-1">
+                  {activeTrade.requestedProperties.map(id => {
+                    const t = tiles[id];
+                    const g = t?.group ? GROUP_COLORS[t.group] : null;
+                    return (
+                      <div key={id} className="flex items-center gap-2 p-1 rounded bg-black/5 dark:bg-white/5">
+                        {g && <span className={`w-2.5 h-2.5 rounded-full ${g.bg}`} />}
+                        <span className="font-medium">{t?.name || `Tile #${id}`}</span>
+                      </div>
+                    );
+                  })}
+                  {activeTrade.requestedProperties.length === 0 && (
+                    <span className="text-slate-400 italic">No properties requested</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className={`p-2.5 rounded-xl text-center text-xs font-medium border ${
+              isLight ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-slate-900/60 border-slate-800 text-slate-400'
+            }`}>
+              🔒 Only {receiverPlayer?.name || 'the recipient'} can Accept, Decline, or Counter-Offer this deal.
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={onClose}
+                className={`px-5 py-2 rounded-xl text-xs font-bold cursor-pointer transition-colors ${
+                  isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                }`}
+              >
+                Close View
+              </button>
+            </div>
+          </div>
+        ) : isOutgoingTrade && activeTrade ? (
+          /* 2. SENDER VIEW: Sender can review or CANCEL the trade */
           <div className={`space-y-4 p-4 rounded-xl border ${
             isLight ? 'bg-purple-50 border-purple-200' : 'bg-[#221b38] border-[#7059e2]/50'
           }`}>
@@ -129,7 +252,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
                   Trade Proposal Pending
                 </h4>
                 <p className={`text-xs ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
-                  Waiting for {room.players.find(p => p.id === activeTrade?.toPlayerId)?.name || 'other player'} to respond:
+                  Waiting for {receiverPlayer?.name || 'other player'} to respond:
                 </p>
               </div>
             </div>
@@ -137,23 +260,23 @@ export const TradeModal: React.FC<TradeModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div className={`p-3 rounded-xl border ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900/70 border-slate-800'}`}>
                 <div className="text-emerald-600 dark:text-emerald-400 font-bold mb-1">YOU OFFERED:</div>
-                <div className={`font-mono-code font-bold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>${activeTrade?.offeredCash} Cash</div>
+                <div className={`font-mono-code font-bold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>${activeTrade.offeredCash} Cash</div>
                 <div className="mt-1 space-y-1">
-                  {activeTrade?.offeredProperties.map(id => (
+                  {activeTrade.offeredProperties.map(id => (
                     <div key={id} className={isLight ? 'text-slate-700' : 'text-slate-300'}>• {tiles[id]?.name}</div>
                   ))}
-                  {(!activeTrade?.offeredProperties || activeTrade.offeredProperties.length === 0) && <span className="text-slate-400">No properties</span>}
+                  {activeTrade.offeredProperties.length === 0 && <span className="text-slate-400">No properties</span>}
                 </div>
               </div>
 
               <div className={`p-3 rounded-xl border ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900/70 border-slate-800'}`}>
                 <div className="text-amber-600 dark:text-amber-400 font-bold mb-1">YOU REQUESTED:</div>
-                <div className={`font-mono-code font-bold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>${activeTrade?.requestedCash} Cash</div>
+                <div className={`font-mono-code font-bold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>${activeTrade.requestedCash} Cash</div>
                 <div className="mt-1 space-y-1">
-                  {activeTrade?.requestedProperties.map(id => (
+                  {activeTrade.requestedProperties.map(id => (
                     <div key={id} className={isLight ? 'text-slate-700' : 'text-slate-300'}>• {tiles[id]?.name}</div>
                   ))}
-                  {(!activeTrade?.requestedProperties || activeTrade.requestedProperties.length === 0) && <span className="text-slate-400">No properties</span>}
+                  {activeTrade.requestedProperties.length === 0 && <span className="text-slate-400">No properties</span>}
                 </div>
               </div>
             </div>
@@ -164,13 +287,15 @@ export const TradeModal: React.FC<TradeModalProps> = ({
                   sounds.playClick();
                   onDeclineTrade();
                 }}
-                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white cursor-pointer shadow-md transition-all active:scale-95"
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white cursor-pointer shadow-md transition-all active:scale-95 flex items-center gap-1.5"
               >
-                Cancel Trade Proposal
+                <span>✕</span>
+                <span>Cancel Trade Proposal</span>
               </button>
             </div>
           </div>
-        ) : isIncomingTrade ? (
+        ) : isIncomingTrade && activeTrade && !isEditingCounterOffer ? (
+          /* 3. RECIPIENT VIEW: Recipient can Accept, Decline, or Counter-Offer */
           <div className={`space-y-4 p-4 rounded-xl border ${
             isLight ? 'bg-amber-50 border-amber-300' : 'bg-[#221b38] border-amber-400/50'
           }`}>
@@ -181,7 +306,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
                   Trade Proposal Received!
                 </h4>
                 <p className={`text-xs ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
-                  {room.players.find(p => p.id === activeTrade.fromPlayerId)?.name} is offering you a deal:
+                  {senderPlayer?.name || 'Player'} sent you this deal offer:
                 </p>
               </div>
             </div>
@@ -210,54 +335,85 @@ export const TradeModal: React.FC<TradeModalProps> = ({
               </div>
             </div>
 
-            <div className="flex gap-3 justify-end pt-2">
+            <div className="flex flex-wrap gap-2.5 justify-end pt-2">
               <button
                 onClick={() => {
                   sounds.playPayRent();
                   onDeclineTrade();
                 }}
-                className={`px-4 py-2 rounded-xl text-xs font-bold cursor-pointer transition-colors ${
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold cursor-pointer transition-colors ${
                   isLight ? 'bg-slate-200 hover:bg-slate-300 text-slate-700' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
                 }`}
               >
                 Decline Offer
               </button>
+              
+              {/* Counter-Offer / Edit Deal Button */}
+              <button
+                onClick={startCounterOffer}
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white text-xs font-bold cursor-pointer shadow-md transition-all active:scale-95 flex items-center gap-1.5"
+                title="Edit the terms and send back a counter offer"
+              >
+                <span>✏️</span>
+                <span>Counter Offer / Edit Deal</span>
+              </button>
+
               <button
                 onClick={() => {
                   sounds.playCashRegister();
                   onAcceptTrade();
                 }}
-                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white cursor-pointer shadow-lg transition-all active:scale-95"
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white cursor-pointer shadow-lg transition-all active:scale-95 flex items-center gap-1.5"
               >
-                Accept Trade Deal
+                <span>✓</span>
+                <span>Accept Trade Deal</span>
               </button>
             </div>
           </div>
         ) : (
+          /* 4. TRADE BUILDER / COUNTER OFFER EDITOR */
           <>
-            {/* Choose Partner */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-              <span className={`text-xs ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Trade with:</span>
-              <div className="flex gap-2 flex-wrap">
-                {otherPlayers.map(p => (
-                  <button
-                    key={p.id}
-                    onClick={() => setTargetPlayerId(p.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all cursor-pointer ${
-                      targetPlayerId === p.id
-                        ? 'bg-[#7059e2] text-white border-[#8e76f7] shadow-md'
-                        : isLight
-                        ? 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                        : 'bg-slate-900/70 text-slate-400 border-slate-800 hover:bg-slate-800'
-                    }`}
-                  >
-                    <AvatarCharacter avatarId={p.avatar} size="xs" />
-                    <span>{p.name}</span>
-                    <span className={`text-[10px] font-mono-code font-bold ${isLight ? 'text-amber-700' : 'text-amber-400'}`}>(${p.cash})</span>
-                  </button>
-                ))}
+            {isEditingCounterOffer && (
+              <div className="p-2.5 bg-amber-500/20 border border-amber-500/40 rounded-xl flex items-center justify-between text-xs text-amber-700 dark:text-amber-300">
+                <span className="font-bold flex items-center gap-1.5">
+                  <span>🔁</span>
+                  <span>Editing Counter-Offer to {targetPlayer?.name || 'Player'}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingCounterOffer(false)}
+                  className="text-xs underline font-bold cursor-pointer hover:opacity-80"
+                >
+                  Back to Incoming Review
+                </button>
               </div>
-            </div>
+            )}
+
+            {/* Choose Partner (Only when creating a brand new offer) */}
+            {!isEditingCounterOffer && (
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <span className={`text-xs ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>Trade with:</span>
+                <div className="flex gap-2 flex-wrap">
+                  {otherPlayers.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => setTargetPlayerId(p.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all cursor-pointer ${
+                        targetPlayerId === p.id
+                          ? 'bg-[#7059e2] text-white border-[#8e76f7] shadow-md'
+                          : isLight
+                          ? 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                          : 'bg-slate-900/70 text-slate-400 border-slate-800 hover:bg-slate-800'
+                      }`}
+                    >
+                      <AvatarCharacter avatarId={p.avatar} size="xs" />
+                      <span>{p.name}</span>
+                      <span className={`text-[10px] font-mono-code font-bold ${isLight ? 'text-amber-700' : 'text-amber-400'}`}>(${p.cash})</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Split Panel */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 overflow-y-auto pr-1">
@@ -395,9 +551,10 @@ export const TradeModal: React.FC<TradeModalProps> = ({
               <button
                 onClick={handlePropose}
                 disabled={!targetPlayerId || (offeredCash === 0 && offeredProperties.length === 0 && requestedCash === 0 && requestedProperties.length === 0)}
-                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#7059e2] to-[#8e76f7] hover:from-[#6047d8] hover:to-[#7f63f3] text-xs font-bold text-white disabled:opacity-40 cursor-pointer shadow-lg active:scale-95 transition-all"
+                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#7059e2] to-[#8e76f7] hover:from-[#6047d8] hover:to-[#7f63f3] text-xs font-bold text-white disabled:opacity-40 cursor-pointer shadow-lg active:scale-95 transition-all flex items-center gap-1.5"
               >
-                Send Trade Offer
+                <span>🤝</span>
+                <span>{isEditingCounterOffer ? 'Send Counter Offer' : 'Send Trade Offer'}</span>
               </button>
             </div>
           </>

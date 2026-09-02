@@ -21,6 +21,7 @@ interface GameBoardProps {
   onEndTurn?: () => void;
   onToggleSpeed?: () => void;
   onStartGame?: () => void;
+  onKickPlayer?: (playerId: string) => void;
   isLobbyMode?: boolean;
   isHost?: boolean;
 }
@@ -41,6 +42,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   onEndTurn,
   onToggleSpeed,
   onStartGame,
+  onKickPlayer,
   isLobbyMode = false,
   isHost = false
 }) => {
@@ -178,9 +180,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                         />
                       </div>
 
-                      {/* In Lobby Mode: Big Start Game Button (Gated to Creator only with min 2 players) */}
+                      {/* In Lobby Mode: Big Start Game Button & Joined Players Roster */}
                       {isLobbyMode && (
-                        <div className="flex flex-col items-center gap-2.5 animate-fade-in p-2 text-center max-w-xs">
+                        <div className="flex flex-col items-center gap-3 animate-fade-in p-2 text-center max-w-sm w-full">
                           {isHost ? (
                             room.players.length < 2 ? (
                               <div className="flex flex-col items-center gap-1.5">
@@ -220,6 +222,48 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                               </span>
                             </div>
                           )}
+
+                          {/* Joined Lobby Players Chips with Host Kick capability */}
+                          <div className={`w-full p-2.5 rounded-2xl border flex flex-col gap-1.5 ${
+                            isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/80 border-slate-800'
+                          }`}>
+                            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
+                              <span>Joined Players ({room.players.length})</span>
+                              {isHost && <span className="text-amber-400">👑 You are Host</span>}
+                            </div>
+                            <div className="flex flex-wrap gap-1.5 justify-center">
+                              {room.players.map((p, idx) => {
+                                const isPlayerHost = Boolean(p.isHost || (room.hostId && room.hostId === p.id) || idx === 0);
+                                return (
+                                  <div
+                                    key={p.id}
+                                    className={`px-2.5 py-1 rounded-xl border flex items-center gap-1.5 text-xs ${
+                                      isPlayerHost
+                                        ? isLight ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                                        : isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-slate-800/80 border-slate-700 text-slate-200'
+                                    }`}
+                                  >
+                                    <AvatarCharacter avatarId={p.avatar} size="xs" />
+                                    <span className="font-bold truncate max-w-[90px]">{p.name}</span>
+                                    {isPlayerHost && <span className="text-[10px]">👑</span>}
+                                    {isHost && !isPlayerHost && onKickPlayer && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          onKickPlayer(p.id);
+                                        }}
+                                        className="ml-1 px-1.5 py-0.5 rounded bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white text-[10px] font-bold border border-rose-500/30 transition-all cursor-pointer"
+                                        title={`Kick ${p.name} from room`}
+                                      >
+                                        Kick ✕
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
                         </div>
                       )}
 

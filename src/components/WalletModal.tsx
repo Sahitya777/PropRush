@@ -259,14 +259,13 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
               </div>
               <input
                 type="number"
-                min="5"
-                max="500"
+                min="1"
                 value={depositAmount || ''}
                 onChange={e => setDepositAmount(Math.max(0, parseInt(e.target.value, 10) || 0))}
                 className={`w-full px-3 py-2 rounded-xl border text-sm font-mono-code focus:outline-none focus:border-emerald-500 ${
                   isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
                 }`}
-                placeholder="Custom Amount ($5 - $500)"
+                placeholder="Custom Amount (Enter any amount, e.g. $250, $1000...)"
               />
             </div>
 
