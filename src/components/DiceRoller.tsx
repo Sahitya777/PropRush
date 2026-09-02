@@ -123,13 +123,21 @@ export const DiceRoller: React.FC<DiceRollerProps> = ({
   const rollingNow = isRolling || localRolling;
 
   return (
-    <div className="flex flex-col items-center justify-center gap-3 p-3 bg-[#191428]/90 backdrop-blur-md rounded-2xl border border-[#7059e2]/30 shadow-2xl">
-      {/* Dice Face Container */}
-      <div className="flex items-center gap-4">
+    <div className={`flex flex-col items-center justify-center gap-3 p-3 bg-[#191428]/90 backdrop-blur-md rounded-2xl border transition-all ${
+      canRoll 
+        ? 'border-[#7059e2] ring-2 ring-[#7059e2]/50 shadow-[0_0_30px_rgba(112,89,226,0.45)]' 
+        : 'border-[#7059e2]/30 shadow-2xl'
+    }`}>
+      {/* Dice Face Container - Clickable to roll when it's your turn */}
+      <div 
+        onClick={canRoll ? handleRollClick : undefined}
+        title={canRoll ? "Click dice to Roll!" : undefined}
+        className={`flex items-center gap-4 ${canRoll ? 'cursor-pointer' : ''}`}
+      >
         {/* Die 1 */}
         <div
           className={`w-14 h-14 ${style.bg} ${style.glow} rounded-xl border-2 flex items-center justify-center transition-all ${
-            rollingNow ? 'animate-dice-roll scale-110' : 'scale-100 hover:rotate-3'
+            rollingNow ? 'animate-dice-roll scale-110' : canRoll ? 'scale-100 hover:scale-105 hover:rotate-3 active:scale-95' : 'scale-100'
           }`}
           style={{
             boxShadow: '0 8px 16px -2px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.4)'
@@ -141,7 +149,7 @@ export const DiceRoller: React.FC<DiceRollerProps> = ({
         {/* Die 2 */}
         <div
           className={`w-14 h-14 ${style.bg} ${style.glow} rounded-xl border-2 flex items-center justify-center transition-all ${
-            rollingNow ? 'animate-dice-roll scale-110' : 'scale-100 hover:-rotate-3'
+            rollingNow ? 'animate-dice-roll scale-110' : canRoll ? 'scale-100 hover:scale-105 hover:-rotate-3 active:scale-95' : 'scale-100'
           }`}
           style={{
             boxShadow: '0 8px 16px -2px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.4)',

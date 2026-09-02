@@ -274,12 +274,55 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     ];
   });
 
+  // Dedicated local room player ID stored in session storage for consistent player identification
+  const roomPidKey = `proprush_my_room_pid_${roomConfig.roomCode.toLowerCase()}`;
+  const storedRoomPid = typeof window !== 'undefined' ? sessionStorage.getItem(roomPidKey) : null;
+
+  // Store my player ID in session storage whenever user or room updates
+  useEffect(() => {
+    if (user?.id) {
+      sessionStorage.setItem(roomPidKey, user.id);
+    }
+  }, [user.id, roomPidKey]);
+
   // Accurate host determination: current user ID matches room hostId, or is first player, or has isHost flag
   const isCurrentUserHost = Boolean(
-    (room.hostId && room.hostId === user.id) ||
+    (room.hostId && (room.hostId === user.id || (storedRoomPid && room.hostId === storedRoomPid))) ||
     (room.players.length > 0 && room.players[0].id === user.id) ||
     (room.players.some(p => p.id === user.id && p.isHost))
   );
+
+  // Identify who the local user is in this room
+  const myPlayer: Player | undefined = 
+    room.players.find(p => p.id === user.id) ||
+    (storedRoomPid ? room.players.find(p => p.id === storedRoomPid) : undefined) ||
+    (isCurrentUserHost 
+      ? room.players.find(p => p.id === room.hostId || p.isHost) || room.players[0]
+      : room.players.find(p => !p.isHost && !p.isBot) || room.players[1] || room.players[0]
+    );
+
+  // Active turn player
+  const currentTurnPlayer: Player | undefined = 
+    room.players.find(p => p.id === room.currentTurnPlayerId) || 
+    room.players[room.currentTurnIndex] || 
+    room.players[0];
+
+  // Accurate turn determination:
+  // 1. Direct user.id match with currentTurnPlayer.id
+  // 2. Or matched via resolved myPlayer
+  // 3. Or session-stored room player ID
+  // 4. Or if testing locally/hotseat where both players are on 1 device
+  const isMyTurn = Boolean(
+    currentTurnPlayer && (
+      currentTurnPlayer.id === user.id ||
+      (myPlayer && currentTurnPlayer.id === myPlayer.id) ||
+      (storedRoomPid && currentTurnPlayer.id === storedRoomPid) ||
+      (!currentTurnPlayer.isBot && !room.players.some(p => p.id === user.id) && isCurrentUserHost)
+    )
+  );
+
+  // Check if current turn is an AI Bot and current user is host (host drives bot turns)
+  const isBotTurn = Boolean(currentTurnPlayer?.isBot && isCurrentUserHost);
 
   // Cash change indicator badges map: playerId -> { delta: number, key: number }
   const [cashDeltas, setCashDeltas] = useState<Record<string, { delta: number; key: number }>>({});
@@ -1401,9 +1444,6 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
-  const currentTurnPlayer = room.players.find(p => p.id === room.currentTurnPlayerId);
-  const isMyTurn = currentTurnPlayer?.id === user.id;
-  const myPlayer = room.players.find(p => p.id === user.id);
   const myOwnedTiles = tiles.filter(t => myPlayer?.properties.includes(t.id));
 
   return (
@@ -1616,7 +1656,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                           isLight ? 'text-slate-900' : 'text-white'
                         }`}>
                           <span className="truncate">{p.name}</span>
-                          {p.id === user.id && (
+                          {(p.id === user.id || p.id === myPlayer?.id) && (
                             <span className="text-[9px] text-[#7059e2] font-mono-code font-bold">(You)</span>
                           )}
                           {isPlayerHost && (
