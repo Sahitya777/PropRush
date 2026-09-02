@@ -20,9 +20,21 @@ import { fireConfetti } from './utils/confetti';
 
 function getInitialView(): 'home' | 'game' | 'store' | 'profile' | '404' {
   if (typeof window === 'undefined') return 'home';
-  const path = window.location.pathname.toLowerCase();
+  const rawPath = window.location.pathname.toLowerCase();
+  // Normalize redundant slashes (e.g. "//" -> "/")
+  const path = rawPath.replace(/\/+/g, '/') || '/';
   const params = new URLSearchParams(window.location.search);
   const viewParam = params.get('view')?.toLowerCase();
+
+  // If returning from Stripe Checkout, joining a room, or canceled deposit, route to home
+  if (
+    params.has('session_id') ||
+    params.has('deposit_success') ||
+    params.has('deposit_canceled') ||
+    params.has('room')
+  ) {
+    return 'home';
+  }
 
   if (viewParam === '404' || path === '/404') return '404';
   if (viewParam === 'store' || path === '/store') return 'store';
@@ -30,7 +42,7 @@ function getInitialView(): 'home' | 'game' | 'store' | 'profile' | '404' {
   if (viewParam === 'home' || path === '/' || path === '/index.html' || path === '') return 'home';
 
   // If path is a custom unrecognized subpath (and not root or index.html), route to 404
-  if (path !== '/' && path !== '/index.html' && path.length > 1 && !path.startsWith('/api')) {
+  if (path !== '/' && path !== '/index.html' && !path.startsWith('/api')) {
     return '404';
   }
   return 'home';
@@ -86,12 +98,14 @@ function AppContent() {
     const depositCanceled = urlParams.get('deposit_canceled');
 
     if (depositCanceled) {
+      setCurrentView('home');
       setDepositNotification('Stripe payment was canceled. No funds were charged.');
       setTimeout(() => setDepositNotification(null), 4000);
       try {
-        window.history.replaceState({}, '', window.location.pathname);
+        window.history.replaceState({}, '', '/');
       } catch {}
     } else if (sessionId && depositSuccess === 'true') {
+      setCurrentView('home');
       const amountNum = depositAmountParam ? parseFloat(depositAmountParam) : 20;
       
       // Verify payment with server
@@ -114,7 +128,7 @@ function AppContent() {
         console.error('Failed to verify stripe session', err);
       }).finally(() => {
         try {
-          window.history.replaceState({}, '', window.location.pathname);
+          window.history.replaceState({}, '', '/');
         } catch {}
       });
     }

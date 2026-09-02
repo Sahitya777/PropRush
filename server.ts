@@ -82,7 +82,8 @@ app.post("/api/stripe/create-checkout-session", async (req: Request, res: Respon
 
     const host = req.get("host") || `localhost:${PORT}`;
     const protocol = req.protocol === "https" || req.get("x-forwarded-proto") === "https" ? "https" : "http";
-    const baseUrl = returnUrl || `${protocol}://${host}`;
+    const rawBase = returnUrl || `${protocol}://${host}`;
+    const baseUrl = rawBase.replace(/\/+$/, '');
 
     const stripe = getStripe();
 

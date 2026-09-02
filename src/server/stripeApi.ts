@@ -67,7 +67,8 @@ export async function handleCreateCheckoutSession(body: {
 
   const host = hostHeader || "localhost:3000";
   const protocol = protocolHeader || "https";
-  const baseUrl = body.returnUrl || `${protocol}://${host}`;
+  const rawBase = body.returnUrl || `${protocol}://${host}`;
+  const baseUrl = rawBase.replace(/\/+$/, '');
 
   const stripe = getStripeInstance();
 

@@ -54,7 +54,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
         userId: user.id,
         username: user.username,
         userEmail: user.email || undefined,
-        returnUrl: window.location.origin + window.location.pathname,
+        returnUrl: window.location.origin,
       });
 
       if (!result.success) {
