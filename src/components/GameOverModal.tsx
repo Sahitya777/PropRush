@@ -24,7 +24,12 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   statsSummary
 }) => {
   const winner = room.winner || room.players.find(p => !p.isBankrupt) || room.players[0];
-  const isWinner = winner?.id === myPlayerId;
+  const isWinner =
+    typeof winner === 'object' && winner !== null
+      ? (winner as any).id === myPlayerId
+      : typeof winner === 'string'
+        ? room.players.find(p => p.id === myPlayerId)?.name === winner
+        : false;
 
   useEffect(() => {
     if (isWinner) {

@@ -31,8 +31,15 @@ export const TradeModal: React.FC<TradeModalProps> = ({
   onClose
 }) => {
   const { isLight } = useTheme();
-  const myPlayer = room.players.find(p => p.id === myPlayerId);
-  const otherPlayers = room.players.filter(p => p.id !== myPlayerId && !p.isBankrupt);
+  
+  // Robust player resolution for 1st, 2nd or guest user
+  const myPlayer = 
+    room.players.find(p => p.id === myPlayerId) ||
+    room.players.find(p => !p.isBankrupt) ||
+    room.players[0];
+
+  const resolvedMyId = myPlayer?.id || myPlayerId;
+  const otherPlayers = room.players.filter(p => p.id !== resolvedMyId && !p.isBankrupt);
 
   const [targetPlayerId, setTargetPlayerId] = useState<string>(
     otherPlayers[0]?.id || ''
@@ -42,12 +49,19 @@ export const TradeModal: React.FC<TradeModalProps> = ({
   const [requestedCash, setRequestedCash] = useState<number>(0);
   const [requestedProperties, setRequestedProperties] = useState<number[]>([]);
 
+  // Keep target player valid if other players list changes
+  React.useEffect(() => {
+    if ((!targetPlayerId || !otherPlayers.some(p => p.id === targetPlayerId)) && otherPlayers.length > 0) {
+      setTargetPlayerId(otherPlayers[0].id);
+    }
+  }, [otherPlayers, targetPlayerId]);
+
   const activeTrade = room.activeTrade;
-  const isIncomingTrade = activeTrade && activeTrade.toPlayerId === myPlayerId;
-  const isOutgoingTrade = activeTrade && activeTrade.fromPlayerId === myPlayerId;
+  const isIncomingTrade = Boolean(activeTrade && (activeTrade.toPlayerId === resolvedMyId || activeTrade.toPlayerId === myPlayerId));
+  const isOutgoingTrade = Boolean(activeTrade && (activeTrade.fromPlayerId === resolvedMyId || activeTrade.fromPlayerId === myPlayerId));
 
   if (!myPlayer) return null;
-  const targetPlayer = room.players.find(p => p.id === targetPlayerId);
+  const targetPlayer = room.players.find(p => p.id === targetPlayerId) || otherPlayers[0];
 
   const toggleOfferedProp = (id: number) => {
     sounds.playClick();
@@ -103,8 +117,60 @@ export const TradeModal: React.FC<TradeModalProps> = ({
           </button>
         </div>
 
-        {/* Incoming Trade Review Stage */}
-        {isIncomingTrade ? (
+        {/* Outgoing Trade Review Stage */}
+        {isOutgoingTrade ? (
+          <div className={`space-y-4 p-4 rounded-xl border ${
+            isLight ? 'bg-purple-50 border-purple-200' : 'bg-[#221b38] border-[#7059e2]/50'
+          }`}>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl animate-spin">⏳</span>
+              <div>
+                <h4 className={`font-heading font-bold text-base ${isLight ? 'text-purple-900' : 'text-[#b4a4ff]'}`}>
+                  Trade Proposal Pending
+                </h4>
+                <p className={`text-xs ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
+                  Waiting for {room.players.find(p => p.id === activeTrade?.toPlayerId)?.name || 'other player'} to respond:
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div className={`p-3 rounded-xl border ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900/70 border-slate-800'}`}>
+                <div className="text-emerald-600 dark:text-emerald-400 font-bold mb-1">YOU OFFERED:</div>
+                <div className={`font-mono-code font-bold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>${activeTrade?.offeredCash} Cash</div>
+                <div className="mt-1 space-y-1">
+                  {activeTrade?.offeredProperties.map(id => (
+                    <div key={id} className={isLight ? 'text-slate-700' : 'text-slate-300'}>• {tiles[id]?.name}</div>
+                  ))}
+                  {(!activeTrade?.offeredProperties || activeTrade.offeredProperties.length === 0) && <span className="text-slate-400">No properties</span>}
+                </div>
+              </div>
+
+              <div className={`p-3 rounded-xl border ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900/70 border-slate-800'}`}>
+                <div className="text-amber-600 dark:text-amber-400 font-bold mb-1">YOU REQUESTED:</div>
+                <div className={`font-mono-code font-bold ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>${activeTrade?.requestedCash} Cash</div>
+                <div className="mt-1 space-y-1">
+                  {activeTrade?.requestedProperties.map(id => (
+                    <div key={id} className={isLight ? 'text-slate-700' : 'text-slate-300'}>• {tiles[id]?.name}</div>
+                  ))}
+                  {(!activeTrade?.requestedProperties || activeTrade.requestedProperties.length === 0) && <span className="text-slate-400">No properties</span>}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                onClick={() => {
+                  sounds.playClick();
+                  onDeclineTrade();
+                }}
+                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white cursor-pointer shadow-md transition-all active:scale-95"
+              >
+                Cancel Trade Proposal
+              </button>
+            </div>
+          </div>
+        ) : isIncomingTrade ? (
           <div className={`space-y-4 p-4 rounded-xl border ${
             isLight ? 'bg-amber-50 border-amber-300' : 'bg-[#221b38] border-amber-400/50'
           }`}>

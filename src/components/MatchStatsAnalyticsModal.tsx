@@ -70,9 +70,15 @@ export const MatchStatsAnalyticsModal: React.FC<MatchStatsAnalyticsModalProps> =
   // Synthesize or retrieve analytics
   const analytics: MatchAnalytics = room.analytics || calculateMatchAnalytics(room);
   const players = room.players || [];
-  const winner = room.winner || players.find(p => !p.isBankrupt) || players[0];
-  const isWinner = winner?.id === myPlayerId;
+  const winnerObj =
+    typeof room.winner === 'object' && room.winner !== null
+      ? (room.winner as Player)
+      : typeof room.winner === 'string'
+        ? players.find(p => p.name === room.winner)
+        : (players.find(p => !p.isBankrupt) || players[0]);
+  const winner = winnerObj || players[0];
   const myPlayer = players.find(p => p.id === myPlayerId);
+  const isWinner = winner?.id === myPlayerId;
 
   // Ranked players by final net worth
   const rankedPlayers = [...players].sort((a, b) => {

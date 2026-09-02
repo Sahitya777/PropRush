@@ -335,7 +335,17 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   };
 
   // Central room broadcast and server state sync
-  const broadcastAndSync = (updatedRoom: GameRoom, eventType: 'SYNC_ROOM' | 'GAME_STARTED' = 'SYNC_ROOM') => {
+  const broadcastAndSync = (
+    updatedRoom: GameRoom,
+    eventType:
+      | 'SYNC_ROOM'
+      | 'GAME_STARTED'
+      | 'TRADE_OFFERED'
+      | 'TRADE_ACCEPTED'
+      | 'TRADE_DECLINED'
+      | 'BANKRUPTCY'
+      | 'GAME_OVER' = 'SYNC_ROOM'
+  ) => {
     try {
       localStorage.setItem(customRoomStorageKey, JSON.stringify(updatedRoom));
       updateActiveRoomPlayerCount(roomConfig.roomCode, updatedRoom.players.length);
@@ -476,7 +486,18 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         const data = event.data;
         if (!data || !data.type) return;
 
-        if (data.type === 'SYNC_ROOM' && data.room) {
+        if (
+          (data.type === 'SYNC_ROOM' ||
+            data.type === 'TRADE_OFFERED' ||
+            data.type === 'TRADE_ACCEPTED' ||
+            data.type === 'TRADE_DECLINED' ||
+            data.type === 'BANKRUPTCY' ||
+            data.type === 'GAME_OVER') &&
+          data.room
+        ) {
+          if (data.type === 'GAME_OVER' || data.room.status === 'finished') {
+            sounds.playWin();
+          }
           setRoom(data.room);
         } else if (data.type === 'GAME_STARTED' && data.room) {
           sounds.playDiceRoll();
@@ -553,13 +574,24 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
             addLog(`🚀 Match launched by room creator! Game in progress.`, 'info');
           }
 
+          if (prev.status === 'playing' && (sRoom.status === 'finished' || sRoom.status === 'gameover')) {
+            sounds.playWin();
+          }
+
           const playersCountDiff = prev.players.length !== (sRoom.players?.length || 0);
           const statusDiff = prev.status !== sRoom.status;
-          const turnDiff = prev.currentTurnPlayerId !== sRoom.currentTurnPlayerId || prev.turnPhase !== sRoom.turnPhase || prev.currentTurnIndex !== sRoom.currentTurnIndex;
+          const turnDiff =
+            prev.currentTurnPlayerId !== sRoom.currentTurnPlayerId ||
+            prev.turnPhase !== sRoom.turnPhase ||
+            prev.currentTurnIndex !== sRoom.currentTurnIndex;
+          const bankruptDiff = sRoom.players?.some(
+            (sp: any) => sp.isBankrupt !== prev.players.find(p => p.id === sp.id)?.isBankrupt
+          );
           const hasNewerVersion = sRoom.version && sRoom.version > serverVersionRef.current;
           const logsDiff = sRoom.logs && sRoom.logs.length > prev.logs.length;
+          const tradeDiff = JSON.stringify(prev.activeTrade) !== JSON.stringify(sRoom.activeTrade);
 
-          if (playersCountDiff || statusDiff || turnDiff || hasNewerVersion || logsDiff) {
+          if (playersCountDiff || statusDiff || turnDiff || bankruptDiff || hasNewerVersion || logsDiff || tradeDiff) {
             if (sRoom.version) serverVersionRef.current = sRoom.version;
             return {
               ...prev,
@@ -746,14 +778,45 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       const activePlayers = prev.players.filter(p => !p.isBankrupt);
       if (activePlayers.length <= 1 && prev.status === 'playing') {
         const winner = activePlayers[0] || prev.players[0];
-        handleGameOver(winner);
-        return prev;
+        sounds.playWin();
+        clearActiveMatch();
+        const myId = myPlayer?.id || user.id;
+        const finalPlacement = winner.id === myId ? 1 : 2;
+        const statsResult = recordMatchResult({
+          roomName: prev.name,
+          placement: finalPlacement,
+          totalPlayers: prev.players.length,
+          betAmount: prev.betAmount,
+          payout: finalPlacement === 1 ? prev.totalPrizePool * (1 - prev.platformFeeRate) : 0,
+          netWorth: winner.netWorth,
+          durationMinutes: 6,
+          stats: {
+            rentCollected: 1200,
+            propertiesBought: winner.properties.length,
+            housesBuilt: (Object.values(winner.houses || {}) as number[]).reduce((a: number, b: number) => a + b, 0),
+            doublesRolled: 3
+          }
+        });
+        setMatchSummaryStats(statsResult);
+        addLog(`🏆 ${winner.name} won the match! All opponents went bankrupt.`, 'info');
+
+        const finishedRoom: GameRoom = {
+          ...prev,
+          status: 'finished',
+          winner: winner,
+          activeTrade: null,
+          auction: null
+        };
+        broadcastAndSync(finishedRoom, 'GAME_OVER');
+        return finishedRoom;
       }
 
       const currentIndex = prev.players.findIndex(p => p.id === prev.currentTurnPlayerId);
-      let nextIndex = (currentIndex >= 0 ? currentIndex + 1 : prev.currentTurnIndex + 1) % prev.players.length;
-      while (prev.players[nextIndex].isBankrupt) {
+      let nextIndex = (currentIndex >= 0 ? currentIndex + 1 : (prev.currentTurnIndex || 0) + 1) % prev.players.length;
+      let loopCount = 0;
+      while (prev.players[nextIndex].isBankrupt && loopCount < prev.players.length) {
         nextIndex = (nextIndex + 1) % prev.players.length;
+        loopCount++;
       }
 
       const nextPlayer = prev.players[nextIndex];
@@ -768,7 +831,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         doubleCount: 0,
         pendingCard: null
       };
-      broadcastAndSync(updated);
+      broadcastAndSync(updated, 'SYNC_ROOM');
       return updated;
     });
   };
@@ -776,7 +839,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   const handleGameOver = (winner: Player) => {
     sounds.playWin();
     clearActiveMatch();
-    const finalPlacement = winner.id === user.id ? 1 : 2;
+    const myId = myPlayer?.id || user.id;
+    const finalPlacement = winner.id === myId ? 1 : 2;
     const statsResult = recordMatchResult({
       roomName: room.name,
       placement: finalPlacement,
@@ -788,7 +852,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       stats: {
         rentCollected: 1200,
         propertiesBought: winner.properties.length,
-        housesBuilt: Object.values(winner.houses).reduce((a, b) => a + b, 0),
+        housesBuilt: (Object.values(winner.houses || {}) as number[]).reduce((a: number, b: number) => a + b, 0),
         doublesRolled: 3
       }
     });
@@ -798,19 +862,121 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       const updated: GameRoom = {
         ...prev,
         status: 'finished',
-        winner: winner.name
+        winner: winner,
+        activeTrade: null,
+        auction: null
       };
-      broadcastAndSync(updated);
+      broadcastAndSync(updated, 'GAME_OVER');
       return updated;
     });
   };
 
+  const handleForfeit = () => {
+    sounds.playBankrupt();
+    clearActiveMatch();
+    setShowForfeitConfirmModal(false);
+
+    setRoom(prev => {
+      const myId = myPlayer?.id || user.id;
+      const playerToForfeit =
+        prev.players.find(p => p.id === myId) ||
+        prev.players.find(p => p.id === user.id) ||
+        prev.players[0];
+      if (!playerToForfeit) return prev;
+
+      const updatedPlayers = prev.players.map(p => {
+        if (p.id === playerToForfeit.id) {
+          return {
+            ...p,
+            isBankrupt: true,
+            cash: 0,
+            netWorth: 0,
+            properties: [],
+            mortgaged: [],
+            houses: {}
+          };
+        }
+        return p;
+      });
+
+      addLog(`💀 ${playerToForfeit.name} surrendered and declared bankruptcy.`, 'info');
+
+      const remainingActive = updatedPlayers.filter(p => !p.isBankrupt);
+
+      // If only 1 player remains, they WIN immediately!
+      if (remainingActive.length <= 1) {
+        const winner = remainingActive[0] || updatedPlayers[0];
+        sounds.playWin();
+        addLog(`🏆 ${winner.name} won the match! All opponents went bankrupt.`, 'info');
+
+        const finalPlacement = winner.id === myId ? 1 : 2;
+        const statsResult = recordMatchResult({
+          roomName: prev.name,
+          placement: finalPlacement,
+          totalPlayers: prev.players.length,
+          betAmount: prev.betAmount,
+          payout: finalPlacement === 1 ? prev.totalPrizePool * (1 - prev.platformFeeRate) : 0,
+          netWorth: winner.netWorth,
+          durationMinutes: 6,
+          stats: {
+            rentCollected: 1200,
+            propertiesBought: winner.properties.length,
+            housesBuilt: (Object.values(winner.houses || {}) as number[]).reduce((a: number, b: number) => a + b, 0),
+            doublesRolled: 3
+          }
+        });
+        setMatchSummaryStats(statsResult);
+
+        const finishedRoom: GameRoom = {
+          ...prev,
+          players: updatedPlayers,
+          status: 'finished',
+          winner: winner,
+          activeTrade: null,
+          auction: null
+        };
+        broadcastAndSync(finishedRoom, 'GAME_OVER');
+        return finishedRoom;
+      }
+
+      // Otherwise, advance turn to the next non-bankrupt player
+      const currentIndex = updatedPlayers.findIndex(p => p.id === prev.currentTurnPlayerId);
+      let nextIndex = (currentIndex >= 0 ? currentIndex + 1 : (prev.currentTurnIndex || 0)) % updatedPlayers.length;
+      let loopCount = 0;
+      while (updatedPlayers[nextIndex].isBankrupt && loopCount < updatedPlayers.length) {
+        nextIndex = (nextIndex + 1) % updatedPlayers.length;
+        loopCount++;
+      }
+
+      const nextPlayer = updatedPlayers[nextIndex];
+      const updatedRoom: GameRoom = {
+        ...prev,
+        players: updatedPlayers,
+        currentTurnIndex: nextIndex,
+        currentTurnPlayerId: nextPlayer.id,
+        turnPhase: nextPlayer.inJail ? 'jail_decision' : 'roll',
+        turnTimer: roomConfig.turnTimeSeconds || 15,
+        isDouble: false,
+        doubleCount: 0,
+        pendingCard: null,
+        activeTrade:
+          prev.activeTrade?.fromPlayerId === playerToForfeit.id ||
+          prev.activeTrade?.toPlayerId === playerToForfeit.id
+            ? null
+            : prev.activeTrade
+      };
+      broadcastAndSync(updatedRoom, 'BANKRUPTCY');
+      return updatedRoom;
+    });
+  };
+
   // Handle dice rolling and tile resolution
-  const handleRollDice = () => {
-    // Check turn authorization (current player or host controlling bot)
+  const handleRollDice = (isAutoTimeout = false) => {
+    // Check turn authorization (current player, host controlling bot, or authoritative timeout fallback)
     const currentTurn = room.players.find(p => p.id === room.currentTurnPlayerId);
     const isBotTurn = Boolean(currentTurn?.isBot && isCurrentUserHost);
-    if (!isMyTurn && !isBotTurn) return;
+    const isAuthorized = isMyTurn || isBotTurn || (isAutoTimeout && (isCurrentUserHost || isMyTurn));
+    if (!isAuthorized) return;
 
     if (isRolling || isRollingRef.current) return;
     isRollingRef.current = true;
@@ -1005,12 +1171,79 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       // Check bankruptcy
       if (player.cash < 0) {
         player.isBankrupt = true;
+        player.cash = 0;
+        player.netWorth = 0;
+        player.properties = [];
+        player.houses = {};
+        player.mortgaged = [];
         addLog(`💀 ${player.name} went bankrupt and is out of the game!`, 'info');
         sounds.playBankrupt();
       }
 
       const updatedPlayers = [...prev.players];
       updatedPlayers[currentPlayerIndex] = player;
+
+      const remainingActive = updatedPlayers.filter(p => !p.isBankrupt);
+      if (remainingActive.length <= 1 && prev.status === 'playing') {
+        const winner = remainingActive[0] || updatedPlayers[0];
+        sounds.playWin();
+        clearActiveMatch();
+        const myId = myPlayer?.id || user.id;
+        const finalPlacement = winner.id === myId ? 1 : 2;
+        const statsResult = recordMatchResult({
+          roomName: prev.name,
+          placement: finalPlacement,
+          totalPlayers: prev.players.length,
+          betAmount: prev.betAmount,
+          payout: finalPlacement === 1 ? prev.totalPrizePool * (1 - prev.platformFeeRate) : 0,
+          netWorth: winner.netWorth,
+          durationMinutes: 6,
+          stats: {
+            rentCollected: 1200,
+            propertiesBought: winner.properties.length,
+            housesBuilt: (Object.values(winner.houses || {}) as number[]).reduce((a: number, b: number) => a + b, 0),
+            doublesRolled: 3
+          }
+        });
+        setMatchSummaryStats(statsResult);
+        addLog(`🏆 ${winner.name} won the match! All opponents went bankrupt.`, 'info');
+
+        const finishedRoom: GameRoom = {
+          ...prev,
+          players: updatedPlayers,
+          status: 'finished',
+          winner: winner,
+          activeTrade: null,
+          auction: null
+        };
+        broadcastAndSync(finishedRoom, 'GAME_OVER');
+        return finishedRoom;
+      }
+
+      if (player.isBankrupt) {
+        let nextIndex = (currentPlayerIndex + 1) % updatedPlayers.length;
+        let loopCount = 0;
+        while (updatedPlayers[nextIndex].isBankrupt && loopCount < updatedPlayers.length) {
+          nextIndex = (nextIndex + 1) % updatedPlayers.length;
+          loopCount++;
+        }
+        const nextPlayer = updatedPlayers[nextIndex];
+        const updatedRoom: GameRoom = {
+          ...prev,
+          players: updatedPlayers,
+          currentTurnIndex: nextIndex,
+          currentTurnPlayerId: nextPlayer.id,
+          turnPhase: nextPlayer.inJail ? 'jail_decision' : 'roll',
+          turnTimer: roomConfig.turnTimeSeconds || 15,
+          lastDice: [d1, d2],
+          isDouble: false,
+          doubleCount: 0,
+          pendingCard: null,
+          freeParkingPool
+        };
+        broadcastAndSync(updatedRoom, 'BANKRUPTCY');
+        return updatedRoom;
+      }
 
       const updatedRoom: GameRoom = {
         ...prev,
@@ -1348,32 +1581,118 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     return () => clearInterval(interval);
   }, [room.status, room.currentTurnPlayerId]);
 
-  // Handle Timeout Auto-Action when 30s Timer reaches 0
+  // Handle Timeout Auto-Action when Turn Timer reaches 0
   useEffect(() => {
     if (room.status !== 'playing' || room.turnTimer > 0) return;
 
     const current = room.players.find(p => p.id === room.currentTurnPlayerId);
-    if (!current || current.isBankrupt || current.isBot) return;
+    if (!current || current.isBankrupt) return;
 
-    // Timeout expired for human player! Auto execute only if it is my turn or if I am host (for disconnected player fallback)
-    const isMyTurn = current.id === user.id;
-    const isHost = room.hostId === user.id;
-    if (!isMyTurn && !isHost) return;
+    // Timeout expired! Auto execute if it is my turn, OR if host acting as fallback
+    const isLocalTurn = isMyTurn || (myPlayer && current.id === myPlayer.id);
+    if (!isLocalTurn && !isCurrentUserHost) return;
 
-    if (room.turnPhase === 'roll') {
-      handleRollDice();
+    if (room.turnPhase === 'roll' || (room.isDouble && room.turnPhase === 'action')) {
+      handleRollDice(true);
     } else if (room.turnPhase === 'jail_decision') {
       if (current.cash >= 50) {
         handlePayJailFine();
       } else {
-        handleRollDice();
+        handleRollDice(true);
       }
     } else if (room.turnPhase === 'buy_decision') {
       nextTurn();
     } else if (room.turnPhase === 'action') {
       nextTurn();
     }
-  }, [room.turnTimer, room.turnPhase, room.status, room.currentTurnPlayerId, user.id, room.hostId]);
+  }, [room.turnTimer, room.turnPhase, room.status, room.currentTurnPlayerId, isMyTurn, isCurrentUserHost, myPlayer]);
+
+  // Alert and sound effect when an active trade offer arrives
+  const prevActiveTradeStr = useRef<string>('');
+  useEffect(() => {
+    const tradeStr = JSON.stringify(room.activeTrade || null);
+    if (tradeStr !== prevActiveTradeStr.current) {
+      if (room.activeTrade) {
+        const myId = myPlayer?.id || user.id;
+        if (room.activeTrade.toPlayerId === myId) {
+          sounds.playPassGo();
+          const sender = room.players.find(p => p.id === room.activeTrade?.fromPlayerId);
+          addLog(`📩 Trade proposal received from ${sender?.name || 'Player'}!`, 'info');
+        }
+      }
+      prevActiveTradeStr.current = tradeStr;
+    }
+  }, [room.activeTrade, myPlayer?.id, user.id]);
+
+  // AI Bot Trade Evaluation & Response (Host Authoritative)
+  useEffect(() => {
+    if (room.status !== 'playing' || !room.activeTrade) return;
+    if (!isCurrentUserHost) return;
+
+    const target = room.players.find(p => p.id === room.activeTrade?.toPlayerId);
+    if (!target || !target.isBot) return;
+
+    const trade = room.activeTrade;
+    const botTimer = setTimeout(() => {
+      let offeredValue = trade.offeredCash;
+      trade.offeredProperties.forEach(pid => {
+        const t = tiles[pid];
+        if (t?.price) offeredValue += t.price;
+      });
+
+      let requestedValue = trade.requestedCash;
+      trade.requestedProperties.forEach(pid => {
+        const t = tiles[pid];
+        if (t?.price) requestedValue += t.price;
+      });
+
+      const isGoodDeal = offeredValue >= requestedValue * 0.9 && target.cash >= trade.requestedCash;
+      if (isGoodDeal) {
+        setRoom(prev => {
+          if (!prev.activeTrade) return prev;
+          const { fromPlayerId, toPlayerId, offeredCash, offeredProperties, requestedCash, requestedProperties } = prev.activeTrade;
+          const updatedPlayers = prev.players.map(p => {
+            if (p.id === fromPlayerId) {
+              const newP = {
+                ...p,
+                cash: p.cash - offeredCash + requestedCash,
+                properties: [...p.properties.filter(id => !offeredProperties.includes(id)), ...requestedProperties]
+              };
+              newP.netWorth = calculateNetWorth(newP);
+              return newP;
+            }
+            if (p.id === toPlayerId) {
+              const newP = {
+                ...p,
+                cash: p.cash - requestedCash + offeredCash,
+                properties: [...p.properties.filter(id => !requestedProperties.includes(id)), ...offeredProperties]
+              };
+              newP.netWorth = calculateNetWorth(newP);
+              return newP;
+            }
+            return p;
+          });
+          const p1 = prev.players.find(p => p.id === fromPlayerId);
+          addLog(`🤝 ${target.name} accepted the trade offer from ${p1?.name || 'Player'}!`, 'info');
+          sounds.playCashRegister();
+          const updated: GameRoom = { ...prev, players: updatedPlayers, activeTrade: null };
+          broadcastAndSync(updated, 'TRADE_ACCEPTED');
+          return updated;
+        });
+        sendChatMessage(target.name, target.avatar, 'Deal! Pleasure doing business with you. 🤝');
+      } else {
+        setRoom(prev => {
+          const updated: GameRoom = { ...prev, activeTrade: null };
+          broadcastAndSync(updated, 'TRADE_DECLINED');
+          return updated;
+        });
+        addLog(`🤝 ${target.name} declined the trade offer.`, 'info');
+        sendChatMessage(target.name, target.avatar, 'No deal! I need a much better offer than that. 🙅‍♂️');
+      }
+    }, 1500);
+
+    return () => clearTimeout(botTimer);
+  }, [room.activeTrade, room.status, isCurrentUserHost]);
 
   // Bot Turn Automation (Host authoritative to prevent multiple tabs/devices from running bot turns simultaneously)
   useEffect(() => {
@@ -1724,23 +2043,117 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           </div>
 
           {/* Trades Section Card */}
-          <div className={`p-3 rounded-2xl border flex flex-col gap-1.5 shadow-md ${
-            isLight ? 'bg-white border-slate-200' : 'bg-[#141026] border-[#2b2447]'
+          <div className={`p-3 rounded-2xl border flex flex-col gap-2 shadow-md transition-all ${
+            room.activeTrade && (room.activeTrade.toPlayerId === (myPlayer?.id || user.id))
+              ? isLight ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-400/50' : 'bg-[#221a36] border-amber-500/60 ring-2 ring-amber-500/30'
+              : isLight ? 'bg-white border-slate-200' : 'bg-[#141026] border-[#2b2447]'
           }`}>
             <div className="flex items-center justify-between">
-              <span className={`text-xs font-bold flex items-center gap-1 ${isLight ? 'text-slate-800' : 'text-white'}`}>
-                <span>🤝</span> Trades
+              <span className={`text-xs font-bold flex items-center gap-1.5 ${isLight ? 'text-slate-800' : 'text-white'}`}>
+                <span>🤝</span>
+                <span>Trades</span>
+                {room.activeTrade && room.activeTrade.toPlayerId === (myPlayer?.id || user.id) && (
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                )}
               </span>
               <button
                 onClick={() => setShowTradeModal(true)}
-                className="px-2 py-0.5 rounded-lg bg-[#7059e2] hover:bg-[#5e46d0] text-white text-[10px] font-bold cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-[#7059e2] hover:bg-[#5e46d0] text-white text-[10px] font-bold cursor-pointer transition-all active:scale-95 flex items-center gap-1 shadow-sm"
               >
-                + Create
+                <span>+</span>
+                <span>{room.activeTrade ? 'View Trade' : 'Create'}</span>
               </button>
             </div>
-            <p className={`text-[10px] leading-relaxed ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-              Make trades with other players to acquire monopolies and build houses.
-            </p>
+
+            {/* Active Incoming Trade Card */}
+            {room.activeTrade && (room.activeTrade.toPlayerId === (myPlayer?.id || user.id)) && (
+              <div className={`p-2.5 rounded-xl border text-xs space-y-1.5 ${
+                isLight ? 'bg-white border-amber-200 text-slate-800' : 'bg-slate-900/80 border-amber-500/40 text-slate-200'
+              }`}>
+                <div className="flex items-center justify-between font-bold text-[11px] text-amber-500">
+                  <span>📩 Incoming Proposal</span>
+                  <span className="text-[10px] text-slate-400">
+                    From {room.players.find(p => p.id === room.activeTrade?.fromPlayerId)?.name || 'Player'}
+                  </span>
+                </div>
+                <div className="text-[10px] space-y-0.5 font-medium">
+                  <div className="text-emerald-500">
+                    Receive: +${room.activeTrade.offeredCash} {room.activeTrade.offeredProperties.length > 0 && `& ${room.activeTrade.offeredProperties.length} prop(s)`}
+                  </div>
+                  <div className="text-rose-400">
+                    Give: -${room.activeTrade.requestedCash} {room.activeTrade.requestedProperties.length > 0 && `& ${room.activeTrade.requestedProperties.length} prop(s)`}
+                  </div>
+                </div>
+                <div className="flex gap-1.5 pt-1">
+                  <button
+                    onClick={() => setShowTradeModal(true)}
+                    className="flex-1 py-1 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] cursor-pointer transition-all"
+                  >
+                    Review & Accept
+                  </button>
+                  <button
+                    onClick={() => {
+                      setRoom(prev => {
+                        const updated: GameRoom = { ...prev, activeTrade: null };
+                        broadcastAndSync(updated, 'TRADE_DECLINED');
+                        return updated;
+                      });
+                      sounds.playPayRent();
+                      addLog(`Trade proposal declined.`, 'info');
+                    }}
+                    className="py-1 px-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold text-[10px] cursor-pointer transition-all"
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Active Outgoing Trade Card */}
+            {room.activeTrade && (room.activeTrade.fromPlayerId === (myPlayer?.id || user.id)) && (
+              <div className={`p-2.5 rounded-xl border text-xs space-y-1.5 ${
+                isLight ? 'bg-purple-50 border-purple-200 text-slate-800' : 'bg-purple-950/40 border-purple-800/40 text-slate-200'
+              }`}>
+                <div className="flex items-center justify-between font-bold text-[11px] text-purple-400">
+                  <span className="flex items-center gap-1">⏳ Proposal Sent</span>
+                  <span className="text-[10px] text-slate-400">
+                    To {room.players.find(p => p.id === room.activeTrade?.toPlayerId)?.name || 'Player'}
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  Waiting for response...
+                </div>
+                <div className="flex gap-1.5 pt-0.5">
+                  <button
+                    onClick={() => setShowTradeModal(true)}
+                    className="flex-1 py-1 px-2 rounded-lg bg-[#7059e2] hover:bg-[#5e46d0] text-white font-bold text-[10px] cursor-pointer transition-all"
+                  >
+                    View Details
+                  </button>
+                  <button
+                    onClick={() => {
+                      setRoom(prev => {
+                        const updated: GameRoom = { ...prev, activeTrade: null };
+                        broadcastAndSync(updated, 'TRADE_DECLINED');
+                        return updated;
+                      });
+                      sounds.playClick();
+                      addLog(`Trade proposal cancelled.`, 'info');
+                    }}
+                    className="py-1 px-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-[10px] cursor-pointer transition-all"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Default Trade Info when no active trade */}
+            {!room.activeTrade && (
+              <p className={`text-[10px] leading-relaxed ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                Make trades with other players to acquire monopolies and build houses.
+              </p>
+            )}
           </div>
 
           {/* My Properties Card */}
@@ -2001,15 +2414,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               </button>
               <button
                 onClick={() => {
-                  sounds.playBankrupt();
-                  clearActiveMatch();
-                  setShowForfeitConfirmModal(false);
-                  setRoom(prev => {
-                    const updated = prev.players.map(p => p.id === user.id ? { ...p, isBankrupt: true, cash: 0 } : p);
-                    return { ...prev, players: updated };
-                  });
-                  addLog(`💀 ${user.username} surrendered and declared bankruptcy.`, 'info');
-                  nextTurn();
+                  handleForfeit();
                 }}
                 className="py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 font-bold text-xs text-white cursor-pointer transition-all active:scale-95 shadow-md shadow-rose-950/50"
               >
@@ -2026,7 +2431,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           tile={selectedTile}
           tiles={tiles}
           room={room}
-          myPlayerId={user.id}
+          myPlayerId={myPlayer?.id || user.id}
           isMyTurn={isMyTurn}
           onClose={() => setSelectedTile(null)}
           onBuildHouse={handleBuildHouse}
@@ -2049,12 +2454,12 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                 ...prev,
                 auction: {
                   ...prev.auction,
-                  activePlayerIds: prev.auction.activePlayerIds.filter(id => id !== user.id)
+                  activePlayerIds: prev.auction.activePlayerIds.filter(id => id !== (myPlayer?.id || user.id))
                 }
               };
             });
           }}
-          myPlayerId={user.id}
+          myPlayerId={myPlayer?.id || user.id}
         />
       )}
 
@@ -2063,32 +2468,64 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         <TradeModal
           room={room}
           tiles={tiles}
-          myPlayerId={user.id}
+          myPlayerId={myPlayer?.id || user.id}
           onSendTradeOffer={(offer) => {
-            setRoom(prev => ({ ...prev, activeTrade: offer }));
+            setRoom(prev => {
+              const updated: GameRoom = { ...prev, activeTrade: offer };
+              broadcastAndSync(updated, 'TRADE_OFFERED');
+              return updated;
+            });
             setShowTradeModal(false);
-            addLog(`Trade proposal sent to ${room.players.find(p => p.id === offer.toPlayerId)?.name}.`, 'info');
+            const targetPlayer = room.players.find(p => p.id === offer.toPlayerId);
+            addLog(`🤝 Trade proposal sent to ${targetPlayer?.name || 'player'}.`, 'info');
+            sounds.playCashRegister();
           }}
           onAcceptTrade={() => {
             setRoom(prev => {
               if (!prev.activeTrade) return prev;
               const { fromPlayerId, toPlayerId, offeredCash, offeredProperties, requestedCash, requestedProperties } = prev.activeTrade;
+              const updatedPlayers = prev.players.map(p => {
+                if (p.id === fromPlayerId) {
+                  const newCash = p.cash - offeredCash + requestedCash;
+                  const newProps = [...p.properties.filter(id => !offeredProperties.includes(id)), ...requestedProperties];
+                  const newP = { ...p, cash: newCash, properties: newProps };
+                  newP.netWorth = calculateNetWorth(newP);
+                  return newP;
+                }
+                if (p.id === toPlayerId) {
+                  const newCash = p.cash - requestedCash + offeredCash;
+                  const newProps = [...p.properties.filter(id => !requestedProperties.includes(id)), ...offeredProperties];
+                  const newP = { ...p, cash: newCash, properties: newProps };
+                  newP.netWorth = calculateNetWorth(newP);
+                  return newP;
+                }
+                return p;
+              });
+
               const p1 = prev.players.find(p => p.id === fromPlayerId);
               const p2 = prev.players.find(p => p.id === toPlayerId);
-              if (!p1 || !p2) return prev;
-              p1.cash = p1.cash - offeredCash + requestedCash;
-              p2.cash = p2.cash - requestedCash + offeredCash;
-              p1.properties = [...p1.properties.filter(id => !offeredProperties.includes(id)), ...requestedProperties];
-              p2.properties = [...p2.properties.filter(id => !requestedProperties.includes(id)), ...offeredProperties];
-              p1.netWorth = calculateNetWorth(p1);
-              p2.netWorth = calculateNetWorth(p2);
-              addLog(`🤝 Trade completed between ${p1.name} and ${p2.name}!`, 'info');
-              return { ...prev, activeTrade: null };
+              addLog(`🤝 Trade completed between ${p1?.name || 'Player 1'} and ${p2?.name || 'Player 2'}!`, 'info');
+              sounds.playCashRegister();
+
+              const updated: GameRoom = {
+                ...prev,
+                players: updatedPlayers,
+                activeTrade: null
+              };
+              broadcastAndSync(updated, 'TRADE_ACCEPTED');
+              return updated;
             });
+            setShowTradeModal(false);
           }}
           onDeclineTrade={() => {
-            setRoom(prev => ({ ...prev, activeTrade: null }));
+            setRoom(prev => {
+              const updated: GameRoom = { ...prev, activeTrade: null };
+              broadcastAndSync(updated, 'TRADE_DECLINED');
+              return updated;
+            });
+            setShowTradeModal(false);
             addLog(`Trade proposal was declined.`, 'info');
+            sounds.playPayRent();
           }}
           onClose={() => setShowTradeModal(false)}
         />
@@ -2098,29 +2535,33 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       {room.status === 'finished' && (
         <GameOverModal
           room={room}
-          myPlayerId={user.id}
+          myPlayerId={myPlayer?.id || user.id}
           onPlayAgain={() => {
-            setRoom(prev => ({
-              ...prev,
-              status: 'playing',
-              winner: undefined,
-              players: prev.players.map(p => ({
-                ...p,
-                cash: roomConfig.initialCash,
-                netWorth: roomConfig.initialCash,
-                position: 0,
-                inJail: false,
-                jailTurns: 0,
-                getOutOfJailCards: 0,
-                properties: [],
-                mortgaged: [],
-                houses: {},
-                isBankrupt: false
-              })),
-              turnPhase: 'roll',
-              currentTurnIndex: 0,
-              currentTurnPlayerId: user.id
-            }));
+            setRoom(prev => {
+              const restarted: GameRoom = {
+                ...prev,
+                status: 'playing',
+                winner: undefined,
+                players: prev.players.map(p => ({
+                  ...p,
+                  cash: roomConfig.initialCash,
+                  netWorth: roomConfig.initialCash,
+                  position: 0,
+                  inJail: false,
+                  jailTurns: 0,
+                  getOutOfJailCards: 0,
+                  properties: [],
+                  mortgaged: [],
+                  houses: {},
+                  isBankrupt: false
+                })),
+                turnPhase: 'roll',
+                currentTurnIndex: 0,
+                currentTurnPlayerId: prev.players[0]?.id || user.id
+              };
+              broadcastAndSync(restarted, 'GAME_STARTED');
+              return restarted;
+            });
           }}
           onReturnHome={onLeaveRoom}
           statsSummary={matchSummaryStats}

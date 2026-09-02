@@ -226,20 +226,6 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                       {/* Active Turn Actions (Roll, Buy Property, End Turn, Jail Decisions) */}
                       {!isLobbyMode && (
                         <div className="flex flex-col items-center gap-2">
-                          {/* 0. Roll Dice Action Button (Prominent when it is my turn to roll) */}
-                          {(room.turnPhase === 'roll' || (room.isDouble && room.turnPhase === 'action')) && isMyTurn && (
-                            <button
-                              id="btn-board-roll-dice"
-                              onClick={onRollDice}
-                              disabled={isRolling}
-                              className="px-8 py-2.5 rounded-2xl font-heading font-extrabold text-sm sm:text-base bg-gradient-to-r from-[#7059e2] via-[#856df2] to-[#9d88ff] hover:from-[#5f46d6] hover:to-[#8870f0] text-white shadow-[0_0_25px_rgba(112,89,226,0.65)] cursor-pointer transition-all active:scale-95 flex items-center gap-2 animate-pulse"
-                            >
-                              <span className="text-base sm:text-lg">🎲</span>
-                              <span>{isRolling ? 'Rolling Dice...' : room.isDouble ? 'ROLL AGAIN (DOUBLES!)' : 'ROLL DICE'}</span>
-                              <span className="text-xs font-mono-code opacity-85">({room.turnTimer}s)</span>
-                            </button>
-                          )}
-
                           {/* 1. Unclaimed Property Buy / Pass Decision */}
                           {room.turnPhase === 'buy_decision' && currentLandingTile && isMyTurn && (
                             <div className="flex flex-wrap items-center justify-center gap-2 animate-fade-in">
