@@ -274,6 +274,13 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     ];
   });
 
+  // Accurate host determination: current user ID matches room hostId, or is first player, or has isHost flag
+  const isCurrentUserHost = Boolean(
+    (room.hostId && room.hostId === user.id) ||
+    (room.players.length > 0 && room.players[0].id === user.id) ||
+    (room.players.some(p => p.id === user.id && p.isHost))
+  );
+
   // Cash change indicator badges map: playerId -> { delta: number, key: number }
   const [cashDeltas, setCashDeltas] = useState<Record<string, { delta: number; key: number }>>({});
 
@@ -562,6 +569,10 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
   // Host Action: Start Match (Gated to Creator only with minimum 2 players)
   const handleHostStartGame = () => {
+    if (!isCurrentUserHost) {
+      alert('Only the room creator / host can start the match.');
+      return;
+    }
     if (room.players.length < 2) {
       sounds.playBankrupt();
       alert('A minimum of 2 players is required to start the match. Please invite another player with your room code/link, or add an AI bot.');
@@ -594,6 +605,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
   // Host Action: Add an AI Bot to fill an empty slot (Optional)
   const handleAddBotToLobby = () => {
+    if (!isCurrentUserHost) return;
     if (room.players.length >= roomConfig.maxPlayers) return;
     const botIdx = room.players.length;
     const newBot: Player = {
@@ -630,7 +642,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
   // Host Action: Remove player or bot from waiting room
   const handleRemovePlayerFromLobby = (playerId: string) => {
-    if (room.hostId !== user.id) return;
+    if (!isCurrentUserHost) return;
     const updatedPlayers = room.players.filter(p => p.id !== playerId);
     const updatedRoom: GameRoom = {
       ...room,
@@ -695,7 +707,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         return prev;
       }
 
-      let nextIndex = (prev.currentTurnIndex + 1) % prev.players.length;
+      const currentIndex = prev.players.findIndex(p => p.id === prev.currentTurnPlayerId);
+      let nextIndex = (currentIndex >= 0 ? currentIndex + 1 : prev.currentTurnIndex + 1) % prev.players.length;
       while (prev.players[nextIndex].isBankrupt) {
         nextIndex = (nextIndex + 1) % prev.players.length;
       }
@@ -751,6 +764,11 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
   // Handle dice rolling and tile resolution
   const handleRollDice = () => {
+    // Check turn authorization (current player or host controlling bot)
+    const currentTurn = room.players.find(p => p.id === room.currentTurnPlayerId);
+    const isBotTurn = Boolean(currentTurn?.isBot && isCurrentUserHost);
+    if (!isMyTurn && !isBotTurn) return;
+
     if (isRolling || isRollingRef.current) return;
     isRollingRef.current = true;
     setIsRolling(true);
@@ -770,7 +788,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
   const executeMove = (d1: number, d2: number, steps: number, isDouble: boolean) => {
     setRoom(prev => {
-      const currentPlayerIndex = prev.currentTurnIndex;
+      const currentPlayerIndex = prev.players.findIndex(p => p.id === prev.currentTurnPlayerId);
+      if (currentPlayerIndex === -1) return prev;
       const player = { ...prev.players[currentPlayerIndex] };
 
       let doubleCount = isDouble ? prev.doubleCount + 1 : 0;
@@ -967,8 +986,13 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
   // Buy Property Handler
   const handleBuyProperty = () => {
+    const currentTurn = room.players.find(p => p.id === room.currentTurnPlayerId);
+    const isBotTurn = Boolean(currentTurn?.isBot && isCurrentUserHost);
+    if (!isMyTurn && !isBotTurn) return;
+
     setRoom(prev => {
-      const currentPlayerIndex = prev.currentTurnIndex;
+      const currentPlayerIndex = prev.players.findIndex(p => p.id === prev.currentTurnPlayerId);
+      if (currentPlayerIndex === -1) return prev;
       const player = { ...prev.players[currentPlayerIndex] };
       const tile = tiles[player.position];
 
@@ -997,8 +1021,14 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
   // Pass to Auction
   const handlePassToAuction = () => {
+    const currentTurn = room.players.find(p => p.id === room.currentTurnPlayerId);
+    const isBotTurn = Boolean(currentTurn?.isBot && isCurrentUserHost);
+    if (!isMyTurn && !isBotTurn) return;
+
     setRoom(prev => {
-      const player = prev.players[prev.currentTurnIndex];
+      const currentPlayerIndex = prev.players.findIndex(p => p.id === prev.currentTurnPlayerId);
+      if (currentPlayerIndex === -1) return prev;
+      const player = prev.players[currentPlayerIndex];
       const tile = tiles[player.position];
       if (!tile || !tile.price) return { ...prev, turnPhase: 'action' };
 
@@ -1055,8 +1085,14 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
   // Jail Fine & Card
   const handlePayJailFine = () => {
+    const currentTurn = room.players.find(p => p.id === room.currentTurnPlayerId);
+    const isBotTurn = Boolean(currentTurn?.isBot && isCurrentUserHost);
+    if (!isMyTurn && !isBotTurn) return;
+
     setRoom(prev => {
-      const p = { ...prev.players[prev.currentTurnIndex] };
+      const currentPlayerIndex = prev.players.findIndex(p => p.id === prev.currentTurnPlayerId);
+      if (currentPlayerIndex === -1) return prev;
+      const p = { ...prev.players[currentPlayerIndex] };
       if (p.cash < 50) return prev;
       p.cash -= 50;
       p.inJail = false;
@@ -1066,7 +1102,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       sounds.playEscape();
 
       const updated = [...prev.players];
-      updated[prev.currentTurnIndex] = p;
+      updated[currentPlayerIndex] = p;
       const updatedRoom: GameRoom = {
         ...prev,
         players: updated,
@@ -1079,8 +1115,14 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   };
 
   const handleUseJailCard = () => {
+    const currentTurn = room.players.find(p => p.id === room.currentTurnPlayerId);
+    const isBotTurn = Boolean(currentTurn?.isBot && isCurrentUserHost);
+    if (!isMyTurn && !isBotTurn) return;
+
     setRoom(prev => {
-      const p = { ...prev.players[prev.currentTurnIndex] };
+      const currentPlayerIndex = prev.players.findIndex(p => p.id === prev.currentTurnPlayerId);
+      if (currentPlayerIndex === -1) return prev;
+      const p = { ...prev.players[currentPlayerIndex] };
       if (p.getOutOfJailCards <= 0) return prev;
       p.getOutOfJailCards -= 1;
       p.inJail = false;
@@ -1089,7 +1131,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       sounds.playEscape();
 
       const updated = [...prev.players];
-      updated[prev.currentTurnIndex] = p;
+      updated[currentPlayerIndex] = p;
       const updatedRoom: GameRoom = { ...prev, players: updated, turnPhase: 'roll' };
       broadcastAndSync(updatedRoom);
       return updatedRoom;
@@ -1507,6 +1549,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               onRollDice={handleRollDice}
               isRolling={isRolling}
               canRoll={isMyTurn && (room.turnPhase === 'roll' || (room.isDouble && room.turnPhase === 'action'))}
+              isMyTurn={isMyTurn}
               onBuyProperty={handleBuyProperty}
               onPassToAuction={handlePassToAuction}
               onPayJailFine={handlePayJailFine}
@@ -1515,7 +1558,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               onToggleSpeed={() => setRoom(r => ({ ...r, fastSpeed: !r.fastSpeed }))}
               onStartGame={handleHostStartGame}
               isLobbyMode={room.status === 'waiting'}
-              isHost={room.hostId === user.id}
+              isHost={isCurrentUserHost}
             />
           </div>
         </div>
@@ -1540,6 +1583,11 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               {room.players.map(p => {
                 const isTurn = p.id === room.currentTurnPlayerId;
                 const delta = cashDeltas[p.id];
+                const isPlayerHost = Boolean(
+                  (room.hostId && room.hostId === p.id) ||
+                  (room.players.length > 0 && room.players[0].id === p.id) ||
+                  p.isHost
+                );
 
                 return (
                   <div
@@ -1564,12 +1612,18 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                         )}
                       </div>
                       <div className="min-w-0">
-                        <div className={`font-heading font-bold text-xs truncate flex items-center gap-1 ${
+                        <div className={`font-heading font-bold text-xs truncate flex items-center gap-1.5 ${
                           isLight ? 'text-slate-900' : 'text-white'
                         }`}>
-                          <span>{p.name}</span>
+                          <span className="truncate">{p.name}</span>
                           {p.id === user.id && (
-                            <span className="text-[9px] text-[#7059e2] font-mono-code font-normal">(You)</span>
+                            <span className="text-[9px] text-[#7059e2] font-mono-code font-bold">(You)</span>
+                          )}
+                          {isPlayerHost && (
+                            <span className="text-[8px] px-1 py-0.5 bg-amber-500/20 text-amber-400 font-bold rounded border border-amber-500/30 flex items-center gap-0.5 shrink-0" title="Room Creator / Host">
+                              <span>👑</span>
+                              <span>Host</span>
+                            </span>
                           )}
                         </div>
                         <div className={`text-[10px] font-mono-code ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
@@ -1608,23 +1662,25 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               })}
             </div>
 
-            {/* Bankrupt / Forfeit Button with Confirmation Trigger */}
-            <button
-              id="btn-bankrupt-forfeit"
-              onClick={() => {
-                sounds.playClick();
-                setShowForfeitConfirmModal(true);
-              }}
-              className={`w-full py-1.5 rounded-xl border text-[11px] font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 active:scale-95 shadow-xs ${
-                isLight
-                  ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                  : 'bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60'
-              }`}
-              title="Surrender this match and declare bankruptcy"
-            >
-              <span>🚩</span>
-              <span>Forfeit / Bankrupt</span>
-            </button>
+            {/* Bankrupt / Forfeit Button with Confirmation Trigger (Only in active playing game) */}
+            {room.status === 'playing' && (
+              <button
+                id="btn-bankrupt-forfeit"
+                onClick={() => {
+                  sounds.playClick();
+                  setShowForfeitConfirmModal(true);
+                }}
+                className={`w-full py-1.5 rounded-xl border text-[11px] font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 active:scale-95 shadow-xs ${
+                  isLight
+                    ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                    : 'bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60'
+                }`}
+                title="Surrender this match and declare bankruptcy"
+              >
+                <span>🚩</span>
+                <span>Forfeit / Bankrupt</span>
+              </button>
+            )}
           </div>
 
           {/* Trades Section Card */}

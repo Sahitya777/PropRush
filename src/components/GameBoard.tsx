@@ -13,6 +13,7 @@ interface GameBoardProps {
   onRollDice: () => void;
   isRolling: boolean;
   canRoll: boolean;
+  isMyTurn?: boolean;
   onBuyProperty?: () => void;
   onPassToAuction?: () => void;
   onPayJailFine?: () => void;
@@ -32,6 +33,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   onRollDice,
   isRolling,
   canRoll,
+  isMyTurn = false,
   onBuyProperty,
   onPassToAuction,
   onPayJailFine,
@@ -40,11 +42,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   onToggleSpeed,
   onStartGame,
   isLobbyMode = false,
-  isHost = true
+  isHost = false
 }) => {
   const { isLight } = useTheme();
   const currentTurnPlayer = room.players.find(p => p.id === room.currentTurnPlayerId);
-  const isMyTurn = currentTurnPlayer && !currentTurnPlayer.isBot;
 
   // Find owner for tile
   const getTileOwner = (tileId: number): Player | undefined => {
@@ -250,19 +251,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                             </div>
                           )}
 
-                          {/* 2. Standard Roll Dice Button if not rolled yet */}
-                          {room.turnPhase === 'roll' && isMyTurn && (
-                            <button
-                              id="btn-roll-dice"
-                              onClick={onRollDice}
-                              disabled={isRolling}
-                              className="px-8 py-2.5 rounded-xl font-heading font-extrabold text-sm bg-gradient-to-r from-[#7059e2] to-[#8d75ff] hover:from-[#5f45d8] hover:to-[#7c63f0] text-white shadow-[0_0_20px_rgba(112,89,226,0.5)] cursor-pointer transition-all active:scale-95 flex items-center gap-2"
-                            >
-                              <span>🎲</span> Roll Dice
-                            </button>
-                          )}
-
-                          {/* 3. Action Phase End Turn Button */}
+                          {/* 2. Action Phase End Turn Button */}
                           {room.turnPhase === 'action' && isMyTurn && !room.isDouble && (
                             <button
                               id="btn-end-turn"
@@ -298,6 +287,21 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                                   🎫 Use Card
                                 </button>
                               )}
+                            </div>
+                          )}
+
+                          {/* 5. Waiting for opponent turn indicator */}
+                          {!isMyTurn && currentTurnPlayer && (
+                            <div className="flex flex-col items-center gap-1.5 animate-fade-in py-1">
+                              <div className={`flex items-center gap-2 px-4 py-1.5 rounded-full border shadow-md text-xs font-heading font-bold ${
+                                isLight 
+                                  ? 'bg-purple-50/95 border-purple-200 text-purple-900' 
+                                  : 'bg-[#1e1738]/95 border-[#7059e2]/40 text-purple-200'
+                              }`}>
+                                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                                <span>{currentTurnPlayer.isBot ? '🤖' : '👤'} {currentTurnPlayer.name}'s turn</span>
+                                <span className="text-[11px] font-mono-code font-bold opacity-80">({room.turnTimer}s)</span>
+                              </div>
                             </div>
                           )}
                         </div>
