@@ -120,7 +120,9 @@ export function calculateMatchAnalytics(room: GameRoom): MatchAnalytics {
     for (let s = 2; s <= 12; s++) detectedCounts[s] = 0;
     
     room.logs.forEach(log => {
-      const match = log.message.match(/rolled\s+(\d+)\s+and\s+(\d+)/i) || log.message.match(/rolled\s+(\d+)/i);
+      const msg = log?.message || log?.text || '';
+      if (!msg) return;
+      const match = msg.match(/rolled\s+(\d+)\s+and\s+(\d+)/i) || msg.match(/rolled\s+(\d+)/i);
       if (match) {
         if (match[2]) {
           const sum = parseInt(match[1]) + parseInt(match[2]);
@@ -330,9 +332,10 @@ function generateDefaultTimeline(players: Player[], totalRounds: number): MatchR
         targetCash = Math.round(Math.max(50, p.cash * (1 - progress * 0.3) + Math.cos(r) * 80));
       }
 
+      const propCount = (p.properties || []).length;
       snap[`${p.id}_netWorth`] = Math.max(0, targetNetWorth);
       snap[`${p.id}_cash`] = Math.max(0, targetCash);
-      snap[`${p.id}_props`] = Math.min(p.properties.length, Math.floor((r / totalRounds) * p.properties.length) + (r > 3 ? 1 : 0));
+      snap[`${p.id}_props`] = Math.min(propCount, Math.floor((r / totalRounds) * propCount) + (r > 3 ? 1 : 0));
     });
 
     snapshots.push(snap);
@@ -343,7 +346,7 @@ function generateDefaultTimeline(players: Player[], totalRounds: number): MatchR
   players.forEach(p => {
     finalSnap[`${p.id}_netWorth`] = p.netWorth;
     finalSnap[`${p.id}_cash`] = p.cash;
-    finalSnap[`${p.id}_props`] = p.properties.length;
+    finalSnap[`${p.id}_props`] = (p.properties || []).length;
   });
 
   return snapshots;

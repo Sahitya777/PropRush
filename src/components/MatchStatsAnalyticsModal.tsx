@@ -911,7 +911,7 @@ export const MatchStatsAnalyticsModal: React.FC<MatchStatsAnalyticsModalProps> =
                     {log.timestamp || '00:00'}
                   </span>
                   <span className="text-slate-800 dark:text-slate-200 leading-relaxed">
-                    {log.message}
+                    {log.message || log.text || 'Game event recorded.'}
                   </span>
                 </div>
               ))}

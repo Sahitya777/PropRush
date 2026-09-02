@@ -364,7 +364,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
   // Auto-save active match whenever room or chat state updates
   useEffect(() => {
-    if (room.status === 'playing') {
+    if (room.status === 'playing' || room.status === 'waiting') {
       saveActiveMatch(room, roomConfig, chatMessages);
     }
   }, [room, chatMessages, roomConfig]);
@@ -744,13 +744,19 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     lastLogRef.current = { text, time: now };
 
     setRoom(prev => {
-      if (prev.logs.length > 0 && prev.logs[0].text === text) {
+      if (prev.logs.length > 0 && (prev.logs[0].text === text || prev.logs[0].message === text)) {
         return prev;
       }
       return {
         ...prev,
         logs: [
-          { id: 'log_' + Date.now() + Math.random().toString(36).substring(2, 6), timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), text, type },
+          {
+            id: 'log_' + Date.now() + Math.random().toString(36).substring(2, 6),
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            text,
+            message: text,
+            type
+          },
           ...prev.logs.slice(0, 30)
         ]
       };
@@ -1746,7 +1752,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   };
 
   const handleGracefulLeave = () => {
-    if (room.status === 'playing') {
+    if (room.status === 'playing' || room.status === 'waiting') {
       markDisconnected(room, roomConfig, chatMessages);
     }
     onLeaveRoom();
@@ -1795,6 +1801,25 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
             <span>←</span>
             <span>Lobby</span>
           </button>
+
+          {room.status === 'playing' && (
+            <button
+              id="btn-header-forfeit"
+              onClick={() => {
+                sounds.playClick();
+                setShowForfeitConfirmModal(true);
+              }}
+              className={`px-2 sm:px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-bold border cursor-pointer flex items-center gap-1 transition-all active:scale-95 ${
+                isLight
+                  ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                  : 'bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border-rose-800/60'
+              }`}
+              title="Surrender / Bankrupt"
+            >
+              <span>🚩</span>
+              <span>Forfeit</span>
+            </button>
+          )}
         </div>
 
         {/* Center: Room Code Display & Pot */}

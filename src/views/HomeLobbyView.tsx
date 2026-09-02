@@ -137,7 +137,6 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
         onOpenWallet();
         return;
       }
-      deductBuyIn(bet);
     }
 
     const quickCode = 'quick_' + Math.floor(100 + Math.random() * 900);
@@ -210,7 +209,6 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
         onOpenWallet();
         return;
       }
-      deductBuyIn(effectiveBet);
     }
 
     const effectiveCode = (roomCode || 'room_' + Math.random().toString(36).substring(2, 7)).trim().toLowerCase();
