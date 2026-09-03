@@ -276,26 +276,27 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
   // Dedicated local room player ID stored in session storage for consistent player identification
   const roomPidKey = `proprush_my_room_pid_${roomConfig.roomCode.toLowerCase()}`;
-  const storedRoomPid = typeof window !== 'undefined' ? sessionStorage.getItem(roomPidKey) : null;
-
-  // Store my player ID in session storage whenever user or room updates
-  useEffect(() => {
-    if (user?.id) {
-      sessionStorage.setItem(roomPidKey, user.id);
+  const [localPlayerId] = useState<string>(() => {
+    if (typeof window === 'undefined') return user.id;
+    let stored = sessionStorage.getItem(roomPidKey);
+    if (!stored) {
+      stored = user.id;
+      sessionStorage.setItem(roomPidKey, stored);
     }
-  }, [user.id, roomPidKey]);
+    return stored;
+  });
 
   // Accurate host determination: current user ID matches room hostId, or is first player, or has isHost flag
   const isCurrentUserHost = Boolean(
-    (room.hostId && (room.hostId === user.id || (storedRoomPid && room.hostId === storedRoomPid))) ||
-    (room.players.length > 0 && room.players[0].id === user.id) ||
-    (room.players.some(p => p.id === user.id && p.isHost))
+    (room.hostId && (room.hostId === user.id || room.hostId === localPlayerId)) ||
+    (room.players.length > 0 && (room.players[0].id === user.id || room.players[0].id === localPlayerId)) ||
+    (room.players.some(p => (p.id === user.id || p.id === localPlayerId) && p.isHost))
   );
 
   // Identify who the local user is in this room
   const myPlayer: Player | undefined = 
+    room.players.find(p => p.id === localPlayerId) ||
     room.players.find(p => p.id === user.id) ||
-    (storedRoomPid ? room.players.find(p => p.id === storedRoomPid) : undefined) ||
     (isCurrentUserHost 
       ? room.players.find(p => p.id === room.hostId || p.isHost) || room.players[0]
       : room.players.find(p => !p.isHost && !p.isBot) || room.players[1] || room.players[0]
@@ -308,16 +309,12 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     room.players[0];
 
   // Accurate turn determination:
-  // 1. Direct user.id match with currentTurnPlayer.id
-  // 2. Or matched via resolved myPlayer
-  // 3. Or session-stored room player ID
-  // 4. Or if testing locally/hotseat where both players are on 1 device
   const isMyTurn = Boolean(
     currentTurnPlayer && (
       currentTurnPlayer.id === user.id ||
+      currentTurnPlayer.id === localPlayerId ||
       (myPlayer && currentTurnPlayer.id === myPlayer.id) ||
-      (storedRoomPid && currentTurnPlayer.id === storedRoomPid) ||
-      (!currentTurnPlayer.isBot && !room.players.some(p => p.id === user.id) && isCurrentUserHost)
+      (!currentTurnPlayer.isBot && !room.players.some(p => p.id === user.id || p.id === localPlayerId) && isCurrentUserHost)
     )
   );
 
@@ -504,19 +501,28 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           sounds.playDiceRoll();
           setRoom(data.room);
           addLog(`🚀 Match launched by room creator! Game in progress.`, 'info');
-        } else if (data.type === 'PLAYER_KICKED' && data.room) {
-          if (room.status === 'waiting' && !isCurrentUserHost) {
-            const isStillIn = data.room.players?.some((p: any) => p.id === user.id);
-            if (!isStillIn) {
+        } else if (data.type === 'PLAYER_KICKED') {
+          if (room.status === 'waiting') {
+            const isMeKicked =
+              (data.kickedPlayerId && (data.kickedPlayerId === localPlayerId || data.kickedPlayerId === user.id)) ||
+              (data.room && !data.room.players?.some((p: any) => p.id === localPlayerId || p.id === user.id) && data.room.hostId !== user.id && data.room.hostId !== localPlayerId);
+            if (isMeKicked) {
               clearActiveMatch();
-              depositFunds(roomConfig.betAmount, 'room_kick_refund');
+              try {
+                sessionStorage.removeItem(roomPidKey);
+                window.history.replaceState({}, '', window.location.pathname);
+              } catch {}
+              if (roomConfig.betAmount > 0) {
+                depositFunds(roomConfig.betAmount, 'room_kick_refund');
+              }
               sounds.playPayRent();
-              alert(`You were removed from the room lobby by the host. Your buy-in of $${roomConfig.betAmount} has been refunded to your wallet.`);
               onLeaveRoom();
               return;
             }
           }
-          setRoom(data.room);
+          if (data.room) {
+            setRoom(data.room);
+          }
         } else if (data.type === 'PLAYER_JOINED' && data.player) {
           setRoom(prev => {
             if (prev.status !== 'waiting') return prev;
@@ -540,7 +546,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               ]
             };
 
-            if (prev.hostId === user.id) {
+            if (prev.hostId === user.id || prev.hostId === localPlayerId) {
               sounds.playPassGo();
               broadcastAndSync(updatedRoom);
             }
@@ -555,7 +561,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               players: updatedPlayers,
               totalPrizePool: roomConfig.betAmount * updatedPlayers.length
             };
-            if (prev.hostId === user.id) {
+            if (prev.hostId === user.id || prev.hostId === localPlayerId) {
               broadcastAndSync(updatedRoom);
             }
             return updatedRoom;
@@ -584,16 +590,24 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           const isNowPlaying = sRoom.status === 'playing';
 
           // Check if current user got kicked by host from lobby
-          if (wasWaiting && !isCurrentUserHost) {
-            const wasInRoom = prev.players.some(p => p.id === user.id);
-            const isStillInRoom = sRoom.players?.some((p: any) => p.id === user.id);
-            if (wasInRoom && !isStillInRoom) {
-              clearActiveMatch();
-              depositFunds(roomConfig.betAmount, 'room_kick_refund');
-              sounds.playPayRent();
-              alert(`You were removed from the room lobby by the host. Your buy-in of $${roomConfig.betAmount} has been refunded to your wallet.`);
-              onLeaveRoom();
-              return prev;
+          if (wasWaiting && sRoom.status === 'waiting') {
+            const amIHost = sRoom.hostId === user.id || sRoom.hostId === localPlayerId || (sRoom.players.length > 0 && (sRoom.players[0].id === user.id || sRoom.players[0].id === localPlayerId));
+            if (!amIHost) {
+              const wasInRoom = prev.players.some(p => p.id === localPlayerId || p.id === user.id);
+              const isStillInRoom = sRoom.players?.some((p: any) => p.id === localPlayerId || p.id === user.id);
+              if (wasInRoom && !isStillInRoom) {
+                clearActiveMatch();
+                try {
+                  sessionStorage.removeItem(roomPidKey);
+                  window.history.replaceState({}, '', window.location.pathname);
+                } catch {}
+                if (roomConfig.betAmount > 0) {
+                  depositFunds(roomConfig.betAmount, 'room_kick_refund');
+                }
+                sounds.playPayRent();
+                onLeaveRoom();
+                return prev;
+              }
             }
           }
 
@@ -750,11 +764,30 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     const updatedRoom: GameRoom = {
       ...room,
       players: updatedPlayers,
-      totalPrizePool: room.betAmount * updatedPlayers.length
+      totalPrizePool: room.betAmount * updatedPlayers.length,
+      logs: [
+        {
+          id: 'log_kick_' + Date.now(),
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          text: `👢 A player was removed from the lobby by the host.`,
+          type: 'info'
+        },
+        ...room.logs
+      ]
     };
     setRoom(updatedRoom);
     sounds.playClick();
     broadcastAndSync(updatedRoom, 'PLAYER_KICKED');
+
+    try {
+      const channel = new BroadcastChannel(`proprush_sync_${roomConfig.roomCode.toLowerCase()}`);
+      channel.postMessage({
+        type: 'PLAYER_KICKED',
+        kickedPlayerId: playerId,
+        room: updatedRoom
+      });
+      channel.close();
+    } catch {}
   };
 
   // Log on resumption
@@ -906,12 +939,45 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   };
 
   const handleForfeit = () => {
+    // 1. If match has not started yet (waiting room), forfeit / leave refunds the player's buy-in
+    if (room.status === 'waiting') {
+      sounds.playCashRegister();
+      clearActiveMatch();
+      setShowForfeitConfirmModal(false);
+      try {
+        sessionStorage.removeItem(roomPidKey);
+        window.history.replaceState({}, '', window.location.pathname);
+      } catch {}
+
+      if (roomConfig.betAmount > 0) {
+        depositFunds(roomConfig.betAmount, 'room_leave_refund');
+      }
+
+      const myId = localPlayerId || user.id;
+      const updatedPlayers = room.players.filter(p => p.id !== myId && p.id !== user.id);
+      const updatedRoom: GameRoom = {
+        ...room,
+        players: updatedPlayers,
+        totalPrizePool: room.betAmount * updatedPlayers.length
+      };
+      broadcastAndSync(updatedRoom);
+      try {
+        const channel = new BroadcastChannel(`proprush_sync_${roomConfig.roomCode.toLowerCase()}`);
+        channel.postMessage({ type: 'PLAYER_LEFT', playerId: myId });
+        channel.close();
+      } catch {}
+
+      onLeaveRoom();
+      return;
+    }
+
+    // 2. Active game forfeit (bankruptcy)
     sounds.playBankrupt();
     clearActiveMatch();
     setShowForfeitConfirmModal(false);
 
     setRoom(prev => {
-      const myId = myPlayer?.id || user.id;
+      const myId = localPlayerId || user.id;
       const playerToForfeit =
         prev.players.find(p => p.id === myId) ||
         prev.players.find(p => p.id === user.id) ||
@@ -1992,12 +2058,12 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               <span className={`text-[10px] font-mono-code ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>Ranked</span>
             </div>
 
-            <div className="space-y-1.5 max-h-[220px] lg:max-h-[190px] overflow-y-auto pr-1">
+            <div className="space-y-1.5 max-h-[240px] overflow-y-auto overflow-x-hidden pr-1 scrollbar-thin">
               {room.players.map(p => {
                 const isTurn = p.id === room.currentTurnPlayerId;
                 const delta = cashDeltas[p.id];
                 const isPlayerHost = Boolean(
-                  (room.hostId && room.hostId === p.id) ||
+                  (room.hostId && (room.hostId === p.id)) ||
                   (room.players.length > 0 && room.players[0].id === p.id) ||
                   p.isHost
                 );
@@ -2005,7 +2071,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                 return (
                   <div
                     key={p.id}
-                    className={`p-2 rounded-xl border transition-all flex items-center justify-between ${
+                    className={`p-2 rounded-xl border min-h-[50px] transition-all flex items-center justify-between ${
                       p.isBankrupt
                         ? 'opacity-40 grayscale ' + (isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950/40 border-slate-900')
                         : isTurn
@@ -2018,7 +2084,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="relative">
+                      <div className="relative w-8 h-8 flex items-center justify-center shrink-0">
                         <AvatarCharacter avatarId={p.avatar} frameId={p.avatarFrame} size="sm" isAnimated={false} />
                         {p.inJail && (
                           <div className="absolute -bottom-1 -right-1 text-[10px]">🔒</div>
@@ -2029,7 +2095,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                           isLight ? 'text-slate-900' : 'text-white'
                         }`}>
                           <span className="truncate">{p.name}</span>
-                          {(p.id === user.id || p.id === myPlayer?.id) && (
+                          {(p.id === user.id || p.id === localPlayerId || p.id === myPlayer?.id) && (
                             <span className="text-[9px] text-[#7059e2] font-mono-code font-bold">(You)</span>
                           )}
                           {isPlayerHost && (
@@ -2484,7 +2550,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       )}
 
       {/* 3. MODALS & POPUPS */}
-      {/* Forfeit / Bankrupt Confirmation Modal */}
+      {/* Forfeit / Bankrupt / Leave Room Confirmation Modal */}
       {showForfeitConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-fade-in">
           <div className={`w-full max-w-sm rounded-2xl shadow-[0_12px_45px_rgba(0,0,0,0.85)] p-5 overflow-hidden flex flex-col gap-4 border ${
@@ -2496,14 +2562,14 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0 border ${
                 isLight ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-rose-950/80 border-rose-600/60'
               }`}>
-                ⚠️
+                {room.status === 'waiting' ? '↩️' : '⚠️'}
               </div>
               <div>
                 <h3 className={`font-heading font-black text-base ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                  Confirm Forfeit
+                  {room.status === 'waiting' ? 'Leave Waiting Room' : 'Confirm Forfeit'}
                 </h3>
                 <p className={`text-xs font-medium ${isLight ? 'text-rose-600' : 'text-rose-300'}`}>
-                  Declare bankruptcy & surrender match
+                  {room.status === 'waiting' ? 'Refund entry fee & exit lobby' : 'Declare bankruptcy & surrender match'}
                 </p>
               </div>
             </div>
@@ -2511,7 +2577,9 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
             <div className={`text-xs p-3 rounded-xl border leading-relaxed ${
               isLight ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-slate-950/70 border-slate-800/80 text-slate-300'
             }`}>
-              Are you sure you want to forfeit? You will surrender all your cash and owned properties, declare bankruptcy, and be eliminated from the current match.
+              {room.status === 'waiting'
+                ? `Are you sure you want to leave? Because the match has not started yet, your full buy-in of $${room.betAmount} will be immediately refunded back to your wallet.`
+                : 'Are you sure you want to forfeit? You will surrender all your cash and owned properties, declare bankruptcy, and be eliminated from the current match.'}
             </div>
 
             <div className="grid grid-cols-2 gap-2.5 pt-1">
@@ -2526,7 +2594,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                     : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
                 }`}
               >
-                Keep Playing
+                {room.status === 'waiting' ? 'Stay in Lobby' : 'Keep Playing'}
               </button>
               <button
                 onClick={() => {
@@ -2534,7 +2602,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                 }}
                 className="py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 font-bold text-xs text-white cursor-pointer transition-all active:scale-95 shadow-md shadow-rose-950/50"
               >
-                Yes, Forfeit Match
+                {room.status === 'waiting' ? `Leave & Refund ($${room.betAmount})` : 'Yes, Forfeit Match'}
               </button>
             </div>
           </div>
@@ -2661,33 +2729,6 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         <GameOverModal
           room={room}
           myPlayerId={myPlayer?.id || user.id}
-          onPlayAgain={() => {
-            setRoom(prev => {
-              const restarted: GameRoom = {
-                ...prev,
-                status: 'playing',
-                winner: undefined,
-                players: prev.players.map(p => ({
-                  ...p,
-                  cash: roomConfig.initialCash,
-                  netWorth: roomConfig.initialCash,
-                  position: 0,
-                  inJail: false,
-                  jailTurns: 0,
-                  getOutOfJailCards: 0,
-                  properties: [],
-                  mortgaged: [],
-                  houses: {},
-                  isBankrupt: false
-                })),
-                turnPhase: 'roll',
-                currentTurnIndex: 0,
-                currentTurnPlayerId: prev.players[0]?.id || user.id
-              };
-              broadcastAndSync(restarted, 'GAME_STARTED');
-              return restarted;
-            });
-          }}
           onReturnHome={onLeaveRoom}
           statsSummary={matchSummaryStats}
         />

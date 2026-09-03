@@ -942,10 +942,14 @@ export const MatchStatsAnalyticsModal: React.FC<MatchStatsAnalyticsModalProps> =
         <div className="flex items-center gap-2.5">
           {onReturnHome && (
             <button
-              onClick={onReturnHome}
-              className="px-4 py-2.5 rounded-xl font-heading font-bold text-xs bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+              onClick={() => {
+                sounds.playClick();
+                onReturnHome();
+              }}
+              className="px-5 py-2.5 rounded-xl font-heading font-black text-xs sm:text-sm bg-gradient-to-r from-[#7059e2] to-[#8e76f7] hover:from-[#5e46d0] hover:to-[#7b61f0] text-white shadow-lg shadow-purple-500/25 active:scale-95 cursor-pointer transition-all flex items-center gap-2"
             >
-              ← Return to Lobby
+              <span>←</span>
+              <span>Return to Lobby</span>
             </button>
           )}
           {onPlayAgain && (

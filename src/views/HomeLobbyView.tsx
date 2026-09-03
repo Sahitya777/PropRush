@@ -54,7 +54,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
   onOpenWallet,
   onOpenStore
 }) => {
-  const { user, deductBuyIn, isLoggedIn, openAuthModal } = useUser();
+  const { user, deductBuyIn, depositFunds, isLoggedIn, openAuthModal } = useUser();
   const { isLight } = useTheme();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [roomCodeInput, setRoomCodeInput] = useState('');
@@ -389,7 +389,12 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
             <button
               id="btn-forfeit-reconnect-match"
               onClick={() => {
-                sounds.playBankrupt();
+                if (activeSavedMatch.room?.status === 'waiting' && activeSavedMatch.roomConfig.betAmount > 0) {
+                  depositFunds(activeSavedMatch.roomConfig.betAmount, 'room_forfeit_refund');
+                  sounds.playCashRegister();
+                } else {
+                  sounds.playBankrupt();
+                }
                 clearActiveMatch();
                 setActiveSavedMatch(null);
                 setSecondsRemaining(0);
@@ -402,7 +407,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
               title="Abandon match and clear saved session"
             >
               <span>✕</span>
-              <span>Forfeit</span>
+              <span>{activeSavedMatch.room?.status === 'waiting' ? 'Leave & Refund' : 'Forfeit'}</span>
             </button>
             <button
               id="btn-reconnect-match"

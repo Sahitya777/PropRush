@@ -308,9 +308,9 @@ export const AvatarCharacter: React.FC<AvatarProps> = ({
       case 'pfp_crown':
         return (
           <div className="relative inline-flex items-center justify-center p-1 rounded-full bg-gradient-to-tr from-amber-500 via-yellow-200 to-amber-400 shadow-[0_0_15px_rgba(234,179,8,0.8)] ring-2 ring-yellow-300/80">
-            <div className="absolute inset-0 rounded-full animate-spin-slow bg-gradient-to-r from-yellow-400/30 via-transparent to-amber-500/30 pointer-events-none" />
+            {isAnimated && <div className="absolute inset-0 rounded-full animate-spin-slow bg-gradient-to-r from-yellow-400/30 via-transparent to-amber-500/30 pointer-events-none" />}
             {renderSkinContent()}
-            <span className={`absolute ${frameBadgeSize} z-20 filter drop-shadow-md select-none animate-float`}>
+            <span className={`absolute ${frameBadgeSize} z-20 filter drop-shadow-md select-none ${isAnimated ? 'animate-float' : ''}`}>
               👑
             </span>
           </div>
@@ -319,9 +319,9 @@ export const AvatarCharacter: React.FC<AvatarProps> = ({
       case 'pfp_neon':
         return (
           <div className="relative inline-flex items-center justify-center p-1 rounded-full bg-gradient-to-tr from-cyan-500 via-sky-200 to-indigo-500 shadow-[0_0_15px_rgba(6,182,212,0.9)] ring-2 ring-cyan-300">
-            <div className="absolute -inset-0.5 rounded-full border border-cyan-400/80 animate-spin-slow pointer-events-none border-dashed" />
+            {isAnimated && <div className="absolute -inset-0.5 rounded-full border border-cyan-400/80 animate-spin-slow pointer-events-none border-dashed" />}
             {renderSkinContent()}
-            <span className={`absolute ${frameBadgeSize} z-20 filter drop-shadow-md select-none animate-pulse`}>
+            <span className={`absolute ${frameBadgeSize} z-20 filter drop-shadow-md select-none ${isAnimated ? 'animate-pulse' : ''}`}>
               ⚡
             </span>
           </div>
@@ -329,8 +329,8 @@ export const AvatarCharacter: React.FC<AvatarProps> = ({
 
       case 'pfp_fire':
         return (
-          <div className="relative inline-flex items-center justify-center p-1.5 rounded-full bg-gradient-to-tr from-red-600 via-orange-500 to-yellow-400 shadow-[0_0_20px_rgba(249,115,22,0.9)] ring-2 ring-orange-400 animate-flame">
-            <div className="absolute inset-0 rounded-full animate-spin-reverse-slow bg-gradient-to-t from-red-500/40 via-yellow-400/30 to-transparent pointer-events-none" />
+          <div className={`relative inline-flex items-center justify-center p-1.5 rounded-full bg-gradient-to-tr from-red-600 via-orange-500 to-yellow-400 shadow-[0_0_20px_rgba(249,115,22,0.9)] ring-2 ring-orange-400 ${isAnimated ? 'animate-flame' : ''}`}>
+            {isAnimated && <div className="absolute inset-0 rounded-full animate-spin-reverse-slow bg-gradient-to-t from-red-500/40 via-yellow-400/30 to-transparent pointer-events-none" />}
             {renderSkinContent()}
             <span className={`absolute ${frameBadgeSize} z-20 filter drop-shadow-lg select-none`}>
               🔥
@@ -341,9 +341,9 @@ export const AvatarCharacter: React.FC<AvatarProps> = ({
       case 'pfp_diamond':
         return (
           <div className="relative inline-flex items-center justify-center p-1 rounded-full bg-gradient-to-tr from-sky-300 via-white to-blue-600 shadow-[0_0_18px_rgba(56,189,248,0.9)] ring-2 ring-sky-200">
-            <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-transparent via-sky-300/40 to-transparent animate-spin-fast pointer-events-none" />
+            {isAnimated && <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-transparent via-sky-300/40 to-transparent animate-spin-fast pointer-events-none" />}
             {renderSkinContent()}
-            <span className={`absolute ${frameBadgeSize} z-20 filter drop-shadow-md select-none animate-bounce`}>
+            <span className={`absolute ${frameBadgeSize} z-20 filter drop-shadow-md select-none ${isAnimated ? 'animate-bounce' : ''}`}>
               💎
             </span>
           </div>
@@ -351,11 +351,11 @@ export const AvatarCharacter: React.FC<AvatarProps> = ({
 
       case 'pfp_cosmic':
         return (
-          <div className="relative inline-flex items-center justify-center p-1.5 rounded-full bg-gradient-to-tr from-purple-600 via-indigo-400 to-fuchsia-500 shadow-[0_0_22px_rgba(168,85,247,0.9)] ring-2 ring-purple-300 animate-cosmic">
-            <div className="absolute -inset-1 rounded-full border-2 border-fuchsia-400/60 animate-spin-slow pointer-events-none" />
-            <div className="absolute -inset-0.5 rounded-full border border-indigo-300/50 animate-spin-reverse-slow pointer-events-none" />
+          <div className={`relative inline-flex items-center justify-center p-1.5 rounded-full bg-gradient-to-tr from-purple-600 via-indigo-400 to-fuchsia-500 shadow-[0_0_22px_rgba(168,85,247,0.9)] ring-2 ring-purple-300 ${isAnimated ? 'animate-cosmic' : ''}`}>
+            {isAnimated && <div className="absolute -inset-1 rounded-full border-2 border-fuchsia-400/60 animate-spin-slow pointer-events-none" />}
+            {isAnimated && <div className="absolute -inset-0.5 rounded-full border border-indigo-300/50 animate-spin-reverse-slow pointer-events-none" />}
             {renderSkinContent()}
-            <span className={`absolute ${frameBadgeSize} z-20 filter drop-shadow-lg select-none animate-spin-slow`}>
+            <span className={`absolute ${frameBadgeSize} z-20 filter drop-shadow-lg select-none ${isAnimated ? 'animate-spin-slow' : ''}`}>
               ✨
             </span>
           </div>
@@ -363,8 +363,8 @@ export const AvatarCharacter: React.FC<AvatarProps> = ({
 
       case 'pfp_electric':
         return (
-          <div className="relative inline-flex items-center justify-center p-1.5 rounded-full bg-gradient-to-tr from-cyan-400 via-blue-500 to-sky-300 shadow-[0_0_20px_rgba(56,189,248,0.95)] ring-2 ring-cyan-200 animate-electric">
-            <div className="absolute -inset-1 rounded-full border-2 border-cyan-300 border-dashed animate-spin-fast pointer-events-none" />
+          <div className={`relative inline-flex items-center justify-center p-1.5 rounded-full bg-gradient-to-tr from-cyan-400 via-blue-500 to-sky-300 shadow-[0_0_20px_rgba(56,189,248,0.95)] ring-2 ring-cyan-200 ${isAnimated ? 'animate-electric' : ''}`}>
+            {isAnimated && <div className="absolute -inset-1 rounded-full border-2 border-cyan-300 border-dashed animate-spin-fast pointer-events-none" />}
             {renderSkinContent()}
             <span className={`absolute ${frameBadgeSize} z-20 filter drop-shadow-md select-none`}>
               ⚡
@@ -374,8 +374,8 @@ export const AvatarCharacter: React.FC<AvatarProps> = ({
 
       case 'pfp_rgb':
         return (
-          <div className="relative inline-flex items-center justify-center p-1.5 rounded-full bg-gradient-to-tr from-red-500 via-green-500 to-blue-500 shadow-[0_0_24px_rgba(236,72,153,0.9)] ring-2 ring-white animate-rainbow">
-            <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-yellow-400 via-pink-500 to-cyan-400 animate-spin-slow opacity-75 blur-xs pointer-events-none" />
+          <div className={`relative inline-flex items-center justify-center p-1.5 rounded-full bg-gradient-to-tr from-red-500 via-green-500 to-blue-500 shadow-[0_0_24px_rgba(236,72,153,0.9)] ring-2 ring-white ${isAnimated ? 'animate-rainbow' : ''}`}>
+            {isAnimated && <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-yellow-400 via-pink-500 to-cyan-400 animate-spin-slow opacity-75 blur-xs pointer-events-none" />}
             {renderSkinContent()}
             <span className={`absolute ${frameBadgeSize} z-20 filter drop-shadow-lg select-none`}>
               🌈
@@ -385,8 +385,8 @@ export const AvatarCharacter: React.FC<AvatarProps> = ({
 
       case 'pfp_void':
         return (
-          <div className="relative inline-flex items-center justify-center p-1.5 rounded-full bg-gradient-to-tr from-purple-950 via-violet-800 to-slate-950 shadow-[0_0_22px_rgba(107,33,168,0.95)] ring-2 ring-violet-500 animate-void">
-            <div className="absolute -inset-1 rounded-full border border-purple-500/80 animate-spin-slow pointer-events-none" />
+          <div className={`relative inline-flex items-center justify-center p-1.5 rounded-full bg-gradient-to-tr from-purple-950 via-violet-800 to-slate-950 shadow-[0_0_22px_rgba(107,33,168,0.95)] ring-2 ring-violet-500 ${isAnimated ? 'animate-void' : ''}`}>
+            {isAnimated && <div className="absolute -inset-1 rounded-full border border-purple-500/80 animate-spin-slow pointer-events-none" />}
             {renderSkinContent()}
             <span className={`absolute ${frameBadgeSize} z-20 filter drop-shadow-lg select-none`}>
               🔮
@@ -397,9 +397,9 @@ export const AvatarCharacter: React.FC<AvatarProps> = ({
       case 'pfp_sakura':
         return (
           <div className="relative inline-flex items-center justify-center p-1.5 rounded-full bg-gradient-to-tr from-pink-400 via-rose-300 to-pink-500 shadow-[0_0_18px_rgba(244,114,182,0.85)] ring-2 ring-pink-200">
-            <div className="absolute -inset-0.5 rounded-full border border-pink-300/80 animate-spin-slow pointer-events-none" />
+            {isAnimated && <div className="absolute -inset-0.5 rounded-full border border-pink-300/80 animate-spin-slow pointer-events-none" />}
             {renderSkinContent()}
-            <span className={`absolute ${frameBadgeSize} z-20 filter drop-shadow-md select-none animate-float`}>
+            <span className={`absolute ${frameBadgeSize} z-20 filter drop-shadow-md select-none ${isAnimated ? 'animate-float' : ''}`}>
               🌸
             </span>
           </div>
@@ -407,10 +407,10 @@ export const AvatarCharacter: React.FC<AvatarProps> = ({
 
       case 'pfp_dragon':
         return (
-          <div className="relative inline-flex items-center justify-center p-2 rounded-full bg-gradient-to-tr from-amber-600 via-yellow-300 to-red-600 shadow-[0_0_28px_rgba(245,158,11,0.95)] ring-2 ring-yellow-400 animate-flame">
-            <div className="absolute -inset-1.5 rounded-full border-2 border-yellow-300/80 border-dashed animate-spin-slow pointer-events-none" />
+          <div className={`relative inline-flex items-center justify-center p-2 rounded-full bg-gradient-to-tr from-amber-600 via-yellow-300 to-red-600 shadow-[0_0_28px_rgba(245,158,11,0.95)] ring-2 ring-yellow-400 ${isAnimated ? 'animate-flame' : ''}`}>
+            {isAnimated && <div className="absolute -inset-1.5 rounded-full border-2 border-yellow-300/80 border-dashed animate-spin-slow pointer-events-none" />}
             {renderSkinContent()}
-            <span className={`absolute ${frameBadgeSize} z-20 filter drop-shadow-xl select-none animate-pulse`}>
+            <span className={`absolute ${frameBadgeSize} z-20 filter drop-shadow-xl select-none ${isAnimated ? 'animate-pulse' : ''}`}>
               🐉
             </span>
           </div>
