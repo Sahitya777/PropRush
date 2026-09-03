@@ -6,6 +6,8 @@ import { HomeLobbyView } from './views/HomeLobbyView';
 import { GameRoomView } from './views/GameRoomView';
 import { StoreView } from './views/StoreView';
 import { ProfileView } from './views/ProfileView';
+import { RankingsLeaguesView } from './views/RankingsLeaguesView';
+import { AdminCommandCenterView } from './views/AdminCommandCenterView';
 import { NotFoundView } from './views/NotFoundView';
 import { WalletModal } from './components/WalletModal';
 import { RulesModal } from './components/RulesModal';
@@ -18,7 +20,7 @@ import { findActiveRoomByCode, findActiveRoomByCodeAsync } from './utils/activeR
 import { verifyStripeSession } from './utils/stripeClient';
 import { fireConfetti } from './utils/confetti';
 
-function getInitialView(): 'home' | 'game' | 'store' | 'profile' | '404' {
+function getInitialView(): 'home' | 'game' | 'store' | 'profile' | 'rankings' | 'admin' | '404' {
   if (typeof window === 'undefined') return 'home';
   const rawPath = window.location.pathname.toLowerCase();
   // Normalize redundant slashes (e.g. "//" -> "/")
@@ -37,6 +39,8 @@ function getInitialView(): 'home' | 'game' | 'store' | 'profile' | '404' {
   }
 
   if (viewParam === '404' || path === '/404') return '404';
+  if (viewParam === 'admin' || path === '/admin') return 'admin';
+  if (viewParam === 'rankings' || viewParam === 'leaderboard' || path === '/rankings' || path === '/leaderboard') return 'rankings';
   if (viewParam === 'store' || path === '/store') return 'store';
   if (viewParam === 'profile' || path === '/profile') return 'profile';
   if (viewParam === 'home' || path === '/' || path === '/index.html' || path === '') return 'home';
@@ -52,7 +56,7 @@ function AppContent() {
   const { user, deductBuyIn, depositFunds } = useUser();
   const { isClerkAvailable } = useClerkConfig();
   const { isLight } = useTheme();
-  const [currentView, setCurrentView] = useState<'home' | 'game' | 'store' | 'profile' | '404'>(getInitialView);
+  const [currentView, setCurrentView] = useState<'home' | 'game' | 'store' | 'profile' | 'rankings' | 'admin' | '404'>(getInitialView);
   const [activeRoomConfig, setActiveRoomConfig] = useState<{
     roomCode: string;
     roomName: string;
@@ -69,7 +73,7 @@ function AppContent() {
   const [isMuted, setIsMuted] = useState(false);
   const [depositNotification, setDepositNotification] = useState<string | null>(null);
 
-  const navigateTo = (view: 'home' | 'store' | 'profile' | '404') => {
+  const navigateTo = (view: 'home' | 'store' | 'profile' | 'rankings' | 'admin' | '404') => {
     sounds.playClick();
     setCurrentView(view);
     try {
@@ -291,6 +295,17 @@ function AppContent() {
 
         {currentView === 'profile' && <ProfileView />}
 
+        {currentView === 'rankings' && (
+          <RankingsLeaguesView onNavigateHome={() => navigateTo('home')} />
+        )}
+
+        {currentView === 'admin' && (
+          <AdminCommandCenterView
+            onNavigateHome={() => navigateTo('home')}
+            onJoinRoom={handleJoinRoom}
+          />
+        )}
+
         {currentView === '404' && (
           <NotFoundView
             onNavigateHome={() => navigateTo('home')}
@@ -356,16 +371,30 @@ function AppContent() {
                 Wagers & Fees
               </button>
               <button
+                onClick={() => navigateTo('rankings')}
+                className="hover:text-[#7059e2] cursor-pointer transition-colors font-bold text-purple-400"
+              >
+                🏆 Leaderboard & Leagues
+              </button>
+              <button
                 onClick={() => navigateTo('store')}
                 className="hover:text-[#7059e2] cursor-pointer transition-colors"
               >
-                Custom Cosmetics
+                Cosmetics Store
               </button>
               <button
                 onClick={() => navigateTo('profile')}
                 className="hover:text-[#7059e2] cursor-pointer transition-colors"
               >
-                Rankings & Stats
+                Player Locker
+              </button>
+              <button
+                onClick={() => navigateTo('admin')}
+                className="hover:text-purple-400 cursor-pointer transition-colors flex items-center gap-1 font-bold"
+                title="Admin Command Center"
+              >
+                <span>🛡️</span>
+                <span>Admin Console</span>
               </button>
               <button
                 onClick={() => navigateTo('404')}

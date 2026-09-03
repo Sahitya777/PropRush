@@ -4,10 +4,11 @@ import { useClerkConfig, useSafeClerkUser, useSafeClerk } from '../context/Clerk
 import { useTheme } from '../context/ThemeContext';
 import { AvatarCharacter } from './AvatarCharacter';
 import { sounds } from '../utils/audio';
+import { isUserAdmin } from '../utils/adminRegistry';
 
 interface HeaderNavbarProps {
-  currentView: 'home' | 'game' | 'store' | 'profile' | '404';
-  onNavigate: (view: 'home' | 'store' | 'profile') => void;
+  currentView: 'home' | 'game' | 'store' | 'profile' | 'rankings' | 'admin' | '404';
+  onNavigate: (view: 'home' | 'store' | 'profile' | 'rankings' | 'admin') => void;
   onOpenWallet: () => void;
   onOpenRules?: () => void;
   onOpenAuth?: () => void;
@@ -66,6 +67,7 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
   const effectiveUsername = (isClerkSignedIn && (clerkUser?.fullName || clerkUser?.username || clerkUser?.firstName)) || user.username;
   const effectiveProfilePic = (isClerkSignedIn && clerkUser?.imageUrl) || user.profilePictureUrl;
   const effectiveEmail = (isClerkSignedIn && clerkUser?.primaryEmailAddress?.emailAddress) || user.email;
+  const isAdmin = isUserAdmin(effectiveEmail) || (effectiveEmail?.toLowerCase().includes('sahityanijhawan@gmail.com') ?? false);
 
   const handleWalletClick = () => {
     requireAuth('Sign in with Google or Clerk to access your real-money wallet and deposit funds.', onOpenWallet);
@@ -85,7 +87,7 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
     logoutUser();
   };
 
-  const handleDrawerNavigate = (view: 'home' | 'store' | 'profile') => {
+  const handleDrawerNavigate = (view: 'home' | 'store' | 'profile' | 'rankings' | 'admin') => {
     sounds.playClick();
     setIsDrawerOpen(false);
     onNavigate(view);
@@ -192,6 +194,23 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
               <span>${user.walletBalance.toFixed(2)}</span>
             </button>
 
+            {/* Rankings & Leaderboard Button */}
+            <button
+              id="btn-nav-rankings"
+              onClick={() => onNavigate('rankings')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
+                currentView === 'rankings'
+                  ? 'bg-[#7059e2] text-white shadow-sm border border-[#8e76f7]'
+                  : isLight
+                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200'
+                  : 'bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-slate-800'
+              }`}
+              title="Global Leaderboards & League Championship"
+            >
+              <span>🏆</span>
+              <span>Rankings</span>
+            </button>
+
             {/* Store & Coins Balance Button */}
             <button
               id="btn-nav-store"
@@ -212,6 +231,23 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
                 🪙 {user.coins}
               </span>
             </button>
+
+            {/* Admin Console Button (Only if user has Admin rights) */}
+            {isAdmin && (
+              <button
+                id="btn-nav-admin"
+                onClick={() => onNavigate('admin')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer shrink-0 ${
+                  currentView === 'admin'
+                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md border border-purple-400'
+                    : 'bg-purple-500/15 hover:bg-purple-500/25 text-purple-400 border border-purple-500/30'
+                }`}
+                title="Admin Command Center"
+              >
+                <span>🛡️</span>
+                <span>Admin</span>
+              </button>
+            )}
 
             {/* Auth / Profile State */}
             {!effectiveIsLoggedIn ? (
@@ -277,6 +313,36 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
                       <span>👤</span>
                       <span>Player Locker & Stats</span>
                     </button>
+
+                    <button
+                      onClick={() => {
+                        sounds.playClick();
+                        setShowUserDropdown(false);
+                        onNavigate('rankings');
+                      }}
+                      className={`w-full px-3 py-2 rounded-xl text-left text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+                        isLight ? 'hover:bg-purple-50 text-purple-700' : 'hover:bg-purple-950/40 text-purple-300'
+                      }`}
+                    >
+                      <span>🏆</span>
+                      <span>Rankings & Leagues</span>
+                    </button>
+
+                    {isAdmin && (
+                      <button
+                        onClick={() => {
+                          sounds.playClick();
+                          setShowUserDropdown(false);
+                          onNavigate('admin');
+                        }}
+                        className={`w-full px-3 py-2 rounded-xl text-left text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+                          isLight ? 'hover:bg-purple-50 text-purple-800' : 'hover:bg-[#341d63] text-purple-300'
+                        }`}
+                      >
+                        <span>🛡️</span>
+                        <span>Admin Console</span>
+                      </button>
+                    )}
 
                     <button
                       onClick={() => {
@@ -425,6 +491,50 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
                     🪙 {user.coins}
                   </span>
                 </button>
+
+                {/* Rankings & Leaderboards */}
+                <button
+                  type="button"
+                  onClick={() => handleDrawerNavigate('rankings')}
+                  className={`w-full px-3.5 py-3 rounded-2xl font-bold text-sm flex items-center justify-between transition-all cursor-pointer ${
+                    currentView === 'rankings'
+                      ? 'bg-[#7059e2] text-white shadow-md'
+                      : isLight
+                      ? 'hover:bg-purple-50 text-slate-700'
+                      : 'hover:bg-[#20183b] text-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg">🏆</span>
+                    <span>Rankings & Leagues</span>
+                  </div>
+                  {currentView === 'rankings' && (
+                    <span className="text-xs font-mono-code opacity-80">● Active</span>
+                  )}
+                </button>
+
+                {/* Admin Console (if Admin) */}
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => handleDrawerNavigate('admin')}
+                    className={`w-full px-3.5 py-3 rounded-2xl font-bold text-sm flex items-center justify-between transition-all cursor-pointer ${
+                      currentView === 'admin'
+                        ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
+                        : isLight
+                        ? 'hover:bg-purple-100 text-purple-900 bg-purple-50'
+                        : 'hover:bg-[#2b194f] text-purple-300 bg-purple-950/30'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">🛡️</span>
+                      <span>Admin Command Center</span>
+                    </div>
+                    {currentView === 'admin' && (
+                      <span className="text-xs font-mono-code opacity-80">● Active</span>
+                    )}
+                  </button>
+                )}
 
                 {/* Player Profile & Locker */}
                 <button
