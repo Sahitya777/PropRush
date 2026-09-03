@@ -340,6 +340,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     eventType:
       | 'SYNC_ROOM'
       | 'GAME_STARTED'
+      | 'PLAYER_KICKED'
       | 'TRADE_OFFERED'
       | 'TRADE_ACCEPTED'
       | 'TRADE_DECLINED'
@@ -507,6 +508,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           if (room.status === 'waiting' && !isCurrentUserHost) {
             const isStillIn = data.room.players?.some((p: any) => p.id === user.id);
             if (!isStillIn) {
+              clearActiveMatch();
               depositFunds(roomConfig.betAmount, 'room_kick_refund');
               sounds.playPayRent();
               alert(`You were removed from the room lobby by the host. Your buy-in of $${roomConfig.betAmount} has been refunded to your wallet.`);
@@ -586,6 +588,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
             const wasInRoom = prev.players.some(p => p.id === user.id);
             const isStillInRoom = sRoom.players?.some((p: any) => p.id === user.id);
             if (wasInRoom && !isStillInRoom) {
+              clearActiveMatch();
               depositFunds(roomConfig.betAmount, 'room_kick_refund');
               sounds.playPayRent();
               alert(`You were removed from the room lobby by the host. Your buy-in of $${roomConfig.betAmount} has been refunded to your wallet.`);
@@ -751,7 +754,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     };
     setRoom(updatedRoom);
     sounds.playClick();
-    broadcastAndSync(updatedRoom);
+    broadcastAndSync(updatedRoom, 'PLAYER_KICKED');
   };
 
   // Log on resumption
@@ -2108,7 +2111,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
           {/* Trades Section Card */}
           <div className={`p-3 rounded-2xl border flex flex-col gap-2 shadow-md transition-all ${
-            room.activeTrade && (room.activeTrade.toPlayerId === (myPlayer?.id || user.id))
+            room.status !== 'waiting' && room.activeTrade && (room.activeTrade.toPlayerId === (myPlayer?.id || user.id))
               ? isLight ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-400/50' : 'bg-[#221a36] border-amber-500/60 ring-2 ring-amber-500/30'
               : isLight ? 'bg-white border-slate-200' : 'bg-[#141026] border-[#2b2447]'
           }`}>
@@ -2116,139 +2119,156 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               <span className={`text-xs font-bold flex items-center gap-1.5 ${isLight ? 'text-slate-800' : 'text-white'}`}>
                 <span>🤝</span>
                 <span>Trades</span>
-                {room.activeTrade && room.activeTrade.toPlayerId === (myPlayer?.id || user.id) && (
+                {room.status !== 'waiting' && room.activeTrade && room.activeTrade.toPlayerId === (myPlayer?.id || user.id) && (
                   <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
                 )}
               </span>
-              <button
-                onClick={() => setShowTradeModal(true)}
-                className="px-2.5 py-1 rounded-lg bg-[#7059e2] hover:bg-[#5e46d0] text-white text-[10px] font-bold cursor-pointer transition-all active:scale-95 flex items-center gap-1 shadow-sm"
-              >
-                <span>+</span>
-                <span>{room.activeTrade ? 'View Trade' : 'Create'}</span>
-              </button>
+              {room.status === 'waiting' ? (
+                <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono-code font-medium flex items-center gap-1 border ${
+                  isLight ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-slate-800/60 text-slate-400 border-slate-700/60'
+                }`}>
+                  <span>🔒</span>
+                  <span>Unlocks In-Game</span>
+                </span>
+              ) : (
+                <button
+                  onClick={() => setShowTradeModal(true)}
+                  className="px-2.5 py-1 rounded-lg bg-[#7059e2] hover:bg-[#5e46d0] text-white text-[10px] font-bold cursor-pointer transition-all active:scale-95 flex items-center gap-1 shadow-sm"
+                >
+                  <span>+</span>
+                  <span>{room.activeTrade ? 'View Trade' : 'Create'}</span>
+                </button>
+              )}
             </div>
 
-            {/* Active Incoming Trade Card */}
-            {room.activeTrade && (room.activeTrade.toPlayerId === (myPlayer?.id || user.id)) && (
-              <div className={`p-2.5 rounded-xl border text-xs space-y-1.5 ${
-                isLight ? 'bg-white border-amber-200 text-slate-800' : 'bg-slate-900/80 border-amber-500/40 text-slate-200'
-              }`}>
-                <div className="flex items-center justify-between font-bold text-[11px] text-amber-500">
-                  <span>📩 Incoming Proposal</span>
-                  <span className="text-[10px] text-slate-400">
-                    From {room.players.find(p => p.id === room.activeTrade?.fromPlayerId)?.name || 'Player'}
-                  </span>
-                </div>
-                <div className="text-[10px] space-y-0.5 font-medium">
-                  <div className="text-emerald-500">
-                    Receive: +${room.activeTrade.offeredCash} {room.activeTrade.offeredProperties.length > 0 && `& ${room.activeTrade.offeredProperties.length} prop(s)`}
-                  </div>
-                  <div className="text-rose-400">
-                    Give: -${room.activeTrade.requestedCash} {room.activeTrade.requestedProperties.length > 0 && `& ${room.activeTrade.requestedProperties.length} prop(s)`}
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  <button
-                    onClick={() => setShowTradeModal(true)}
-                    className="flex-1 py-1 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] cursor-pointer transition-all"
-                  >
-                    Review & Accept
-                  </button>
-                  <button
-                    onClick={() => {
-                      setRoom(prev => {
-                        const updated: GameRoom = { ...prev, activeTrade: null };
-                        broadcastAndSync(updated, 'TRADE_DECLINED');
-                        return updated;
-                      });
-                      sounds.playPayRent();
-                      addLog(`Trade proposal declined.`, 'info');
-                    }}
-                    className="py-1 px-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold text-[10px] cursor-pointer transition-all"
-                  >
-                    Decline
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Active Outgoing Trade Card */}
-            {room.activeTrade && (room.activeTrade.fromPlayerId === (myPlayer?.id || user.id)) && (
-              <div className={`p-2.5 rounded-xl border text-xs space-y-1.5 ${
-                isLight ? 'bg-purple-50 border-purple-200 text-slate-800' : 'bg-purple-950/40 border-purple-800/40 text-slate-200'
-              }`}>
-                <div className="flex items-center justify-between font-bold text-[11px] text-purple-400">
-                  <span className="flex items-center gap-1">⏳ Proposal Sent</span>
-                  <span className="text-[10px] text-slate-400">
-                    To {room.players.find(p => p.id === room.activeTrade?.toPlayerId)?.name || 'Player'}
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-400">
-                  Waiting for response...
-                </div>
-                <div className="flex gap-1.5 pt-0.5">
-                  <button
-                    onClick={() => setShowTradeModal(true)}
-                    className="flex-1 py-1 px-2 rounded-lg bg-[#7059e2] hover:bg-[#5e46d0] text-white font-bold text-[10px] cursor-pointer transition-all"
-                  >
-                    View Details
-                  </button>
-                  <button
-                    onClick={() => {
-                      setRoom(prev => {
-                        const updated: GameRoom = { ...prev, activeTrade: null };
-                        broadcastAndSync(updated, 'TRADE_DECLINED');
-                        return updated;
-                      });
-                      sounds.playClick();
-                      addLog(`Trade proposal cancelled.`, 'info');
-                    }}
-                    className="py-1 px-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-[10px] cursor-pointer transition-all"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Spectator Active Trade Card (Visible to all other players in the game) */}
-            {room.activeTrade && 
-             (room.activeTrade.toPlayerId !== (myPlayer?.id || user.id)) && 
-             (room.activeTrade.fromPlayerId !== (myPlayer?.id || user.id)) && (
-              <div className={`p-2.5 rounded-xl border text-xs space-y-1.5 ${
-                isLight ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-slate-900/80 border-slate-800 text-slate-200'
-              }`}>
-                <div className="flex items-center justify-between font-bold text-[11px] text-[#7059e2]">
-                  <span className="flex items-center gap-1">👁️ Live Deal</span>
-                  <span className="text-[10px] text-slate-400 truncate max-w-[120px]">
-                    {room.players.find(p => p.id === room.activeTrade?.fromPlayerId)?.name || 'Sender'} ➔ {room.players.find(p => p.id === room.activeTrade?.toPlayerId)?.name || 'Receiver'}
-                  </span>
-                </div>
-                <div className="text-[10px] space-y-0.5 font-medium">
-                  <div className="text-emerald-500">
-                    Offers: +${room.activeTrade.offeredCash} {room.activeTrade.offeredProperties.length > 0 && `& ${room.activeTrade.offeredProperties.length} prop(s)`}
-                  </div>
-                  <div className="text-amber-400">
-                    Requests: ${room.activeTrade.requestedCash} {room.activeTrade.requestedProperties.length > 0 && `& ${room.activeTrade.requestedProperties.length} prop(s)`}
-                  </div>
-                </div>
-                <div className="flex gap-1.5 pt-0.5">
-                  <button
-                    onClick={() => setShowTradeModal(true)}
-                    className="w-full py-1 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[10px] cursor-pointer transition-all border border-slate-700"
-                  >
-                    View Trade Deal (Spectator)
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Default Trade Info when no active trade */}
-            {!room.activeTrade && (
+            {room.status === 'waiting' ? (
               <p className={`text-[10px] leading-relaxed ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                Make trades with other players to acquire monopolies and build houses.
+                Trading properties and negotiating deals opens up once the match is started by the host.
               </p>
+            ) : (
+              <>
+                {/* Active Incoming Trade Card */}
+                {room.activeTrade && (room.activeTrade.toPlayerId === (myPlayer?.id || user.id)) && (
+                  <div className={`p-2.5 rounded-xl border text-xs space-y-1.5 ${
+                    isLight ? 'bg-white border-amber-200 text-slate-800' : 'bg-slate-900/80 border-amber-500/40 text-slate-200'
+                  }`}>
+                    <div className="flex items-center justify-between font-bold text-[11px] text-amber-500">
+                      <span>📩 Incoming Proposal</span>
+                      <span className="text-[10px] text-slate-400">
+                        From {room.players.find(p => p.id === room.activeTrade?.fromPlayerId)?.name || 'Player'}
+                      </span>
+                    </div>
+                    <div className="text-[10px] space-y-0.5 font-medium">
+                      <div className="text-emerald-500">
+                        Receive: +${room.activeTrade.offeredCash} {room.activeTrade.offeredProperties.length > 0 && `& ${room.activeTrade.offeredProperties.length} prop(s)`}
+                      </div>
+                      <div className="text-rose-400">
+                        Give: -${room.activeTrade.requestedCash} {room.activeTrade.requestedProperties.length > 0 && `& ${room.activeTrade.requestedProperties.length} prop(s)`}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      <button
+                        onClick={() => setShowTradeModal(true)}
+                        className="flex-1 py-1 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] cursor-pointer transition-all"
+                      >
+                        Review & Accept
+                      </button>
+                      <button
+                        onClick={() => {
+                          setRoom(prev => {
+                            const updated: GameRoom = { ...prev, activeTrade: null };
+                            broadcastAndSync(updated, 'TRADE_DECLINED');
+                            return updated;
+                          });
+                          sounds.playPayRent();
+                          addLog(`Trade proposal declined.`, 'info');
+                        }}
+                        className="py-1 px-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold text-[10px] cursor-pointer transition-all"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Active Outgoing Trade Card */}
+                {room.activeTrade && (room.activeTrade.fromPlayerId === (myPlayer?.id || user.id)) && (
+                  <div className={`p-2.5 rounded-xl border text-xs space-y-1.5 ${
+                    isLight ? 'bg-purple-50 border-purple-200 text-slate-800' : 'bg-purple-950/40 border-purple-800/40 text-slate-200'
+                  }`}>
+                    <div className="flex items-center justify-between font-bold text-[11px] text-purple-400">
+                      <span className="flex items-center gap-1">⏳ Proposal Sent</span>
+                      <span className="text-[10px] text-slate-400">
+                        To {room.players.find(p => p.id === room.activeTrade?.toPlayerId)?.name || 'Player'}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      Waiting for response...
+                    </div>
+                    <div className="flex gap-1.5 pt-0.5">
+                      <button
+                        onClick={() => setShowTradeModal(true)}
+                        className="flex-1 py-1 px-2 rounded-lg bg-[#7059e2] hover:bg-[#5e46d0] text-white font-bold text-[10px] cursor-pointer transition-all"
+                      >
+                        View Details
+                      </button>
+                      <button
+                        onClick={() => {
+                          setRoom(prev => {
+                            const updated: GameRoom = { ...prev, activeTrade: null };
+                            broadcastAndSync(updated, 'TRADE_DECLINED');
+                            return updated;
+                          });
+                          sounds.playClick();
+                          addLog(`Trade proposal cancelled.`, 'info');
+                        }}
+                        className="py-1 px-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-[10px] cursor-pointer transition-all"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Spectator Active Trade Card (Visible to all other players in the game) */}
+                {room.activeTrade && 
+                 (room.activeTrade.toPlayerId !== (myPlayer?.id || user.id)) && 
+                 (room.activeTrade.fromPlayerId !== (myPlayer?.id || user.id)) && (
+                  <div className={`p-2.5 rounded-xl border text-xs space-y-1.5 ${
+                    isLight ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-slate-900/80 border-slate-800 text-slate-200'
+                  }`}>
+                    <div className="flex items-center justify-between font-bold text-[11px] text-[#7059e2]">
+                      <span className="flex items-center gap-1">👁️ Live Deal</span>
+                      <span className="text-[10px] text-slate-400 truncate max-w-[120px]">
+                        {room.players.find(p => p.id === room.activeTrade?.fromPlayerId)?.name || 'Sender'} ➔ {room.players.find(p => p.id === room.activeTrade?.toPlayerId)?.name || 'Receiver'}
+                      </span>
+                    </div>
+                    <div className="text-[10px] space-y-0.5 font-medium">
+                      <div className="text-emerald-500">
+                        Offers: +${room.activeTrade.offeredCash} {room.activeTrade.offeredProperties.length > 0 && `& ${room.activeTrade.offeredProperties.length} prop(s)`}
+                      </div>
+                      <div className="text-amber-400">
+                        Requests: ${room.activeTrade.requestedCash} {room.activeTrade.requestedProperties.length > 0 && `& ${room.activeTrade.requestedProperties.length} prop(s)`}
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5 pt-0.5">
+                      <button
+                        onClick={() => setShowTradeModal(true)}
+                        className="w-full py-1 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[10px] cursor-pointer transition-all border border-slate-700"
+                      >
+                        View Trade Deal (Spectator)
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Default Trade Info when no active trade */}
+                {!room.activeTrade && (
+                  <p className={`text-[10px] leading-relaxed ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Make trades with other players to acquire monopolies and build houses.
+                  </p>
+                )}
+              </>
             )}
           </div>
 
