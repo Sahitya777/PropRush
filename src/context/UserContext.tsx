@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, LeagueTier, MatchHistory, Badge } from '../types/user';
 import { BADGES_LIST, LEAGUE_TIERS_INFO } from '../data/storeData';
 import { sounds } from '../utils/audio';
+import { syncUserProfileToServer } from '../utils/serverUsersSync';
 
 interface UserContextType {
   user: UserProfile;
@@ -351,6 +352,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } else if (user.email) {
       localStorage.setItem(`proprush_user_${user.email.toLowerCase()}`, JSON.stringify(user));
     }
+
+    const timer = setTimeout(() => {
+      syncUserProfileToServer(user);
+    }, 500);
+    return () => clearTimeout(timer);
   }, [user]);
 
   const updateUser = (updates: Partial<UserProfile>) => {

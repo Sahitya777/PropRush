@@ -255,131 +255,8 @@ export interface ServerRoom {
 
 const serverRooms = new Map<string, ServerRoom>();
 
-// Initialize default active rooms into server memory
-const defaultRooms: ServerRoom[] = [
-  {
-    code: 'lnu17',
-    name: 'High Stakes NYC Arena',
-    hostId: 'host_admin_nyc',
-    isPrivate: false,
-    maxPlayers: 4,
-    betAmount: 100,
-    initialCash: 1500,
-    turnTimeSeconds: 15,
-    boardTheme: 'classic',
-    fillWithBots: true,
-    status: 'playing',
-    players: [
-      { id: 'p_admin', name: 'NYC Tycoon', avatar: 'navy', color: '#3b82f6', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, getOutOfJailCards: 0, properties: [], mortgaged: [], houses: {}, isBankrupt: false, isBot: false, isHost: true },
-      { id: 'b_wallstreet', name: 'WallStreet_Wolf', avatar: 'king', color: '#ec4899', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, getOutOfJailCards: 0, properties: [], mortgaged: [], houses: {}, isBankrupt: false, isBot: true, isHost: false },
-      { id: 'b_empire', name: 'Empire_Builder', avatar: 'vip', color: '#10b981', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, getOutOfJailCards: 0, properties: [], mortgaged: [], houses: {}, isBankrupt: false, isBot: true, isHost: false }
-    ],
-    currentTurnPlayerId: 'p_admin',
-    currentTurnIndex: 0,
-    turnPhase: 'roll',
-    turnTimer: 15,
-    lastDice: [2, 3],
-    isDouble: false,
-    consecutiveDoubles: 0,
-    doubleCount: 0,
-    freeParkingPool: 100,
-    auction: null,
-    activeTrade: null,
-    pendingCard: null,
-    winner: null,
-    logs: [
-      { id: 'l1', timestamp: '12:00:00', text: 'High Stakes NYC Arena room ready for action.', type: 'info' }
-    ],
-    chatMessages: [
-      { id: 'c1', sender: 'System', avatar: 'navy', text: 'Welcome to NYC High Stakes Arena ($100 Wager).', time: '12:00' }
-    ],
-    version: 1,
-    createdAt: Date.now() - 10 * 60 * 1000,
-    updatedAt: Date.now(),
-    isCustom: false
-  },
-  {
-    code: 'tokyo88',
-    name: 'Tokyo Fast 2x Blitz',
-    hostId: 'host_kenji',
-    isPrivate: false,
-    maxPlayers: 4,
-    betAmount: 0,
-    initialCash: 1500,
-    turnTimeSeconds: 10,
-    boardTheme: 'cyber',
-    fillWithBots: true,
-    status: 'playing',
-    players: [
-      { id: 'p_kenji', name: 'Kenji', avatar: 'cyber', color: '#8b5cf6', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, getOutOfJailCards: 0, properties: [], mortgaged: [], houses: {}, isBankrupt: false, isBot: false, isHost: true },
-      { id: 'b_shibuya', name: 'Shibuya_Drifter', avatar: 'neon', color: '#06b6d4', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, getOutOfJailCards: 0, properties: [], mortgaged: [], houses: {}, isBankrupt: false, isBot: true, isHost: false }
-    ],
-    currentTurnPlayerId: 'p_kenji',
-    currentTurnIndex: 0,
-    turnPhase: 'roll',
-    turnTimer: 10,
-    lastDice: [3, 4],
-    isDouble: false,
-    consecutiveDoubles: 0,
-    doubleCount: 0,
-    freeParkingPool: 100,
-    auction: null,
-    activeTrade: null,
-    pendingCard: null,
-    winner: null,
-    logs: [
-      { id: 'l1', timestamp: '12:00:00', text: 'Tokyo Fast 2x Blitz active.', type: 'info' }
-    ],
-    chatMessages: [
-      { id: 'c1', sender: 'System', avatar: 'cyber', text: 'Tokyo Blitz 10s Fast Turns Activated.', time: '12:00' }
-    ],
-    version: 1,
-    createdAt: Date.now() - 15 * 60 * 1000,
-    updatedAt: Date.now(),
-    isCustom: false
-  },
-  {
-    code: 'whale50',
-    name: 'Grandmaster Diamond Table',
-    hostId: 'host_victor',
-    isPrivate: false,
-    maxPlayers: 4,
-    betAmount: 500,
-    initialCash: 1500,
-    turnTimeSeconds: 20,
-    boardTheme: 'worldwide',
-    fillWithBots: true,
-    status: 'playing',
-    players: [
-      { id: 'p_victor', name: 'Victor_Mogul', avatar: 'king', color: '#f59e0b', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, getOutOfJailCards: 0, properties: [], mortgaged: [], houses: {}, isBankrupt: false, isBot: false, isHost: true },
-      { id: 'b_dubai', name: 'Dubai_Sheikh', avatar: 'gold', color: '#e11d48', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, getOutOfJailCards: 0, properties: [], mortgaged: [], houses: {}, isBankrupt: false, isBot: true, isHost: false },
-      { id: 'b_monaco', name: 'Monaco_Baron', avatar: 'navy', color: '#84cc16', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, getOutOfJailCards: 0, properties: [], mortgaged: [], houses: {}, isBankrupt: false, isBot: true, isHost: false }
-    ],
-    currentTurnPlayerId: 'p_victor',
-    currentTurnIndex: 0,
-    turnPhase: 'roll',
-    turnTimer: 20,
-    lastDice: [4, 4],
-    isDouble: true,
-    consecutiveDoubles: 1,
-    doubleCount: 1,
-    freeParkingPool: 100,
-    auction: null,
-    activeTrade: null,
-    pendingCard: null,
-    winner: null,
-    logs: [
-      { id: 'l1', timestamp: '12:00:00', text: 'Grandmaster Diamond Table active ($500 Wager).', type: 'info' }
-    ],
-    chatMessages: [
-      { id: 'c1', sender: 'System', avatar: 'gold', text: 'Grandmaster High Stakes Diamond Table ($500 Wager).', time: '12:00' }
-    ],
-    version: 1,
-    createdAt: Date.now() - 20 * 60 * 1000,
-    updatedAt: Date.now(),
-    isCustom: false
-  }
-];
+// Initialize default active rooms into server memory (empty by default - only real rooms created by players)
+const defaultRooms: ServerRoom[] = [];
 
 defaultRooms.forEach(r => serverRooms.set(r.code.toLowerCase(), r));
 
@@ -540,6 +417,42 @@ app.post("/api/rooms/:code/join", (req: Request, res: Response): void => {
     };
 
     room.players.push(newPlayer);
+
+    // If joining player is an actual human player, track them in the platform user directory
+    if (!newPlayer.isBot && newPlayer.name) {
+      const emailVal = player.email || `${newPlayer.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@player.proprush.com`;
+      const userKey = emailVal.toLowerCase();
+      if (!platformUsersMap.has(userKey)) {
+        platformUsersMap.set(userKey, {
+          id: newPlayer.id,
+          username: newPlayer.name,
+          email: emailVal,
+          avatar: newPlayer.avatar || 'orange',
+          avatarFrame: newPlayer.avatarFrame,
+          walletBalance: 100.0,
+          coins: 50,
+          leaguePoints: 300,
+          leagueTier: 'Silver',
+          level: 1,
+          stats: {
+            gamesPlayed: 1,
+            gamesWon: 0,
+            winStreak: 0,
+            bestWinStreak: 0,
+            totalEarningsUsd: 0,
+            totalCoinsEarned: 50
+          },
+          role: 'player',
+          isBanned: false,
+          country: 'Global',
+          city: 'Online',
+          joinedDate: new Date().toISOString().split('T')[0],
+          title: 'Active Competitor',
+          lastActive: now
+        });
+      }
+    }
+
     room.logs.unshift({
       id: 'l_' + now,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -613,7 +526,244 @@ app.post("/api/rooms/:code/chat", (req: Request, res: Response): void => {
 });
 
 // ==========================================
-// 5. VITE MIDDLEWARE (Full-Stack Express + Vite)
+// 5. PROPER USERS & RANKINGS REGISTRY API
+// ==========================================
+export interface PlatformUser {
+  id: string;
+  username: string;
+  email: string;
+  avatar: string;
+  avatarFrame?: string;
+  profilePictureUrl?: string;
+  walletBalance: number;
+  coins: number;
+  leaguePoints: number;
+  leagueTier: string;
+  level: number;
+  stats: {
+    gamesPlayed: number;
+    gamesWon: number;
+    winStreak: number;
+    bestWinStreak: number;
+    totalEarningsUsd: number;
+    totalCoinsEarned: number;
+  };
+  role: 'admin' | 'player';
+  isBanned: boolean;
+  country: string;
+  city: string;
+  joinedDate: string;
+  title: string;
+  lastActive: number;
+  isCurrentUser?: boolean;
+}
+
+// Store actual platform users (starts with active account, dynamically updated on registration/login)
+const INITIAL_PLATFORM_USERS: PlatformUser[] = [
+  {
+    id: 'usr_sahi_super',
+    username: 'Sahitya Nijhawan',
+    email: 'sahityanijhawan@gmail.com',
+    avatar: 'vip',
+    avatarFrame: 'pfp_gold_sparkle',
+    walletBalance: 370.00,
+    coins: 0,
+    leaguePoints: 2490,
+    leagueTier: 'Tycoon',
+    level: 14,
+    stats: {
+      gamesPlayed: 184,
+      gamesWon: 135,
+      winStreak: 6,
+      bestWinStreak: 9,
+      totalEarningsUsd: 8450.00,
+      totalCoinsEarned: 3200,
+    },
+    role: 'admin',
+    isBanned: false,
+    country: 'United States',
+    city: 'San Francisco',
+    joinedDate: '2026-08-10',
+    title: 'PropRush Master & Tycoon',
+    lastActive: Date.now()
+  }
+];
+
+const platformUsersMap = new Map<string, PlatformUser>();
+INITIAL_PLATFORM_USERS.forEach(u => platformUsersMap.set(u.email.toLowerCase(), u));
+
+// GET /api/users - Retrieve verified users directory
+app.get("/api/users", (req: Request, res: Response) => {
+  const query = (req.query.q as string || '').toLowerCase().trim();
+  let list = Array.from(platformUsersMap.values());
+
+  if (query) {
+    list = list.filter(u => 
+      u.username.toLowerCase().includes(query) || 
+      u.email.toLowerCase().includes(query) ||
+      u.city.toLowerCase().includes(query) ||
+      u.country.toLowerCase().includes(query) ||
+      u.title.toLowerCase().includes(query)
+    );
+  }
+
+  res.json({ users: list, total: list.length });
+});
+
+// POST /api/users/sync - Synchronize client session user to platform registry
+app.post("/api/users/sync", (req: Request, res: Response): void => {
+  try {
+    const { user } = req.body;
+    if (!user) {
+      res.status(400).json({ error: "Missing user profile data" });
+      return;
+    }
+
+    const emailKey = (user.email || 'sahityanijhawan@gmail.com').toLowerCase();
+    const existing = platformUsersMap.get(emailKey);
+
+    const updatedUser: PlatformUser = {
+      id: user.id || existing?.id || 'usr_' + Date.now(),
+      username: user.username || existing?.username || 'Sahitya Nijhawan',
+      email: user.email || existing?.email || 'sahityanijhawan@gmail.com',
+      avatar: user.avatar || existing?.avatar || 'vip',
+      avatarFrame: user.avatarFrame || existing?.avatarFrame,
+      profilePictureUrl: user.profilePictureUrl || existing?.profilePictureUrl,
+      walletBalance: typeof user.walletBalance === 'number' ? user.walletBalance : (existing?.walletBalance || 0),
+      coins: typeof user.coins === 'number' ? user.coins : (existing?.coins || 0),
+      leaguePoints: typeof user.leaguePoints === 'number' ? user.leaguePoints : (existing?.leaguePoints || 0),
+      leagueTier: user.leagueTier || existing?.leagueTier || 'Tycoon',
+      level: user.level || existing?.level || 1,
+      stats: {
+        gamesPlayed: user.stats?.gamesPlayed ?? existing?.stats?.gamesPlayed ?? 0,
+        gamesWon: user.stats?.gamesWon ?? existing?.stats?.gamesWon ?? 0,
+        winStreak: user.stats?.winStreak ?? existing?.stats?.winStreak ?? 0,
+        bestWinStreak: user.stats?.bestWinStreak ?? existing?.stats?.bestWinStreak ?? 0,
+        totalEarningsUsd: user.stats?.totalEarningsUsd ?? existing?.stats?.totalEarningsUsd ?? 0,
+        totalCoinsEarned: user.stats?.totalCoinsEarned ?? existing?.stats?.totalCoinsEarned ?? 0,
+      },
+      role: (existing?.role || (emailKey.includes('sahityanijhawan') ? 'admin' : 'player')) as 'admin' | 'player',
+      isBanned: existing?.isBanned || false,
+      country: existing?.country || 'United States',
+      city: existing?.city || 'San Francisco',
+      joinedDate: existing?.joinedDate || '2026-08-10',
+      title: existing?.title || 'Verified PropRush Player',
+      lastActive: Date.now()
+    };
+
+    platformUsersMap.set(emailKey, updatedUser);
+    res.json({ success: true, user: updatedUser });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to sync user" });
+  }
+});
+
+// GET /api/rankings - Return sorted competitive rankings
+app.get("/api/rankings", (req: Request, res: Response) => {
+  const timeframe = (req.query.timeframe as string || 'season').toLowerCase();
+  const search = (req.query.search as string || '').toLowerCase().trim();
+  const currentEmail = (req.query.currentEmail as string || '').toLowerCase().trim();
+
+  let list = Array.from(platformUsersMap.values()).map(u => {
+    const isCurrent = Boolean(
+      (currentEmail && u.email.toLowerCase() === currentEmail) ||
+      u.email.toLowerCase() === 'sahityanijhawan@gmail.com'
+    );
+    const winRate = u.stats.gamesPlayed > 0 
+      ? Number(((u.stats.gamesWon / u.stats.gamesPlayed) * 100).toFixed(1))
+      : 0;
+
+    return {
+      id: u.id,
+      name: u.username,
+      email: u.email,
+      avatar: u.avatar,
+      frame: u.avatarFrame,
+      profilePictureUrl: u.profilePictureUrl,
+      tier: u.leagueTier,
+      lp: u.leaguePoints,
+      earningsUsd: u.stats.totalEarningsUsd,
+      wins: u.stats.gamesWon,
+      gamesPlayed: u.stats.gamesPlayed,
+      winRate,
+      winStreak: u.stats.winStreak,
+      favoriteMap: u.avatar === 'cyber' ? 'Cyber Neon Metropolis' : u.avatar === 'gold' ? 'Worldwide Grand Tour' : 'Classic RichUp Grid',
+      title: u.title,
+      country: u.country,
+      city: u.city,
+      joinedDate: u.joinedDate,
+      isCurrentUser: isCurrent
+    };
+  });
+
+  if (search) {
+    list = list.filter(p => 
+      p.name.toLowerCase().includes(search) || 
+      p.title.toLowerCase().includes(search) ||
+      p.city.toLowerCase().includes(search) ||
+      p.country.toLowerCase().includes(search) ||
+      p.tier.toLowerCase().includes(search)
+    );
+  }
+
+  // Sort by timeframe
+  if (timeframe === 'weekly') {
+    list.sort((a, b) => (b.wins * 25 + b.winStreak * 10) - (a.wins * 25 + a.winStreak * 10));
+  } else if (timeframe === 'all_time') {
+    list.sort((a, b) => b.earningsUsd - a.earningsUsd);
+  } else {
+    // Season 4 standard LP
+    list.sort((a, b) => b.lp - a.lp);
+  }
+
+  const rankedList = list.map((item, index) => ({
+    ...item,
+    rank: index + 1
+  }));
+
+  res.json({ rankings: rankedList, total: rankedList.length });
+});
+
+// POST /api/admin/users/action - Admin moderation actions
+app.post("/api/admin/users/action", (req: Request, res: Response): void => {
+  try {
+    const { email, action, value } = req.body;
+    if (!email) {
+      res.status(400).json({ error: "User email required" });
+      return;
+    }
+
+    const key = email.toLowerCase().trim();
+    const target = platformUsersMap.get(key);
+    if (!target) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    if (action === 'credit') {
+      const amount = parseFloat(value);
+      if (!isNaN(amount) && amount > 0) {
+        target.walletBalance = Math.round((target.walletBalance + amount) * 100) / 100;
+      }
+    } else if (action === 'toggleBan') {
+      target.isBanned = !target.isBanned;
+    } else if (action === 'ban') {
+      target.isBanned = true;
+    } else if (action === 'unban') {
+      target.isBanned = false;
+    } else if (action === 'role') {
+      target.role = value === 'admin' ? 'admin' : 'player';
+    }
+
+    platformUsersMap.set(key, target);
+    res.json({ success: true, user: target });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed action" });
+  }
+});
+
+// ==========================================
+// 6. VITE MIDDLEWARE (Full-Stack Express + Vite)
 // ==========================================
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

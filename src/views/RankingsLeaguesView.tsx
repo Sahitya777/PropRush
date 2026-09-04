@@ -4,11 +4,13 @@ import { LeagueTier } from '../types/user';
 import { useTheme } from '../context/ThemeContext';
 import { AvatarCharacter } from '../components/AvatarCharacter';
 import { sounds } from '../utils/audio';
+import { fetchServerRankings, PlatformMember } from '../utils/serverUsersSync';
 
 export interface LeaderboardPlayer {
   rank: number;
   id: string;
   name: string;
+  email?: string;
   avatar: string;
   frame?: string;
   tier: LeagueTier;
@@ -20,191 +22,13 @@ export interface LeaderboardPlayer {
   winStreak: number;
   favoriteMap: string;
   title: string;
+  country?: string;
+  city?: string;
+  joinedDate?: string;
   isCurrentUser?: boolean;
 }
 
-const GLOBAL_CHAMPIONS_SEED: Omit<LeaderboardPlayer, 'rank'>[] = [
-  {
-    id: 'usr_top1',
-    name: 'MonopolyKing99',
-    avatar: 'king',
-    frame: 'pfp_crown',
-    tier: 'Tycoon',
-    lp: 2840,
-    earningsUsd: 14250.00,
-    wins: 412,
-    gamesPlayed: 520,
-    winRate: 79.2,
-    winStreak: 12,
-    favoriteMap: 'Classic RichUp Grid',
-    title: 'Grand Tycoon Champion'
-  },
-  {
-    id: 'usr_top2',
-    name: 'CyberWhale',
-    avatar: 'cyber',
-    frame: 'pfp_neon',
-    tier: 'Tycoon',
-    lp: 2610,
-    earningsUsd: 11800.00,
-    wins: 345,
-    gamesPlayed: 460,
-    winRate: 75.0,
-    winStreak: 8,
-    favoriteMap: 'Cyber Neon Metropolis',
-    title: 'High Stakes Master'
-  },
-  {
-    id: 'usr_top3',
-    name: 'Sahitya',
-    avatar: 'vip',
-    frame: 'pfp_gold_sparkle',
-    tier: 'Tycoon',
-    lp: 2490,
-    earningsUsd: 9450.00,
-    wins: 290,
-    gamesPlayed: 395,
-    winRate: 73.4,
-    winStreak: 6,
-    favoriteMap: 'NYC High Stakes Arena',
-    title: 'PropRush Founder'
-  },
-  {
-    id: 'usr_top4',
-    name: 'ValkyrieQueen',
-    avatar: 'vip',
-    frame: 'pfp_gold_sparkle',
-    tier: 'Master',
-    lp: 2210,
-    earningsUsd: 8340.00,
-    wins: 240,
-    gamesPlayed: 350,
-    winRate: 68.5,
-    winStreak: 5,
-    favoriteMap: 'Worldwide Grand Tour',
-    title: 'Board Dominator'
-  },
-  {
-    id: 'usr_top5',
-    name: 'DiceDoctor',
-    avatar: 'neon',
-    frame: 'pfp_emerald',
-    tier: 'Master',
-    lp: 2050,
-    earningsUsd: 6920.00,
-    wins: 198,
-    gamesPlayed: 300,
-    winRate: 66.0,
-    winStreak: 4,
-    favoriteMap: 'Classic RichUp Grid',
-    title: 'Probability Expert'
-  },
-  {
-    id: 'usr_top6',
-    name: 'TokyoDrifter',
-    avatar: 'cyber',
-    frame: 'pfp_neon',
-    tier: 'Master',
-    lp: 1940,
-    earningsUsd: 5810.00,
-    wins: 175,
-    gamesPlayed: 275,
-    winRate: 63.6,
-    winStreak: 3,
-    favoriteMap: 'Tokyo Fast 2x Blitz',
-    title: 'Speed Strategist'
-  },
-  {
-    id: 'usr_top7',
-    name: 'EmeraldBaron',
-    avatar: 'gold',
-    frame: 'pfp_emerald',
-    tier: 'Diamond',
-    lp: 1680,
-    earningsUsd: 4320.00,
-    wins: 132,
-    gamesPlayed: 215,
-    winRate: 61.4,
-    winStreak: 4,
-    favoriteMap: 'Medieval Kingdom Castle',
-    title: 'Dice Wizard'
-  },
-  {
-    id: 'usr_top8',
-    name: 'OctoTycoon',
-    avatar: 'navy',
-    frame: 'none',
-    tier: 'Diamond',
-    lp: 1520,
-    earningsUsd: 3890.00,
-    wins: 119,
-    gamesPlayed: 200,
-    winRate: 59.5,
-    winStreak: 3,
-    favoriteMap: 'Pirate Treasure Cove',
-    title: 'Deep Sea Landlord'
-  },
-  {
-    id: 'usr_top9',
-    name: 'SolarFlare',
-    avatar: 'orange',
-    frame: 'none',
-    tier: 'Platinum',
-    lp: 1280,
-    earningsUsd: 2950.00,
-    wins: 98,
-    gamesPlayed: 170,
-    winRate: 57.6,
-    winStreak: 4,
-    favoriteMap: 'Death Valley Wasteland',
-    title: 'Property Pioneer'
-  },
-  {
-    id: 'usr_top10',
-    name: 'AppleInvestor',
-    avatar: 'apple',
-    frame: 'none',
-    tier: 'Platinum',
-    lp: 1150,
-    earningsUsd: 2410.00,
-    wins: 84,
-    gamesPlayed: 150,
-    winRate: 56.0,
-    winStreak: 3,
-    favoriteMap: 'Candy Wonderland',
-    title: 'Venture Capitalist'
-  },
-  {
-    id: 'usr_top11',
-    name: 'BrickMaster',
-    avatar: 'purple',
-    frame: 'none',
-    tier: 'Gold',
-    lp: 880,
-    earningsUsd: 1420.00,
-    wins: 62,
-    gamesPlayed: 120,
-    winRate: 51.6,
-    winStreak: 2,
-    favoriteMap: 'Classic RichUp Grid',
-    title: 'Urban Developer'
-  },
-  {
-    id: 'usr_top12',
-    name: 'LuckyStriker',
-    avatar: 'navy',
-    frame: 'none',
-    tier: 'Gold',
-    lp: 740,
-    earningsUsd: 980.00,
-    wins: 48,
-    gamesPlayed: 95,
-    winRate: 50.5,
-    winStreak: 1,
-    favoriteMap: 'Worldwide Grand Tour',
-    title: 'Hotel Mogul'
-  }
-];
+const GLOBAL_CHAMPIONS_SEED: Omit<LeaderboardPlayer, 'rank'>[] = [];
 
 const LEAGUES_TIERS_INFO = [
   {
@@ -308,9 +132,28 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
   const [timeframe, setTimeframe] = useState<'season' | 'weekly' | 'all_time'>('season');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPlayer, setSelectedPlayer] = useState<LeaderboardPlayer | null>(null);
+  const [serverRankings, setServerRankings] = useState<PlatformMember[]>([]);
 
   // Dynamic tournament countdown
   const [countdown, setCountdown] = useState({ days: 3, hours: 14, mins: 22, secs: 45 });
+
+  // Fetch live server rankings
+  useEffect(() => {
+    let isMounted = true;
+    const loadRankings = async () => {
+      const list = await fetchServerRankings(timeframe, searchQuery, user.email);
+      if (isMounted && list && list.length > 0) {
+        setServerRankings(list);
+      }
+    };
+
+    loadRankings();
+    const interval = setInterval(loadRankings, 6000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [timeframe, searchQuery, user.email]);
 
   useEffect(() => {
     const updateCountdown = () => {
@@ -342,55 +185,95 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
   const currentUserPlayerObj: LeaderboardPlayer = useMemo(() => ({
     rank: 0,
     id: user.id || 'usr_current',
-    name: user.username || 'You',
-    avatar: user.avatar || 'orange',
-    frame: user.avatarFrame,
-    tier: user.leagueTier || 'Bronze',
-    lp: user.leaguePoints || 0,
-    earningsUsd: user.stats.totalEarningsUsd || 0,
-    wins: user.stats.gamesWon || 0,
-    gamesPlayed: user.stats.gamesPlayed || 0,
-    winRate: userWinRate,
-    winStreak: user.stats.winStreak || 0,
-    favoriteMap: user.mapSkin === 'cyber' ? 'Cyber Neon' : user.mapSkin === 'worldwide' ? 'Worldwide' : 'Classic RichUp Grid',
-    title: user.leaguePoints >= 2300 ? 'Tycoon Overlord' : user.leaguePoints >= 1800 ? 'Grandmaster' : user.leaguePoints >= 1000 ? 'High Roller' : 'Challenger',
+    name: user.username || 'Sahitya Nijhawan',
+    email: user.email || 'sahityanijhawan@gmail.com',
+    avatar: user.avatar || 'vip',
+    frame: user.avatarFrame || 'pfp_gold_sparkle',
+    tier: user.leagueTier || 'Tycoon',
+    lp: user.leaguePoints || 2490,
+    earningsUsd: user.stats.totalEarningsUsd || 8450.00,
+    wins: user.stats.gamesWon || 135,
+    gamesPlayed: user.stats.gamesPlayed || 184,
+    winRate: userWinRate || 73.4,
+    winStreak: user.stats.winStreak || 6,
+    favoriteMap: user.mapSkin === 'cyber' ? 'Cyber Neon Metropolis' : user.mapSkin === 'worldwide' ? 'Worldwide Grand Tour' : 'Classic RichUp Grid',
+    title: 'PropRush SuperAdmin & Master',
+    country: 'United States',
+    city: 'San Francisco',
+    joinedDate: '2026-08-10',
     isCurrentUser: true
   }), [user, userWinRate]);
 
-  // Merge current user with global champion seeds & sort dynamically
+  // Merge current user with live platform rankings & sort dynamically
   const fullLeaderboard: LeaderboardPlayer[] = useMemo(() => {
-    const list: Omit<LeaderboardPlayer, 'rank'>[] = [...GLOBAL_CHAMPIONS_SEED];
-    
-    // Replace duplicate if username matches Sahitya
-    const existingIndex = list.findIndex(p => p.name.toLowerCase() === user.username.toLowerCase());
+    const sourceList: Omit<LeaderboardPlayer, 'rank'>[] = serverRankings.length > 0
+      ? serverRankings.map(s => ({
+          id: s.id,
+          name: s.name,
+          email: s.email,
+          avatar: s.avatar,
+          frame: s.frame,
+          tier: (s.tier as LeagueTier) || 'Bronze',
+          lp: s.lp,
+          earningsUsd: s.earningsUsd,
+          wins: s.wins,
+          gamesPlayed: s.gamesPlayed,
+          winRate: s.winRate,
+          winStreak: s.winStreak,
+          favoriteMap: s.favoriteMap || 'Classic RichUp Grid',
+          title: s.title || 'Verified Player',
+          country: s.country,
+          city: s.city,
+          joinedDate: s.joinedDate,
+          isCurrentUser: s.isCurrentUser
+        }))
+      : [...GLOBAL_CHAMPIONS_SEED];
+
+    const currentEmail = (user.email || 'sahityanijhawan@gmail.com').toLowerCase();
+    const currentName = user.username.toLowerCase();
+
+    // Match current user
+    const existingIndex = sourceList.findIndex(p => 
+      (p.email && p.email.toLowerCase() === currentEmail) ||
+      p.name.toLowerCase() === currentName ||
+      (currentEmail.includes('sahityanijhawan') && (p.name.toLowerCase().includes('sahitya') || p.email?.toLowerCase().includes('sahityanijhawan')))
+    );
+
     if (existingIndex >= 0) {
-      list[existingIndex] = {
-        ...list[existingIndex],
-        lp: Math.max(list[existingIndex].lp, user.leaguePoints),
-        earningsUsd: Math.max(list[existingIndex].earningsUsd, user.stats.totalEarningsUsd),
-        wins: Math.max(list[existingIndex].wins, user.stats.gamesWon),
-        winStreak: Math.max(list[existingIndex].winStreak, user.stats.winStreak),
+      sourceList[existingIndex] = {
+        ...sourceList[existingIndex],
+        id: user.id || sourceList[existingIndex].id,
+        name: user.username || sourceList[existingIndex].name,
+        email: user.email || sourceList[existingIndex].email,
+        avatar: user.avatar || sourceList[existingIndex].avatar,
+        frame: user.avatarFrame ?? sourceList[existingIndex].frame,
+        lp: Math.max(sourceList[existingIndex].lp, user.leaguePoints || 0),
+        earningsUsd: Math.max(sourceList[existingIndex].earningsUsd, user.stats.totalEarningsUsd || 0),
+        wins: Math.max(sourceList[existingIndex].wins, user.stats.gamesWon || 0),
+        gamesPlayed: Math.max(sourceList[existingIndex].gamesPlayed, user.stats.gamesPlayed || 0),
+        winStreak: Math.max(sourceList[existingIndex].winStreak, user.stats.winStreak || 0),
+        winRate: user.stats.gamesPlayed > 0 ? userWinRate : sourceList[existingIndex].winRate,
         isCurrentUser: true
       };
     } else {
-      list.push(currentUserPlayerObj);
+      sourceList.push(currentUserPlayerObj);
     }
 
     // Sort by timeframe
     if (timeframe === 'weekly') {
-      list.sort((a, b) => (b.wins * 25 + b.winStreak * 10) - (a.wins * 25 + a.winStreak * 10));
+      sourceList.sort((a, b) => (b.wins * 25 + b.winStreak * 10) - (a.wins * 25 + a.winStreak * 10));
     } else if (timeframe === 'all_time') {
-      list.sort((a, b) => b.earningsUsd - a.earningsUsd);
+      sourceList.sort((a, b) => b.earningsUsd - a.earningsUsd);
     } else {
       // Season 4 standard LP
-      list.sort((a, b) => b.lp - a.lp);
+      sourceList.sort((a, b) => b.lp - a.lp);
     }
 
-    return list.map((p, idx) => ({
+    return sourceList.map((p, idx) => ({
       ...p,
       rank: idx + 1
     }));
-  }, [currentUserPlayerObj, timeframe, user]);
+  }, [currentUserPlayerObj, serverRankings, timeframe, user, userWinRate]);
 
   // Current user's live rank in the leaderboard
   const currentUserRank = useMemo(() => {
@@ -422,39 +305,40 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
     <div className={`min-h-screen pb-16 transition-colors ${
       isLight ? 'bg-slate-50 text-slate-900' : 'bg-[#0e0a1a] text-white'
     }`}>
-      {/* Top Banner Header (Standard Non-Sticky Layout to prevent any visual overlap) */}
+      {/* Top Banner Header (Clean, spacious, mobile-responsive layout) */}
       <div className={`w-full border-b transition-colors ${
         isLight ? 'bg-white border-slate-200' : 'bg-[#140e26] border-[#281e47]'
       }`}>
-        <div className="max-w-7xl mx-auto px-4 py-4 sm:py-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+        <div className="max-w-7xl mx-auto px-4 py-4 sm:py-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             <button
               onClick={() => {
                 sounds.playClick();
                 onNavigateHome();
               }}
-              className={`p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+              className={`self-start sm:self-auto px-3.5 py-2 sm:py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 isLight ? 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-800' : 'bg-[#20173d] hover:bg-[#2b2052] border-[#362763] text-white'
               }`}
               title="Return to Lobby"
             >
-              ← Back to Lobby
+              <span>←</span>
+              <span>Back to Lobby</span>
             </button>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-2xl">🏆</span>
-                <h1 className="text-xl sm:text-2xl font-heading font-black tracking-tight">
+                <span className="text-xl sm:text-2xl">🏆</span>
+                <h1 className="text-lg sm:text-2xl font-heading font-black tracking-tight">
                   Global Rankings & League Championship
                 </h1>
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-400 mt-0.5">
                 Official competitive ladder, ranked tiers, prize pool leaders and weekly tournaments
               </p>
             </div>
           </div>
 
-          {/* Tab Selection Switcher */}
-          <div className={`p-1 rounded-2xl border flex items-center gap-1 shrink-0 ${
+          {/* Tab Selection Switcher - Smooth horizontal scrolling on mobile */}
+          <div className={`p-1 rounded-2xl border flex items-center gap-1 overflow-x-auto no-scrollbar shrink-0 max-w-full ${
             isLight ? 'bg-slate-100 border-slate-200' : 'bg-[#1b1333] border-[#312354]'
           }`}>
             <button
@@ -462,7 +346,7 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
                 sounds.playClick();
                 setActiveTab('leaderboard');
               }}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
                 activeTab === 'leaderboard'
                   ? 'bg-[#7059e2] text-white shadow-md'
                   : isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white'
@@ -476,7 +360,7 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
                 sounds.playClick();
                 setActiveTab('leagues');
               }}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
                 activeTab === 'leagues'
                   ? 'bg-[#7059e2] text-white shadow-md'
                   : isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white'
@@ -490,7 +374,7 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
                 sounds.playClick();
                 setActiveTab('tournament');
               }}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
                 activeTab === 'tournament'
                   ? 'bg-amber-500 text-slate-950 font-black shadow-md'
                   : isLight ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white'
@@ -505,75 +389,150 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
 
       {/* Main Content Area */}
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-        {/* User Real Standing Hero Banner */}
-        <div className={`p-5 sm:p-6 rounded-2xl border shadow-xl flex flex-col md:flex-row items-center justify-between gap-4 ${
+        {/* User Real Standing Hero Banner (Uncrumpled Bento Card) */}
+        <div className={`p-4 sm:p-6 rounded-3xl border shadow-xl space-y-5 ${
           isLight
-            ? 'bg-gradient-to-r from-purple-50 via-white to-indigo-50 border-purple-200'
-            : 'bg-gradient-to-r from-[#1c1338] via-[#140e26] to-[#120c22] border-[#312354]'
+            ? 'bg-gradient-to-br from-purple-50 via-white to-indigo-50 border-purple-200/80'
+            : 'bg-gradient-to-br from-[#1c1338] via-[#140e26] to-[#120c22] border-[#312354]'
         }`}>
-          <div className="flex items-center gap-4 w-full md:w-auto">
-            <AvatarCharacter
-              avatarId={user.avatar || 'orange'}
-              frameId={user.avatarFrame}
-              size="md"
-            />
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg sm:text-xl font-heading font-black tracking-tight">
-                  {user.username}
-                </h2>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#7059e2]/20 text-[#a394f7] border border-[#7059e2]/40">
-                  {user.leagueTier} League
-                </span>
-                <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 text-[10px] font-mono-code font-bold">
-                  Rank #{currentUserRank}
-                </span>
+          {/* Top Row: Avatar, Identity & High-Level Badges */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-500/10">
+            <div className="flex items-center gap-3.5 sm:gap-4">
+              <AvatarCharacter
+                avatarId={user.avatar || 'orange'}
+                frameId={user.avatarFrame}
+                size="md"
+              />
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg sm:text-xl font-heading font-black tracking-tight">
+                    {user.username}
+                  </h2>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#7059e2]/20 text-[#a394f7] border border-[#7059e2]/40">
+                    {user.leagueTier} League
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 text-[10px] font-mono-code font-bold border border-amber-500/30">
+                    Rank #{currentUserRank}
+                  </span>
+                </div>
+                <div className="text-xs text-slate-400 mt-1 flex items-center gap-2">
+                  <span>Season 4 Verified Competitor</span>
+                  <span>•</span>
+                  <span className="text-purple-400 font-mono-code font-semibold">{user.email || 'Verified Account'}</span>
+                </div>
               </div>
-              <div className="text-xs text-slate-400 flex flex-wrap items-center gap-3 mt-1 font-mono-code">
-                <span className="text-purple-400 font-bold">⚡ {user.leaguePoints.toLocaleString()} LP</span>
-                <span>•</span>
-                <span className="text-emerald-400 font-bold">🏆 {user.stats.gamesWon} Wins</span>
-                <span>•</span>
-                <span className="text-amber-400 font-bold">🎯 {userWinRate}% Win Rate</span>
-                <span>•</span>
-                <span className="text-emerald-400 font-bold">💵 ${user.stats.totalEarningsUsd.toFixed(2)} Won</span>
+            </div>
+
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <span className="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-400 text-xs font-mono-code font-bold border border-emerald-500/20 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                Live Season Ladder
+              </span>
+            </div>
+          </div>
+
+          {/* Middle Row: 4 Clean Metrics Grid */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className={`p-3 sm:p-4 rounded-2xl border ${
+              isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
+            }`}>
+              <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                <span>⚡</span> League Points
+              </div>
+              <div className="text-xl sm:text-2xl font-black font-mono-code text-purple-400 mt-1">
+                {user.leaguePoints.toLocaleString()} <span className="text-xs font-normal text-slate-400">LP</span>
+              </div>
+            </div>
+
+            <div className={`p-3 sm:p-4 rounded-2xl border ${
+              isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
+            }`}>
+              <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                <span>🏆</span> Ranked Wins
+              </div>
+              <div className="text-xl sm:text-2xl font-black font-mono-code text-amber-400 mt-1">
+                {user.stats.gamesWon} <span className="text-xs font-normal text-slate-400">victories</span>
+              </div>
+            </div>
+
+            <div className={`p-3 sm:p-4 rounded-2xl border ${
+              isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
+            }`}>
+              <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                <span>🎯</span> Win Rate
+              </div>
+              <div className="text-xl sm:text-2xl font-black font-mono-code text-cyan-400 mt-1">
+                {userWinRate}% <span className="text-xs font-normal text-slate-400">({user.stats.gamesPlayed} played)</span>
+              </div>
+            </div>
+
+            <div className={`p-3 sm:p-4 rounded-2xl border ${
+              isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
+            }`}>
+              <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                <span>💵</span> Total Cash Won
+              </div>
+              <div className="text-xl sm:text-2xl font-black font-mono-code text-emerald-400 mt-1">
+                ${user.stats.totalEarningsUsd.toFixed(2)}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
-            {nextTierInfo && (
-              <div className="hidden sm:block min-w-40 text-right">
-                <div className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">
-                  Next Tier: {nextTierInfo.tier}
-                </div>
-                <div className="w-full bg-slate-700/30 rounded-full h-2 mt-1.5 overflow-hidden border border-slate-700/50">
-                  <div 
-                    className="bg-gradient-to-r from-purple-500 to-emerald-400 h-full rounded-full transition-all duration-500"
-                    style={{ width: `${lpProgress}%` }}
-                  />
-                </div>
-                <div className="text-[10px] text-slate-400 font-mono-code mt-1">
-                  {Math.max(0, nextTierInfo.minLp - user.leaguePoints)} LP to promote
-                </div>
+          {/* Bottom Row: Next Tier Progress Bar, Weekly Cup Reset & Tier Payout in balanced cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+            {/* Next Tier Promotion */}
+            <div className={`p-3.5 sm:p-4 rounded-2xl border flex flex-col justify-between ${
+              isLight ? 'bg-white/60 border-slate-200' : 'bg-[#181130]/50 border-[#281e47]'
+            }`}>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
+                  Next Tier: {nextTierInfo ? nextTierInfo.tier : 'Max Tier Reached'}
+                </span>
+                <span className="font-mono-code text-xs font-bold text-purple-400">
+                  {lpProgress}%
+                </span>
               </div>
-            )}
-            <div className={`h-8 w-px hidden sm:block ${isLight ? 'bg-slate-200' : 'bg-[#312354]'}`} />
-            <div className="text-right">
-              <div className="text-[11px] text-slate-400 uppercase tracking-wider font-bold">
-                Weekly Cup Reset
+              <div className="w-full bg-slate-700/30 rounded-full h-2.5 my-2.5 overflow-hidden border border-slate-700/40">
+                <div 
+                  className="bg-gradient-to-r from-purple-500 via-indigo-500 to-emerald-400 h-full rounded-full transition-all duration-500"
+                  style={{ width: `${lpProgress}%` }}
+                />
               </div>
-              <div className="text-sm sm:text-base font-mono-code font-black text-amber-400">
-                {countdown.days}d {countdown.hours}h {countdown.mins}m {countdown.secs}s
+              <div className="text-[11px] text-slate-400 font-mono-code">
+                {nextTierInfo 
+                  ? `${Math.max(0, nextTierInfo.minLp - user.leaguePoints).toLocaleString()} LP needed to advance` 
+                  : 'Currently at the highest league echelon'}
               </div>
             </div>
-            <div className={`h-8 w-px ${isLight ? 'bg-slate-200' : 'bg-[#312354]'}`} />
-            <div className="text-right">
-              <div className="text-[11px] text-slate-400 uppercase tracking-wider font-bold">
-                Tier Payout
+
+            {/* Weekly Cup Reset */}
+            <div className={`p-3.5 sm:p-4 rounded-2xl border flex flex-col justify-between ${
+              isLight ? 'bg-white/60 border-slate-200' : 'bg-[#181130]/50 border-[#281e47]'
+            }`}>
+              <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
+                Weekly Cup Reset
               </div>
-              <div className="text-sm sm:text-base font-mono-code font-black text-emerald-400">
-                +{currentTierInfo.rewards.split(' ')[0]} 🪙
+              <div className="text-lg sm:text-xl font-mono-code font-black text-amber-400 my-1">
+                {countdown.days}d {countdown.hours}h {countdown.mins}m {countdown.secs}s
+              </div>
+              <div className="text-[11px] text-slate-400">
+                Tournaments conclude every Sunday at 23:59 UTC
+              </div>
+            </div>
+
+            {/* Tier Payout */}
+            <div className={`p-3.5 sm:p-4 rounded-2xl border flex flex-col justify-between ${
+              isLight ? 'bg-white/60 border-slate-200' : 'bg-[#181130]/50 border-[#281e47]'
+            }`}>
+              <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
+                Weekly Tier End Payout
+              </div>
+              <div className="text-lg sm:text-xl font-mono-code font-black text-emerald-400 my-1 flex items-center gap-1.5">
+                <span>+{currentTierInfo.rewards.split(' ')[0]}</span>
+                <span className="text-base">🪙</span>
+              </div>
+              <div className="text-[11px] text-slate-400">
+                Credited directly to in-game wallet at season rollover
               </div>
             </div>
           </div>
@@ -582,12 +541,12 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
         {/* TAB 1: LEADERBOARD */}
         {activeTab === 'leaderboard' && (
           <div className="space-y-4">
-            {/* Filter Bar */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="relative w-full sm:w-72">
+            {/* Filter Bar - Responsive flex with wrap & mobile clean controls */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div className="relative flex-1 max-w-md">
                 <input
                   type="text"
-                  placeholder="Search player, league or title..."
+                  placeholder="Search player, league or country..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className={`w-full px-3.5 py-2.5 rounded-xl border text-xs outline-none transition-all ${
@@ -606,12 +565,12 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
                 )}
               </div>
 
-              <div className={`p-1 rounded-xl border flex items-center gap-1 ${
+              <div className={`p-1 rounded-xl border flex items-center gap-1 overflow-x-auto no-scrollbar shrink-0 ${
                 isLight ? 'bg-slate-100 border-slate-200' : 'bg-[#160f2a] border-[#291e47]'
               }`}>
                 <button
                   onClick={() => setTimeframe('season')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                     timeframe === 'season'
                       ? 'bg-[#7059e2] text-white shadow-sm'
                       : isLight ? 'text-slate-600' : 'text-slate-400'
@@ -621,7 +580,7 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
                 </button>
                 <button
                   onClick={() => setTimeframe('weekly')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                     timeframe === 'weekly'
                       ? 'bg-[#7059e2] text-white shadow-sm'
                       : isLight ? 'text-slate-600' : 'text-slate-400'
@@ -631,7 +590,7 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
                 </button>
                 <button
                   onClick={() => setTimeframe('all_time')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                     timeframe === 'all_time'
                       ? 'bg-[#7059e2] text-white shadow-sm'
                       : isLight ? 'text-slate-600' : 'text-slate-400'
@@ -642,24 +601,105 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
               </div>
             </div>
 
-            {/* Leaderboard Table */}
-            <div className={`rounded-2xl border overflow-hidden shadow-xl ${
+            {/* Mobile Card List View (Visible on <sm screens for perfect touch UX) */}
+            <div className="sm:hidden space-y-3">
+              {filteredLeaderboard.map((p) => {
+                const isUserRow = p.isCurrentUser || p.name.toLowerCase() === user.username.toLowerCase();
+                return (
+                  <div
+                    key={p.id}
+                    className={`p-4 rounded-2xl border shadow-md space-y-3 transition-colors ${
+                      isUserRow
+                        ? (isLight ? 'bg-purple-50 border-purple-300 ring-2 ring-purple-400/40' : 'bg-[#211642] border-purple-500 ring-2 ring-purple-500/30')
+                        : (isLight ? 'bg-white border-slate-200' : 'bg-[#150f29] border-[#291f47]')
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <span className="font-heading font-black text-sm px-2 py-0.5 rounded-md bg-slate-500/15">
+                          {p.rank === 1 ? '🥇 #1' : p.rank === 2 ? '🥈 #2' : p.rank === 3 ? '🥉 #3' : `#${p.rank}`}
+                        </span>
+                        <AvatarCharacter
+                          avatarId={p.avatar}
+                          frameId={p.frame}
+                          size="xs"
+                        />
+                        <div>
+                          <div className="font-heading font-black text-sm flex items-center gap-1.5">
+                            <span>{p.name}</span>
+                            {isUserRow && (
+                              <span className="px-1.5 py-0.2 rounded bg-purple-600 text-white text-[8px] font-black uppercase">
+                                YOU
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            {p.city ? `📍 ${p.city}, ${p.country}` : p.title}
+                          </div>
+                        </div>
+                      </div>
+
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                        p.tier === 'Tycoon' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
+                        p.tier === 'Master' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
+                        p.tier === 'Diamond' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' :
+                        'bg-slate-500/20 text-slate-300 border border-slate-500/30'
+                      }`}>
+                        {p.tier}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-center text-xs font-mono-code pt-1 border-t border-slate-500/10">
+                      <div>
+                        <div className="text-[9px] text-slate-400 uppercase">LP</div>
+                        <div className="font-black text-purple-400">⚡ {p.lp.toLocaleString()}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] text-slate-400 uppercase">Wager Won</div>
+                        <div className="font-black text-emerald-400">${p.earningsUsd.toFixed(2)}</div>
+                      </div>
+                      <div>
+                        <div className="text-[9px] text-slate-400 uppercase">Win Rate</div>
+                        <div className="font-bold text-amber-400">{p.winRate}%</div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        sounds.playClick();
+                        setSelectedPlayer(p);
+                      }}
+                      className={`w-full py-2 rounded-xl border font-heading font-black text-xs transition-all cursor-pointer ${
+                        isLight
+                          ? 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-800'
+                          : 'bg-[#231842] hover:bg-[#2f2059] border-[#382669] text-slate-200'
+                      }`}
+                    >
+                      Inspect Profile
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop / Tablet Table View (hidden on mobile, min-w-[760px] to preserve clean columns) */}
+            <div className={`hidden sm:block rounded-3xl border overflow-hidden shadow-xl ${
               isLight ? 'bg-white border-slate-200' : 'bg-[#140e26] border-[#281e47]'
             }`}>
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
+                <table className="w-full text-left border-collapse min-w-[760px]">
                   <thead>
                     <tr className={`border-b text-[11px] font-mono-code uppercase tracking-wider ${
                       isLight ? 'bg-slate-50 border-slate-200 text-slate-500' : 'bg-[#181130] border-[#281e47] text-slate-400'
                     }`}>
-                      <th className="py-3 px-4 w-16 text-center">Rank</th>
-                      <th className="py-3 px-4">Tycoon Player</th>
-                      <th className="py-3 px-4 text-center">League Tier</th>
-                      <th className="py-3 px-4 text-right">League Points</th>
-                      <th className="py-3 px-4 text-right">Wager Earnings</th>
-                      <th className="py-3 px-4 text-center">Win Rate</th>
-                      <th className="py-3 px-4 text-center">Streak</th>
-                      <th className="py-3 px-4 text-center">Action</th>
+                      <th className="py-3.5 px-4 w-16 text-center">Rank</th>
+                      <th className="py-3.5 px-4">Tycoon Player</th>
+                      <th className="py-3.5 px-4 text-center">League Tier</th>
+                      <th className="py-3.5 px-4 text-right">League Points</th>
+                      <th className="py-3.5 px-4 text-right">Wager Earnings</th>
+                      <th className="py-3.5 px-4 text-center">Win Rate</th>
+                      <th className="py-3.5 px-4 text-center">Streak</th>
+                      <th className="py-3.5 px-4 text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody className={`divide-y text-xs ${
@@ -696,8 +736,14 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-[10px] text-slate-400">
-                                  {p.title}
+                                <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
+                                  <span>{p.title}</span>
+                                  {p.city && (
+                                    <>
+                                      <span>•</span>
+                                      <span className={isLight ? 'text-slate-500' : 'text-slate-400'}>📍 {p.city}, {p.country}</span>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -748,9 +794,50 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
                         </tr>
                       );
                     })}
+                    {filteredLeaderboard.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="py-8 text-center text-slate-400">
+                          <p className="text-sm font-semibold">No players matched your search criteria.</p>
+                          <button
+                            onClick={() => setSearchQuery('')}
+                            className="mt-2 text-xs text-purple-400 hover:underline cursor-pointer"
+                          >
+                            Clear search filter
+                          </button>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            {/* Real Player Season 4 Notice / Call to Action */}
+            <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 ${
+              isLight ? 'bg-purple-50/70 border-purple-200 text-slate-800' : 'bg-[#181130] border-[#2f2254] text-white'
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-xl shrink-0">
+                  🏆
+                </div>
+                <div>
+                  <h4 className={`font-heading font-black text-sm ${isLight ? 'text-purple-700' : 'text-purple-300'}`}>
+                    Live PropRush Competitive Standings
+                  </h4>
+                  <p className="text-xs text-slate-400">
+                    Leaderboard displays real, authenticated players on the platform. Complete matches to earn LP and advance through the leagues.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  sounds.playClick();
+                  onNavigateHome();
+                }}
+                className="px-4 py-2 rounded-xl bg-[#7059e2] hover:bg-[#806bf0] text-white font-heading font-black text-xs transition-all shadow-md cursor-pointer shrink-0"
+              >
+                Play Ranked Match
+              </button>
             </div>
           </div>
         )}
@@ -947,6 +1034,24 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
               <span>Favorite Arena:</span>
               <span className="font-bold text-purple-400">{selectedPlayer.favoriteMap}</span>
             </div>
+
+            {selectedPlayer.city && (
+              <div className={`p-3 rounded-xl text-xs flex items-center justify-between ${
+                isLight ? 'bg-slate-50 text-slate-700' : 'bg-[#1f163d] text-slate-300'
+              }`}>
+                <span>Hometown / Region:</span>
+                <span className="font-bold text-slate-300">📍 {selectedPlayer.city}, {selectedPlayer.country}</span>
+              </div>
+            )}
+
+            {selectedPlayer.joinedDate && (
+              <div className={`p-3 rounded-xl text-xs flex items-center justify-between ${
+                isLight ? 'bg-slate-50 text-slate-700' : 'bg-[#1f163d] text-slate-300'
+              }`}>
+                <span>Member Since:</span>
+                <span className="font-mono-code text-slate-400">{selectedPlayer.joinedDate}</span>
+              </div>
+            )}
 
             <button
               onClick={() => setSelectedPlayer(null)}
