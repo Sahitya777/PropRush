@@ -54,7 +54,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
   onOpenWallet,
   onOpenStore
 }) => {
-  const { user, deductBuyIn, depositFunds, isLoggedIn, openAuthModal } = useUser();
+  const { user, deductBuyIn, depositFunds, isLoggedIn, openAuthModal, isBanned } = useUser();
   const { isLight } = useTheme();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [roomCodeInput, setRoomCodeInput] = useState('');
@@ -128,6 +128,11 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
   const [fillWithBots, setFillWithBots] = useState<boolean>(false);
 
   const handleQuickPlay = (bet: number = 0, timer: number = 15) => {
+    if (isBanned) {
+      sounds.playBankrupt();
+      alert('⛔ Account Suspended: Your account has been suspended by PropRush administration. Matchmaking is disabled.');
+      return;
+    }
     if (bet > 0) {
       if (!isLoggedIn) {
         openAuthModal('Sign in with Google or Clerk to enter cash stakes matches and win real prize pools.');
@@ -198,6 +203,11 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
 
   const handleCreateRoomSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isBanned) {
+      sounds.playBankrupt();
+      alert('⛔ Account Suspended: Your account has been suspended by PropRush administration. Creating rooms is disabled.');
+      return;
+    }
     const effectiveBet = wagerPreset === 'custom' ? (parseInt(customWagerAmount, 10) || 0) : betAmount;
 
     if (effectiveBet > 0) {
@@ -245,6 +255,11 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
 
   const handleJoinByCode = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isBanned) {
+      sounds.playBankrupt();
+      setJoinError('⛔ Account Suspended: Your account has been suspended by PropRush administration.');
+      return;
+    }
     const cleanCode = extractRoomCode(roomCodeInput);
     if (!cleanCode) {
       sounds.playBankrupt();

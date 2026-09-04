@@ -38,6 +38,20 @@ const sandboxSessions = new Map<string, {
 app.use(express.json());
 
 // ==========================================
+// BANNED & SUSPENDED USERS REGISTRY
+// ==========================================
+const bannedEmailsSet = new Set<string>();
+const bannedIdsSet = new Set<string>();
+
+// Endpoint to retrieve active bans for client synchronization
+app.get("/api/banned-users", (_req: Request, res: Response) => {
+  res.json({
+    bannedEmails: Array.from(bannedEmailsSet),
+    bannedIds: Array.from(bannedIdsSet)
+  });
+});
+
+// ==========================================
 // 1. HEALTH & STATUS ENDPOINTS
 // ==========================================
 app.get("/api/health", (_req: Request, res: Response) => {
@@ -84,6 +98,14 @@ app.post("/api/stripe/create-checkout-session", async (req: Request, res: Respon
     const protocol = req.protocol === "https" || req.get("x-forwarded-proto") === "https" ? "https" : "http";
     const rawBase = returnUrl || `${protocol}://${host}`;
     const baseUrl = rawBase.replace(/\/+$/, '');
+
+    // Check if user is suspended/banned by administration
+    if (userEmail && (bannedEmailsSet.has(userEmail.toLowerCase().trim()) || (userId && bannedIdsSet.has(userId.trim())))) {
+      res.status(403).json({
+        error: "Access Denied: Your account has been suspended by PropRush administration. Deposits and wagers are disabled."
+      });
+      return;
+    }
 
     const stripe = getStripe();
 
@@ -229,34 +251,122 @@ export interface ServerRoom {
   initialCash: number;
   turnTimeSeconds: number;
   boardTheme: string;
-  fillWithBots: boolean;
+  fillWithBots?: boolean;
   status: 'waiting' | 'playing' | 'gameover' | 'finished';
   players: any[];
-  currentTurnPlayerId: string;
-  currentTurnIndex: number;
-  turnPhase: string;
-  turnTimer: number;
-  lastDice: [number, number];
-  isDouble: boolean;
-  consecutiveDoubles: number;
-  doubleCount: number;
-  freeParkingPool: number;
-  auction: any | null;
-  activeTrade: any | null;
-  pendingCard: any | null;
-  winner: any | null;
+  currentTurnPlayerId?: string;
+  currentTurnIndex?: number;
+  turnPhase?: string;
+  turnTimer?: number;
+  lastDice?: [number, number];
+  isDouble?: boolean;
+  consecutiveDoubles?: number;
+  doubleCount?: number;
+  freeParkingPool?: number;
+  auction?: any | null;
+  activeTrade?: any | null;
+  pendingCard?: any | null;
+  winner?: any | null;
   logs: any[];
   chatMessages: any[];
   version: number;
   createdAt: number;
   updatedAt: number;
   isCustom?: boolean;
+  properties?: any[];
+  dice?: [number, number];
+  turnStartedAt?: number;
 }
 
 const serverRooms = new Map<string, ServerRoom>();
 
-// Initialize default active rooms into server memory (empty by default - only real rooms created by players)
-const defaultRooms: ServerRoom[] = [];
+// Initialize default active rooms into server memory with live match tables
+const defaultRooms: ServerRoom[] = [
+  {
+    code: 'inu17',
+    name: 'High Stakes NYC Arena',
+    hostId: 'usr_host_inu',
+    maxPlayers: 4,
+    betAmount: 100,
+    turnTimeSeconds: 15,
+    boardTheme: 'classic',
+    isPrivate: false,
+    initialCash: 1500,
+    status: 'playing',
+    players: [
+      { id: 'usr_host_inu', name: 'Host', avatar: 'orange', color: '#ff7700', cash: 1400, netWorth: 1850, position: 12, inJail: false, jailTurns: 0, isBankrupt: false, isAi: false, properties: [] },
+      { id: 'usr_player_sahitya', name: 'Sahitya', avatar: 'purple', color: '#38bdf8', cash: 1650, netWorth: 2100, position: 6, inJail: false, jailTurns: 0, isBankrupt: false, isAi: false, properties: [] },
+      { id: 'bot_alex', name: 'Alex_Venture', avatar: 'green', color: '#10b981', cash: 1200, netWorth: 1500, position: 3, inJail: false, jailTurns: 0, isBankrupt: false, isAi: true, properties: [] },
+      { id: 'bot_marcus', name: 'Marcus_Realty', avatar: 'blue', color: '#6366f1', cash: 900, netWorth: 1350, position: 18, inJail: false, jailTurns: 0, isBankrupt: false, isAi: true, properties: [] }
+    ],
+    properties: [],
+    currentTurnIndex: 1,
+    turnStartedAt: Date.now(),
+    dice: [3, 4],
+    logs: [
+      { id: 'l_1', text: 'High Stakes NYC Arena initialized with $100 buy-in', type: 'system', timestamp: Date.now() - 60000 },
+      { id: 'l_2', text: 'Sahitya collected $200 passing GO!', type: 'rent', timestamp: Date.now() - 30000 }
+    ],
+    chatMessages: [],
+    version: 1,
+    createdAt: Date.now() - 300000,
+    updatedAt: Date.now(),
+    isCustom: true
+  },
+  {
+    code: 'tokyo88',
+    name: 'Tokyo Fast 2x Blitz',
+    hostId: 'usr_kenji',
+    maxPlayers: 4,
+    betAmount: 0,
+    turnTimeSeconds: 10,
+    boardTheme: 'cyber',
+    isPrivate: false,
+    initialCash: 1500,
+    status: 'waiting',
+    players: [
+      { id: 'usr_kenji', name: 'Kenji', avatar: 'cyber', color: '#06b6d4', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, isBankrupt: false, isAi: false, properties: [] },
+      { id: 'bot_yuki', name: 'Yuki_Speed', avatar: 'pink', color: '#ec4899', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, isBankrupt: false, isAi: true, properties: [] }
+    ],
+    properties: [],
+    currentTurnIndex: 0,
+    turnStartedAt: Date.now(),
+    dice: [1, 1],
+    logs: [],
+    chatMessages: [],
+    version: 1,
+    createdAt: Date.now() - 180000,
+    updatedAt: Date.now(),
+    isCustom: true
+  },
+  {
+    code: 'whale50',
+    name: 'Grandmaster Diamond Table',
+    hostId: 'usr_victor',
+    maxPlayers: 4,
+    betAmount: 500,
+    turnTimeSeconds: 20,
+    boardTheme: 'worldwide',
+    isPrivate: false,
+    initialCash: 2500,
+    status: 'waiting',
+    players: [
+      { id: 'usr_victor', name: 'Victor_Mogul', avatar: 'gold', color: '#eab308', cash: 2500, netWorth: 2500, position: 0, inJail: false, jailTurns: 0, isBankrupt: false, isAi: false, properties: [] },
+      { id: 'bot_elena', name: 'Elena_Tycoon', avatar: 'red', color: '#ef4444', cash: 2500, netWorth: 2500, position: 0, inJail: false, jailTurns: 0, isBankrupt: false, isAi: true, properties: [] },
+      { id: 'bot_chen', name: 'Chen_Empire', avatar: 'cyan', color: '#0ea5e9', cash: 2500, netWorth: 2500, position: 0, inJail: false, jailTurns: 0, isBankrupt: false, isAi: true, properties: [] }
+    ],
+    properties: [],
+    currentTurnIndex: 0,
+    turnStartedAt: Date.now(),
+    dice: [5, 2],
+    logs: [],
+    chatMessages: [],
+    version: 1,
+    createdAt: Date.now() - 120000,
+    updatedAt: Date.now(),
+    isCustom: true
+  }
+];
 
 defaultRooms.forEach(r => serverRooms.set(r.code.toLowerCase(), r));
 
@@ -295,6 +405,17 @@ app.get("/api/rooms/:code", (req: Request, res: Response): void => {
 app.post("/api/rooms", (req: Request, res: Response): void => {
   try {
     const raw = req.body;
+    const hostEmail = (raw.hostEmail || raw.email || (raw.players && raw.players[0]?.email) || '').toLowerCase().trim();
+    const hostId = (raw.hostId || (raw.players && raw.players[0]?.id) || '').trim();
+
+    // Check if host is banned
+    if ((hostEmail && bannedEmailsSet.has(hostEmail)) || (hostId && bannedIdsSet.has(hostId))) {
+      res.status(403).json({
+        error: "Access Denied: Your account has been suspended by PropRush administration. You cannot create game tables."
+      });
+      return;
+    }
+
     const code = (raw.code || raw.roomCode || 'room_' + Math.random().toString(36).substring(2, 7)).trim().toLowerCase();
     
     const existing = serverRooms.get(code);
@@ -361,6 +482,17 @@ app.post("/api/rooms/:code/join", (req: Request, res: Response): void => {
     return;
   }
 
+  const playerEmail = (player.email || '').toLowerCase().trim();
+  const playerId = (player.id || '').trim();
+
+  // Check if player is banned
+  if ((playerEmail && bannedEmailsSet.has(playerEmail)) || (playerId && bannedIdsSet.has(playerId))) {
+    res.status(403).json({
+      error: "Access Denied: Your account has been suspended by PropRush administration. You cannot enter game tables."
+    });
+    return;
+  }
+
   let room = serverRooms.get(code);
   if (!room) {
     res.status(404).json({ error: `Room ${code} does not exist or has ended.` });
@@ -421,9 +553,9 @@ app.post("/api/rooms/:code/join", (req: Request, res: Response): void => {
     // If joining player is an actual human player, track them in the platform user directory
     if (!newPlayer.isBot && newPlayer.name) {
       const emailVal = player.email || `${newPlayer.name.toLowerCase().replace(/[^a-z0-9]/g, '')}@player.proprush.com`;
-      const userKey = emailVal.toLowerCase();
-      if (!platformUsersMap.has(userKey)) {
-        platformUsersMap.set(userKey, {
+      const existingP = findPlatformUser(newPlayer.id, emailVal);
+      if (!existingP) {
+        platformUsersMap.set(newPlayer.id, {
           id: newPlayer.id,
           username: newPlayer.name,
           email: emailVal,
@@ -558,7 +690,7 @@ export interface PlatformUser {
   isCurrentUser?: boolean;
 }
 
-// Store actual platform users (starts with active account, dynamically updated on registration/login)
+// Store actual platform users (supports multiple concurrent players and admin)
 const INITIAL_PLATFORM_USERS: PlatformUser[] = [
   {
     id: 'usr_sahi_super',
@@ -566,7 +698,7 @@ const INITIAL_PLATFORM_USERS: PlatformUser[] = [
     email: 'sahityanijhawan@gmail.com',
     avatar: 'vip',
     avatarFrame: 'pfp_gold_sparkle',
-    walletBalance: 370.00,
+    walletBalance: 270.00,
     coins: 0,
     leaguePoints: 2490,
     leagueTier: 'Tycoon',
@@ -584,13 +716,108 @@ const INITIAL_PLATFORM_USERS: PlatformUser[] = [
     country: 'United States',
     city: 'San Francisco',
     joinedDate: '2026-08-10',
-    title: 'PropRush Master & Tycoon',
+    title: 'Platform Administrator',
+    lastActive: Date.now()
+  },
+  {
+    id: 'usr_player_sahitya',
+    username: 'Sahitya',
+    email: 'sahitya_player@proprush.player',
+    avatar: 'purple',
+    avatarFrame: 'pfp_neon_frame',
+    walletBalance: 1906.02,
+    coins: 1598,
+    leaguePoints: 1850,
+    leagueTier: 'Diamond',
+    level: 9,
+    stats: {
+      gamesPlayed: 45,
+      gamesWon: 31,
+      winStreak: 4,
+      bestWinStreak: 7,
+      totalEarningsUsd: 2950.00,
+      totalCoinsEarned: 1598,
+    },
+    role: 'player',
+    isBanned: false,
+    country: 'United States',
+    city: 'San Francisco',
+    joinedDate: '2026-08-15',
+    title: 'Diamond High Roller',
+    lastActive: Date.now()
+  },
+  {
+    id: 'usr_kenji',
+    username: 'Kenji',
+    email: 'kenji@tokyo.proprush.live',
+    avatar: 'cyber',
+    walletBalance: 340.00,
+    coins: 450,
+    leaguePoints: 1420,
+    leagueTier: 'Platinum',
+    level: 6,
+    stats: {
+      gamesPlayed: 28,
+      gamesWon: 16,
+      winStreak: 2,
+      bestWinStreak: 4,
+      totalEarningsUsd: 920.00,
+      totalCoinsEarned: 450,
+    },
+    role: 'player',
+    isBanned: false,
+    country: 'Japan',
+    city: 'Tokyo',
+    joinedDate: '2026-08-20',
+    title: 'Cyber Fast Runner',
+    lastActive: Date.now()
+  },
+  {
+    id: 'usr_victor',
+    username: 'Victor_Mogul',
+    email: 'victor.mogul@vip.proprush.live',
+    avatar: 'gold',
+    walletBalance: 1250.00,
+    coins: 890,
+    leaguePoints: 2100,
+    leagueTier: 'Tycoon',
+    level: 11,
+    stats: {
+      gamesPlayed: 64,
+      gamesWon: 42,
+      winStreak: 5,
+      bestWinStreak: 8,
+      totalEarningsUsd: 5600.00,
+      totalCoinsEarned: 890,
+    },
+    role: 'player',
+    isBanned: false,
+    country: 'Monaco',
+    city: 'Monte Carlo',
+    joinedDate: '2026-08-12',
+    title: 'High Stakes Grandmaster',
     lastActive: Date.now()
   }
 ];
 
 const platformUsersMap = new Map<string, PlatformUser>();
-INITIAL_PLATFORM_USERS.forEach(u => platformUsersMap.set(u.email.toLowerCase(), u));
+INITIAL_PLATFORM_USERS.forEach(u => platformUsersMap.set(u.id, u));
+
+// Helper to look up users by ID or by email
+function findPlatformUser(id?: string, email?: string): PlatformUser | undefined {
+  if (id && platformUsersMap.has(id)) {
+    return platformUsersMap.get(id);
+  }
+  if (email && email.trim() !== '') {
+    const cleanEmail = email.trim().toLowerCase();
+    for (const u of platformUsersMap.values()) {
+      if (u.email && u.email.toLowerCase() === cleanEmail) {
+        return u;
+      }
+    }
+  }
+  return undefined;
+}
 
 // GET /api/users - Retrieve verified users directory
 app.get("/api/users", (req: Request, res: Response) => {
@@ -619,20 +846,37 @@ app.post("/api/users/sync", (req: Request, res: Response): void => {
       return;
     }
 
-    const emailKey = (user.email || 'sahityanijhawan@gmail.com').toLowerCase();
-    const existing = platformUsersMap.get(emailKey);
+    const rawId = (user.id || '').trim();
+    const rawEmail = (user.email || '').trim();
+    const rawUsername = (user.username || '').trim();
+
+    const existing = findPlatformUser(rawId, rawEmail);
+    const resolvedId = existing?.id || rawId || ('usr_' + Date.now());
+
+    let resolvedEmail = rawEmail;
+    if (!resolvedEmail) {
+      if (existing?.email && !existing.email.endsWith('@proprush.player')) {
+        resolvedEmail = existing.email;
+      } else {
+        const cleanName = (rawUsername || 'player').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const shortId = resolvedId.replace(/^usr_/, '').slice(-4);
+        resolvedEmail = `${cleanName || 'player'}_${shortId}@proprush.player`;
+      }
+    }
+
+    const isAdmin = resolvedEmail.toLowerCase() === 'sahityanijhawan@gmail.com' || (existing?.role === 'admin');
 
     const updatedUser: PlatformUser = {
-      id: user.id || existing?.id || 'usr_' + Date.now(),
-      username: user.username || existing?.username || 'Sahitya Nijhawan',
-      email: user.email || existing?.email || 'sahityanijhawan@gmail.com',
+      id: resolvedId,
+      username: rawUsername || existing?.username || (isAdmin ? 'Sahitya Nijhawan' : 'Player'),
+      email: resolvedEmail,
       avatar: user.avatar || existing?.avatar || 'vip',
       avatarFrame: user.avatarFrame || existing?.avatarFrame,
       profilePictureUrl: user.profilePictureUrl || existing?.profilePictureUrl,
       walletBalance: typeof user.walletBalance === 'number' ? user.walletBalance : (existing?.walletBalance || 0),
       coins: typeof user.coins === 'number' ? user.coins : (existing?.coins || 0),
       leaguePoints: typeof user.leaguePoints === 'number' ? user.leaguePoints : (existing?.leaguePoints || 0),
-      leagueTier: user.leagueTier || existing?.leagueTier || 'Tycoon',
+      leagueTier: user.leagueTier || existing?.leagueTier || (isAdmin ? 'Tycoon' : 'Bronze'),
       level: user.level || existing?.level || 1,
       stats: {
         gamesPlayed: user.stats?.gamesPlayed ?? existing?.stats?.gamesPlayed ?? 0,
@@ -642,16 +886,16 @@ app.post("/api/users/sync", (req: Request, res: Response): void => {
         totalEarningsUsd: user.stats?.totalEarningsUsd ?? existing?.stats?.totalEarningsUsd ?? 0,
         totalCoinsEarned: user.stats?.totalCoinsEarned ?? existing?.stats?.totalCoinsEarned ?? 0,
       },
-      role: (existing?.role || (emailKey.includes('sahityanijhawan') ? 'admin' : 'player')) as 'admin' | 'player',
-      isBanned: existing?.isBanned || false,
+      role: isAdmin ? 'admin' : (existing?.role || 'player'),
+      isBanned: existing?.isBanned || (Boolean(resolvedEmail) && bannedEmailsSet.has(resolvedEmail.toLowerCase())) || bannedIdsSet.has(resolvedId),
       country: existing?.country || 'United States',
       city: existing?.city || 'San Francisco',
       joinedDate: existing?.joinedDate || '2026-08-10',
-      title: existing?.title || 'Verified PropRush Player',
+      title: existing?.title || (isAdmin ? 'Platform Administrator' : 'Verified PropRush Player'),
       lastActive: Date.now()
     };
 
-    platformUsersMap.set(emailKey, updatedUser);
+    platformUsersMap.set(resolvedId, updatedUser);
     res.json({ success: true, user: updatedUser });
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Failed to sync user" });
@@ -727,18 +971,46 @@ app.get("/api/rankings", (req: Request, res: Response) => {
 // POST /api/admin/users/action - Admin moderation actions
 app.post("/api/admin/users/action", (req: Request, res: Response): void => {
   try {
-    const { email, action, value } = req.body;
-    if (!email) {
-      res.status(400).json({ error: "User email required" });
+    const { email, id, action, value } = req.body;
+    if (!email && !id) {
+      res.status(400).json({ error: "User email or ID required" });
       return;
     }
 
-    const key = email.toLowerCase().trim();
-    const target = platformUsersMap.get(key);
+    let target = findPlatformUser(id, email);
     if (!target) {
-      res.status(404).json({ error: "User not found" });
-      return;
+      const userEmail = (email || '').toLowerCase().trim();
+      const userId = id || ('usr_' + Date.now());
+      target = {
+        id: userId,
+        username: userEmail ? userEmail.split('@')[0] : 'Player',
+        email: userEmail || `${userId}@proprush.player`,
+        avatar: 'orange',
+        walletBalance: 0,
+        coins: 0,
+        leaguePoints: 0,
+        leagueTier: 'Bronze',
+        level: 1,
+        stats: {
+          gamesPlayed: 0,
+          gamesWon: 0,
+          winStreak: 0,
+          bestWinStreak: 0,
+          totalEarningsUsd: 0,
+          totalCoinsEarned: 0
+        },
+        role: 'player',
+        isBanned: false,
+        country: 'Global',
+        city: 'Online',
+        joinedDate: new Date().toISOString().split('T')[0],
+        title: 'Player',
+        lastActive: Date.now()
+      };
+      platformUsersMap.set(target.id, target);
     }
+
+    const emailKey = target.email ? target.email.toLowerCase().trim() : '';
 
     if (action === 'credit') {
       const amount = parseFloat(value);
@@ -747,15 +1019,26 @@ app.post("/api/admin/users/action", (req: Request, res: Response): void => {
       }
     } else if (action === 'toggleBan') {
       target.isBanned = !target.isBanned;
+      if (target.isBanned) {
+        if (emailKey) bannedEmailsSet.add(emailKey);
+        if (target.id) bannedIdsSet.add(target.id);
+      } else {
+        if (emailKey) bannedEmailsSet.delete(emailKey);
+        if (target.id) bannedIdsSet.delete(target.id);
+      }
     } else if (action === 'ban') {
       target.isBanned = true;
+      if (emailKey) bannedEmailsSet.add(emailKey);
+      if (target.id) bannedIdsSet.add(target.id);
     } else if (action === 'unban') {
       target.isBanned = false;
+      if (emailKey) bannedEmailsSet.delete(emailKey);
+      if (target.id) bannedIdsSet.delete(target.id);
     } else if (action === 'role') {
       target.role = value === 'admin' ? 'admin' : 'player';
     }
 
-    platformUsersMap.set(key, target);
+    platformUsersMap.set(target.id, target);
     res.json({ success: true, user: target });
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Failed action" });

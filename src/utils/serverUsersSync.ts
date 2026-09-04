@@ -104,13 +104,14 @@ export async function syncUserProfileToServer(user: UserProfile): Promise<boolea
 export async function performAdminUserAction(
   email: string,
   action: 'credit' | 'toggleBan' | 'role' | 'ban' | 'unban',
-  value?: any
+  value?: any,
+  id?: string
 ): Promise<boolean> {
   try {
     const res = await fetch('/api/admin/users/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, action, value })
+      body: JSON.stringify({ email, id, action, value })
     });
     return res.ok;
   } catch (err) {

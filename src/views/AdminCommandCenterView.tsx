@@ -6,6 +6,7 @@ import { getAllActiveRooms, ActiveRoomInfo } from '../utils/activeRoomsRegistry'
 import { fetchActiveRoomsFromServer } from '../utils/serverRoomSync';
 import { sounds } from '../utils/audio';
 import { fetchServerUsers, performAdminUserAction, AdminUserRecord } from '../utils/serverUsersSync';
+import { isUserBanned, setUserBanStatus } from '../utils/banManager';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer
@@ -46,11 +47,10 @@ const SEED_CONCLUDED_MATCHES: AdminMatch[] = [];
 
 export interface AdminCommandCenterViewProps {
   onNavigateHome: () => void;
-  onJoinRoom?: (roomConfig: any) => void;
 }
 
-export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ onNavigateHome, onJoinRoom }) => {
-  const { user, depositFunds } = useUser();
+export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ onNavigateHome }) => {
+  const { user } = useUser();
   const { isLight } = useTheme();
 
   const effectiveEmail = user.email || 'sahityanijhawan@gmail.com';
@@ -125,9 +125,7 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
 
   const [serverUsers, setServerUsers] = useState<AdminUserRecord[]>([]);
   const [userSearch, setUserSearch] = useState('');
-  const [selectedUserForAction, setSelectedUserForAction] = useState<ManagedUser | null>(null);
-  const [fundAdjustmentAmount, setFundAdjustmentAmount] = useState('50');
-  const [fundAdjustmentFeedback, setFundAdjustmentFeedback] = useState<string | null>(null);
+  const [banFeedback, setBanFeedback] = useState<string | null>(null);
 
   // Poll live verified platform users from server
   useEffect(() => {
@@ -188,64 +186,83 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
       ? Number(((user.stats.gamesWon / user.stats.gamesPlayed) * 100).toFixed(0))
       : 0;
 
-    const baseList: ManagedUser[] = [
-      {
-        id: user.id || 'usr_current',
-        username: `${user.username || 'Sahitya Nijhawan'} (Active Session)`,
-        email: effectiveEmail,
-        walletBalance: user.walletBalance,
-        coins: user.coins,
-        gamesPlayed: user.stats.gamesPlayed,
-        winRate: userWinRate,
-        isBanned: bannedUserIds.includes(user.id || 'usr_current'),
-        role: currentIsAdmin ? 'admin' : 'player',
-        joinedDate: 'Active Session',
-        country: 'United States',
-        city: 'San Francisco'
-      }
-    ];
+    const list: ManagedUser[] = [];
 
-    // If server returned live records, use them to enrich the list
+    // Current active session user
+    const currentSessionUser: ManagedUser = {
+      id: user.id || 'usr_current',
+      username: user.username || 'Sahitya Nijhawan',
+      email: effectiveEmail || 'sahityanijhawan@gmail.com',
+      walletBalance: user.walletBalance,
+      coins: user.coins,
+      gamesPlayed: user.stats.gamesPlayed,
+      winRate: userWinRate,
+      isBanned: isUserBanned(effectiveEmail, user.id) || bannedUserIds.includes(user.id || 'usr_current'),
+      role: currentIsAdmin ? 'admin' : 'player',
+      joinedDate: 'Active Session',
+      country: 'United States',
+      city: 'San Francisco'
+    };
+
+    list.push(currentSessionUser);
+
+    // Merge server users
     if (serverUsers.length > 0) {
       serverUsers.forEach(su => {
-        const idx = baseList.findIndex(b => b.email.toLowerCase() === su.email.toLowerCase() || b.id === su.id);
-        const isCurrent = (su.email.toLowerCase() === effectiveEmail.toLowerCase()) || (user.id && su.id === user.id);
+        const isCurrent = (user.id && su.id === user.id) || 
+          (su.email && effectiveEmail && su.email.toLowerCase() === effectiveEmail.toLowerCase());
         
-        if (idx >= 0) {
-          baseList[idx] = {
-            ...baseList[idx],
-            walletBalance: isCurrent ? user.walletBalance : su.walletBalance,
-            coins: isCurrent ? user.coins : su.coins,
-            gamesPlayed: isCurrent ? user.stats.gamesPlayed : su.gamesPlayed,
-            winRate: isCurrent ? (user.stats.gamesPlayed > 0 ? userWinRate : baseList[idx].winRate) : su.winRate,
-            isBanned: bannedUserIds.includes(su.id) || su.isBanned,
-            role: isCurrent && currentIsAdmin ? 'admin' : su.role
+        if (isCurrent) {
+          list[0] = {
+            ...list[0],
+            username: user.username || su.username,
+            email: su.email || effectiveEmail,
+            walletBalance: user.walletBalance,
+            coins: user.coins,
+            gamesPlayed: user.stats.gamesPlayed || su.gamesPlayed,
+            winRate: user.stats.gamesPlayed > 0 ? userWinRate : su.winRate,
+            isBanned: isUserBanned(su.email, su.id) || bannedUserIds.includes(su.id) || su.isBanned,
+            role: currentIsAdmin ? 'admin' : su.role
           };
-        } else if (!isCurrent) {
-          baseList.push({
-            id: su.id,
-            username: su.username,
-            email: su.email,
-            walletBalance: su.walletBalance,
-            coins: su.coins,
-            gamesPlayed: su.gamesPlayed,
-            winRate: su.winRate,
-            isBanned: bannedUserIds.includes(su.id) || su.isBanned,
-            role: su.role,
-            joinedDate: su.joinedDate,
-            country: su.country,
-            city: su.city
-          });
+        } else {
+          const existingIdx = list.findIndex(b => b.id === su.id || (su.email && b.email.toLowerCase() === su.email.toLowerCase()));
+          if (existingIdx >= 0) {
+            list[existingIdx] = {
+              ...list[existingIdx],
+              username: su.username,
+              email: su.email,
+              walletBalance: su.walletBalance,
+              coins: su.coins,
+              gamesPlayed: su.gamesPlayed,
+              winRate: su.winRate,
+              isBanned: isUserBanned(su.email, su.id) || bannedUserIds.includes(su.id) || su.isBanned,
+              role: su.role
+            };
+          } else {
+            list.push({
+              id: su.id,
+              username: su.username,
+              email: su.email,
+              walletBalance: su.walletBalance,
+              coins: su.coins,
+              gamesPlayed: su.gamesPlayed,
+              winRate: su.winRate,
+              isBanned: isUserBanned(su.email, su.id) || bannedUserIds.includes(su.id) || su.isBanned,
+              role: su.role,
+              joinedDate: su.joinedDate,
+              country: su.country,
+              city: su.city
+            });
+          }
         }
       });
     }
 
-    // Filter duplicates by email
-    const seen = new Set<string>();
-    return baseList.filter(u => {
-      const em = u.email.toLowerCase();
-      if (seen.has(em)) return false;
-      seen.add(em);
+    // Deduplicate strictly by ID
+    const seenIds = new Set<string>();
+    return list.filter(u => {
+      if (seenIds.has(u.id)) return false;
+      seenIds.add(u.id);
       return true;
     });
   }, [bannedUserIds, effectiveEmail, serverUsers, user]);
@@ -294,31 +311,29 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
     sounds.playClick();
     const newBanState = !targetUser.isBanned;
 
+    // 1. Sync through centralized banManager (localStorage + in-memory + server notify)
+    await setUserBanStatus(targetUser.email, newBanState, targetUser.id);
+
+    // 2. Update local state
     setBannedUserIds(prev => {
-      const next = prev.includes(targetUser.id) ? prev.filter(id => id !== targetUser.id) : [...prev, targetUser.id];
-      localStorage.setItem('proprush_banned_users_v1', JSON.stringify(next));
+      const next = newBanState 
+        ? [...prev.filter(id => id !== targetUser.id), targetUser.id] 
+        : prev.filter(id => id !== targetUser.id);
       return next;
     });
 
-    setServerUsers(prev => prev.map(su => su.email.toLowerCase() === targetUser.email.toLowerCase() ? { ...su, isBanned: newBanState } : su));
-    await performAdminUserAction(targetUser.email, newBanState ? 'ban' : 'unban');
-  };
+    setServerUsers(prev => prev.map(su => 
+      su.email.toLowerCase() === targetUser.email.toLowerCase() || su.id === targetUser.id 
+        ? { ...su, isBanned: newBanState } 
+        : su
+    ));
 
-  const handleCreditWallet = async (u: ManagedUser) => {
-    const amount = parseFloat(fundAdjustmentAmount);
-    if (isNaN(amount) || amount <= 0) return;
-
-    if (u.id === user.id || u.email.toLowerCase() === effectiveEmail.toLowerCase()) {
-      depositFunds(amount, 'Admin Escrow Grant');
-    }
-
-    sounds.playCashRegister();
-    setFundAdjustmentFeedback(`Successfully credited $${amount.toFixed(2)} to ${u.username}`);
-    setTimeout(() => setFundAdjustmentFeedback(null), 3500);
-
-    // Call server API and update local serverUsers
-    await performAdminUserAction(u.email, 'credit', amount);
-    setServerUsers(prev => prev.map(su => su.email.toLowerCase() === u.email.toLowerCase() ? { ...su, walletBalance: su.walletBalance + amount } : su));
+    setBanFeedback(
+      newBanState 
+        ? `⛔ ${targetUser.username} (${targetUser.email}) has been SUSPENDED. All match matchmaking, room creation, and Stripe deposits are blocked.`
+        : `✅ Account suspension lifted for ${targetUser.username} (${targetUser.email}). Normal player access restored.`
+    );
+    setTimeout(() => setBanFeedback(null), 5000);
   };
 
   // Dynamic 7-day revenue chart based on real platform activity
@@ -746,29 +761,6 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
                             <div className="font-black text-emerald-400">${r.prizePool.toFixed(2)}</div>
                           </div>
                         </div>
-
-                        <button
-                          onClick={() => {
-                            sounds.playClick();
-                            if (onJoinRoom) {
-                              onJoinRoom({
-                                roomCode: r.code,
-                                roomName: r.name,
-                                maxPlayers: r.maxPlayers,
-                                betAmount: r.betAmount,
-                                initialCash: 1500,
-                                turnTimeSeconds: 15,
-                                boardTheme: r.map.toLowerCase().includes('cyber') ? 'cyber' : r.map.toLowerCase().includes('worldwide') ? 'worldwide' : 'classic',
-                                fillWithBots: true
-                              });
-                            } else {
-                              onNavigateHome();
-                            }
-                          }}
-                          className="w-full py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-heading font-black text-xs transition-colors cursor-pointer"
-                        >
-                          Spectate / Join Table
-                        </button>
                       </div>
                     ))}
                   </div>
@@ -787,7 +779,6 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
                           <th className="py-2.5 px-3 text-right">Buy-in</th>
                           <th className="py-2.5 px-3 text-right">Pot Size</th>
                           <th className="py-2.5 px-3 text-right">Rake (5%)</th>
-                          <th className="py-2.5 px-3 text-center">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-500/10">
@@ -804,30 +795,6 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
                             <td className="py-3 px-3 text-right font-mono-code">${r.betAmount.toFixed(2)}</td>
                             <td className="py-3 px-3 text-right font-mono-code font-bold text-emerald-400">${r.prizePool.toFixed(2)}</td>
                             <td className="py-3 px-3 text-right font-mono-code text-amber-400">${r.platformRake.toFixed(2)}</td>
-                            <td className="py-3 px-3 text-center">
-                              <button
-                                onClick={() => {
-                                  sounds.playClick();
-                                  if (onJoinRoom) {
-                                    onJoinRoom({
-                                      roomCode: r.code,
-                                      roomName: r.name,
-                                      maxPlayers: r.maxPlayers,
-                                      betAmount: r.betAmount,
-                                      initialCash: 1500,
-                                      turnTimeSeconds: 15,
-                                      boardTheme: r.map.toLowerCase().includes('cyber') ? 'cyber' : r.map.toLowerCase().includes('worldwide') ? 'worldwide' : 'classic',
-                                      fillWithBots: true
-                                    });
-                                  } else {
-                                    onNavigateHome();
-                                  }
-                                }}
-                                className="px-2.5 py-1 rounded-lg bg-purple-600 text-white font-bold text-[10px] hover:bg-purple-700 cursor-pointer"
-                              >
-                                Spectate / Join
-                              </button>
-                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -921,9 +888,13 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
               </div>
             </div>
 
-            {fundAdjustmentFeedback && (
-              <div className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold font-mono-code">
-                ✓ {fundAdjustmentFeedback}
+            {banFeedback && (
+              <div className={`p-3.5 rounded-2xl border text-xs font-bold font-mono-code ${
+                banFeedback.includes('SUSPENDED') 
+                  ? 'bg-red-500/20 border-red-500/40 text-red-400' 
+                  : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+              }`}>
+                {banFeedback}
               </div>
             )}
 
@@ -976,24 +947,16 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
                     </div>
                   </div>
 
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      onClick={() => setSelectedUserForAction(u)}
-                      className={`flex-1 py-2 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${
-                        isLight ? 'bg-white hover:bg-slate-100 border-slate-200' : 'bg-[#231842] hover:bg-[#32235e] border-[#3f2c73]'
-                      }`}
-                    >
-                      Adjust Funds
-                    </button>
+                  <div className="pt-1">
                     <button
                       onClick={() => handleToggleBan(u)}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                      className={`w-full py-2.5 rounded-xl text-xs font-heading font-black transition-colors cursor-pointer ${
                         u.isBanned
                           ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                           : 'bg-red-600/80 hover:bg-red-600 text-white'
                       }`}
                     >
-                      {u.isBanned ? 'Unban' : 'Ban'}
+                      {u.isBanned ? 'Lift Suspension (Unban)' : 'Ban Account'}
                     </button>
                   </div>
                 </div>
@@ -1053,28 +1016,16 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
                         )}
                       </td>
                       <td className="py-3 px-3 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            onClick={() => {
-                              setSelectedUserForAction(u);
-                            }}
-                            className={`px-2.5 py-1.5 rounded-lg border text-[10px] font-bold cursor-pointer transition-colors ${
-                              isLight ? 'bg-slate-100 hover:bg-slate-200 border-slate-200' : 'bg-[#231842] hover:bg-[#32235e] border-[#3f2c73]'
-                            }`}
-                          >
-                            Adjust Funds
-                          </button>
-                          <button
-                            onClick={() => handleToggleBan(u)}
-                            className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
-                              u.isBanned
-                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                                : 'bg-red-600/80 hover:bg-red-600 text-white'
-                            }`}
-                          >
-                            {u.isBanned ? 'Unban' : 'Ban'}
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => handleToggleBan(u)}
+                          className={`px-3 py-1.5 rounded-lg text-[11px] font-heading font-black cursor-pointer transition-colors ${
+                            u.isBanned
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                              : 'bg-red-600/80 hover:bg-red-600 text-white'
+                          }`}
+                        >
+                          {u.isBanned ? 'Lift Ban' : 'Ban'}
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -1182,63 +1133,6 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
           </div>
         )}
       </div>
-
-      {/* Adjust Funds Modal */}
-      {selectedUserForAction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fade-in">
-          <div className={`w-full max-w-md p-6 rounded-3xl border shadow-2xl space-y-4 ${
-            isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#17102e] border-[#332259] text-white'
-          }`}>
-            <div className="flex items-center justify-between">
-              <h3 className="font-heading font-black text-lg">
-                Credit Player Account Funds
-              </h3>
-              <button
-                onClick={() => setSelectedUserForAction(null)}
-                className="w-8 h-8 rounded-full flex items-center justify-center bg-slate-500/20 hover:bg-slate-500/30 text-xs font-bold cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="text-xs text-slate-400">
-              Adjusting wallet balance for <strong className="text-white">{selectedUserForAction.username}</strong> ({selectedUserForAction.email})
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-mono-code uppercase text-slate-400 mb-1">
-                Deposit USD Amount ($)
-              </label>
-              <input
-                type="number"
-                value={fundAdjustmentAmount}
-                onChange={(e) => setFundAdjustmentAmount(e.target.value)}
-                className={`w-full px-3.5 py-2.5 rounded-xl border text-sm font-mono-code font-bold outline-none ${
-                  isLight ? 'bg-slate-50 border-slate-200 text-slate-900' : 'bg-[#1f163d] border-[#362763] text-white'
-                }`}
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  handleCreditWallet(selectedUserForAction);
-                  setSelectedUserForAction(null);
-                }}
-                className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white font-heading font-black text-xs hover:bg-emerald-700 transition-colors cursor-pointer"
-              >
-                Deposit ${fundAdjustmentAmount} USD
-              </button>
-              <button
-                onClick={() => setSelectedUserForAction(null)}
-                className="px-4 py-2.5 rounded-xl bg-slate-500/20 text-slate-300 font-heading font-black text-xs hover:bg-slate-500/30 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

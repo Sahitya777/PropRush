@@ -59,6 +59,8 @@ export interface UserProfile {
   walletBalance: number; // in USD $ (e.g. 50.00)
   leaguePoints: number; // 0 - 2000+
   leagueTier: LeagueTier;
+  isBanned?: boolean;
+  banReason?: string;
   level: number;
   xp: number;
   maxXp: number;

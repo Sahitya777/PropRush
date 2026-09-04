@@ -30,9 +30,8 @@ export function getAllActiveRooms(): ActiveRoomInfo[] {
     if (raw) {
       const parsed: ActiveRoomInfo[] = JSON.parse(raw);
       const now = Date.now();
-      const legacyMockCodes = new Set(['lnu17', 'tokyo88', 'whale50', 'cas01']);
-      // Filter out expired custom rooms and legacy mock rooms
-      customRooms = parsed.filter(r => (now - r.createdAt < ROOM_TTL_MS) && !legacyMockCodes.has(r.code.toLowerCase()));
+      // Filter out expired custom rooms (older than TTL)
+      customRooms = parsed.filter(r => (now - (r.createdAt || now) < ROOM_TTL_MS));
       // Save cleaned list back
       if (customRooms.length !== parsed.length) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(customRooms));

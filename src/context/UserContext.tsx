@@ -1,11 +1,13 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { UserProfile, LeagueTier, MatchHistory, Badge } from '../types/user';
 import { BADGES_LIST, LEAGUE_TIERS_INFO } from '../data/storeData';
 import { sounds } from '../utils/audio';
 import { syncUserProfileToServer } from '../utils/serverUsersSync';
+import { isUserBanned } from '../utils/banManager';
 
 interface UserContextType {
   user: UserProfile;
+  isBanned: boolean;
   updateUser: (updates: Partial<UserProfile>) => void;
   updateUsername: (name: string) => void;
   depositFunds: (amount: number, method: string) => boolean;
@@ -152,6 +154,22 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
     return localStorage.getItem('proprush_clerk_auth') === 'true';
   });
+
+  // Track real-time ban status
+  const [isBanned, setIsBanned] = useState<boolean>(() => {
+    return Boolean(user.isBanned || isUserBanned(user.email, user.id));
+  });
+
+  useEffect(() => {
+    const checkBan = () => {
+      const banned = Boolean(user.isBanned || isUserBanned(user.email, user.id));
+      setIsBanned(banned);
+    };
+
+    checkBan();
+    window.addEventListener('proprush_ban_updated', checkBan);
+    return () => window.removeEventListener('proprush_ban_updated', checkBan);
+  }, [user.email, user.id, user.isBanned]);
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalReason, setAuthModalReason] = useState<string | null>(null);
@@ -346,6 +364,16 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   useEffect(() => {
+    // Immediate sync on mount and on window focus
+    syncUserProfileToServer(user);
+    const handleFocus = () => {
+      syncUserProfileToServer(user);
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem('proprush_user_profile', JSON.stringify(user));
     if (user.clerkUserId) {
       localStorage.setItem(`proprush_user_${user.clerkUserId}`, JSON.stringify(user));
@@ -369,6 +397,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const depositFunds = (amount: number, method: string) => {
+    if (isBanned) {
+      sounds.playBankrupt();
+      return false;
+    }
     if (amount <= 0) return false;
     sounds.playCashRegister();
     setUser(prev => ({
@@ -379,6 +411,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const withdrawFunds = (amount: number) => {
+    if (isBanned) {
+      sounds.playBankrupt();
+      return false;
+    }
     if (amount <= 0 || user.walletBalance < amount) return false;
     sounds.playClick();
     setUser(prev => ({
@@ -389,7 +425,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const buyCoinPack = (coins: number, priceUsd: number): boolean => {
-    if (priceUsd <= 0 || user.walletBalance < priceUsd) {
+    if (isBanned || priceUsd <= 0 || user.walletBalance < priceUsd) {
       return false;
     }
     sounds.playCashRegister();
@@ -406,6 +442,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const deductBuyIn = (amount: number): boolean => {
+    if (isBanned) {
+      sounds.playBankrupt();
+      return false;
+    }
     if (amount <= 0) return true;
     if (user.walletBalance < amount) return false;
     sounds.playCashRegister();
@@ -617,6 +657,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <UserContext.Provider
       value={{
         user,
+        isBanned,
         updateUser,
         updateUsername,
         depositFunds,

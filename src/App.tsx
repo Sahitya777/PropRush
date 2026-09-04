@@ -53,7 +53,7 @@ function getInitialView(): 'home' | 'game' | 'store' | 'profile' | 'rankings' | 
 }
 
 function AppContent() {
-  const { user, deductBuyIn, depositFunds } = useUser();
+  const { user, deductBuyIn, depositFunds, isBanned } = useUser();
   const { isClerkAvailable } = useClerkConfig();
   const { isLight } = useTheme();
   const [currentView, setCurrentView] = useState<'home' | 'game' | 'store' | 'profile' | 'rankings' | 'admin' | '404'>(getInitialView);
@@ -176,6 +176,12 @@ function AppContent() {
     boardTheme: string;
     fillWithBots: boolean;
   }) => {
+    if (isBanned) {
+      sounds.playBankrupt();
+      alert('⛔ Account Suspended: Your account has been suspended by PropRush administration. You cannot join game tables.');
+      return;
+    }
+
     // Check if player is reconnecting to an active unexpired match
     const existingSaved = getActiveMatch();
     const isReconnecting = Boolean(
@@ -258,6 +264,18 @@ function AppContent() {
         />
       )}
 
+      {/* Account Suspended Persistent Notice */}
+      {isBanned && (
+        <div className="w-full bg-red-600 text-white px-4 py-2.5 text-xs sm:text-sm font-heading font-black flex items-center justify-between shadow-lg sticky top-0 z-40 border-b border-red-700">
+          <div className="flex items-center gap-2 max-w-5xl mx-auto w-full">
+            <span className="text-base">⛔</span>
+            <span>
+              <strong>ACCOUNT SUSPENDED:</strong> This account has been banned by PropRush administration. Multiplayer match joins, table hosting, and financial deposits are disabled.
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Stripe Deposit Notification Toast */}
       {depositNotification && (
         <div className="fixed top-18 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-2xl bg-emerald-600 text-white font-heading font-bold text-xs sm:text-sm shadow-2xl flex items-center gap-2 animate-bounce border border-emerald-400">
@@ -302,7 +320,6 @@ function AppContent() {
         {currentView === 'admin' && (
           <AdminCommandCenterView
             onNavigateHome={() => navigateTo('home')}
-            onJoinRoom={handleJoinRoom}
           />
         )}
 
