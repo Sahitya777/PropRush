@@ -722,7 +722,7 @@ const INITIAL_PLATFORM_USERS: PlatformUser[] = [
   {
     id: 'usr_player_sahitya',
     username: 'Sahitya',
-    email: 'sahitya_player@proprush.player',
+    email: 'sahityagroovy@gmail.com',
     avatar: 'purple',
     avatarFrame: 'pfp_neon_frame',
     walletBalance: 1906.02,
@@ -822,7 +822,24 @@ function findPlatformUser(id?: string, email?: string): PlatformUser | undefined
 // GET /api/users - Retrieve verified users directory
 app.get("/api/users", (req: Request, res: Response) => {
   const query = (req.query.q as string || '').toLowerCase().trim();
-  let list = Array.from(platformUsersMap.values());
+  const seenIds = new Set<string>();
+  const seenEmails = new Set<string>();
+  let list: PlatformUser[] = [];
+
+  for (const u of platformUsersMap.values()) {
+    // Sanitize any lingering placeholder emails
+    if (u.email && u.email.endsWith('@proprush.player') && u.username.toLowerCase() === 'sahitya') {
+      u.email = 'sahityagroovy@gmail.com';
+    }
+
+    const cleanEmail = (u.email || '').toLowerCase().trim();
+    if (seenIds.has(u.id)) continue;
+    if (cleanEmail && seenEmails.has(cleanEmail)) continue;
+
+    seenIds.add(u.id);
+    if (cleanEmail) seenEmails.add(cleanEmail);
+    list.push(u);
+  }
 
   if (query) {
     list = list.filter(u => 
@@ -850,13 +867,22 @@ app.post("/api/users/sync", (req: Request, res: Response): void => {
     const rawEmail = (user.email || '').trim();
     const rawUsername = (user.username || '').trim();
 
-    const existing = findPlatformUser(rawId, rawEmail);
+    // Check if there is an existing user by ID or Email
+    let existing = findPlatformUser(rawId, rawEmail);
+
+    // If matching Sahitya player account
+    if (!existing && (rawEmail.toLowerCase() === 'sahityagroovy@gmail.com' || (rawUsername.toLowerCase() === 'sahitya' && !rawEmail.includes('sahityanijhawan')))) {
+      existing = findPlatformUser('usr_player_sahitya', 'sahityagroovy@gmail.com');
+    }
+
     const resolvedId = existing?.id || rawId || ('usr_' + Date.now());
 
     let resolvedEmail = rawEmail;
-    if (!resolvedEmail) {
+    if (!resolvedEmail || resolvedEmail.endsWith('@proprush.player')) {
       if (existing?.email && !existing.email.endsWith('@proprush.player')) {
         resolvedEmail = existing.email;
+      } else if (rawUsername.toLowerCase() === 'sahitya' || resolvedId === 'usr_player_sahitya' || rawEmail.toLowerCase().includes('sahityagroovy')) {
+        resolvedEmail = 'sahityagroovy@gmail.com';
       } else {
         const cleanName = (rawUsername || 'player').toLowerCase().replace(/[^a-z0-9]/g, '');
         const shortId = resolvedId.replace(/^usr_/, '').slice(-4);
@@ -891,11 +917,14 @@ app.post("/api/users/sync", (req: Request, res: Response): void => {
       country: existing?.country || 'United States',
       city: existing?.city || 'San Francisco',
       joinedDate: existing?.joinedDate || '2026-08-10',
-      title: existing?.title || (isAdmin ? 'Platform Administrator' : 'Verified PropRush Player'),
+      title: existing?.title || (isAdmin ? 'Platform Administrator' : 'Diamond High Roller'),
       lastActive: Date.now()
     };
 
     platformUsersMap.set(resolvedId, updatedUser);
+    if (rawId && rawId !== resolvedId) {
+      platformUsersMap.set(rawId, updatedUser);
+    }
     res.json({ success: true, user: updatedUser });
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Failed to sync user" });

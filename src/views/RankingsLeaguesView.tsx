@@ -229,14 +229,14 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
         }))
       : [...GLOBAL_CHAMPIONS_SEED];
 
-    const currentEmail = (user.email || 'sahityanijhawan@gmail.com').toLowerCase();
-    const currentName = user.username.toLowerCase();
+    const currentEmail = (user.email || '').toLowerCase().trim();
+    const currentName = (user.username || '').toLowerCase().trim();
 
-    // Match current user
+    // Match current user strictly by ID or exact email or name
     const existingIndex = sourceList.findIndex(p => 
-      (p.email && p.email.toLowerCase() === currentEmail) ||
-      p.name.toLowerCase() === currentName ||
-      (currentEmail.includes('sahityanijhawan') && (p.name.toLowerCase().includes('sahitya') || p.email?.toLowerCase().includes('sahityanijhawan')))
+      (p.id && user.id && p.id === user.id) ||
+      (p.email && currentEmail && p.email.toLowerCase() === currentEmail) ||
+      (p.name.toLowerCase() === currentName && (!p.email || !currentEmail || p.email.toLowerCase() === currentEmail))
     );
 
     if (existingIndex >= 0) {

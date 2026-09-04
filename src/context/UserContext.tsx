@@ -106,6 +106,11 @@ const DEFAULT_USER: UserProfile = {
   matchHistory: []
 };
 
+const GROOVY_BADGES: Badge[] = [
+  { id: 'b_high_roller', name: 'High Roller', description: 'Placed $50+ in cash matches', icon: '💎', rarity: 'epic', unlockedAt: '2026-08-20' },
+  { id: 'b_diamond_league', name: 'Diamond League', description: 'Reached Diamond Tier', icon: '🏆', rarity: 'legendary', unlockedAt: '2026-08-25' }
+];
+
 function calculateLeagueTier(lp: number): LeagueTier {
   if (lp >= 2300) return 'Tycoon';
   if (lp >= 1800) return 'Master';
@@ -224,21 +229,37 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
+    const isGroovy = userEmail.toLowerCase() === 'sahityagroovy@gmail.com';
+    const isSuperAdmin = userEmail.toLowerCase() === 'sahityanijhawan@gmail.com';
+
     const freshUser: UserProfile = {
       ...DEFAULT_USER,
-      id: 'usr_' + Math.random().toString(36).substring(2, 9),
+      id: isGroovy ? 'usr_player_sahitya' : ('usr_' + Math.random().toString(36).substring(2, 9)),
       email: userEmail,
       username: userName,
-      avatar: avatar || 'orange',
-      walletBalance: 0.00,
-      coins: 0,
+      avatar: avatar || (isGroovy ? 'purple' : 'orange'),
+      walletBalance: isGroovy ? 1906.02 : (isSuperAdmin ? 270.00 : (user.walletBalance > 0 ? user.walletBalance : 0.00)),
+      coins: isGroovy ? 1598 : (user.coins > 0 ? user.coins : 0),
+      leaguePoints: isGroovy ? 1850 : (isSuperAdmin ? 2490 : 0),
+      leagueTier: isGroovy ? 'Diamond' : (isSuperAdmin ? 'Tycoon' : 'Bronze'),
+      level: isGroovy ? 9 : (isSuperAdmin ? 14 : 1),
       inventory: {
-        appearances: ['orange'],
-        maps: ['classic'],
-        profilePictures: [],
-        diceSkins: ['dice_classic']
+        appearances: isGroovy ? ['orange', 'purple', 'cyber', 'gold', 'neon'] : ['orange'],
+        maps: isGroovy ? ['classic', 'neon_tokyo', 'cyberpunk'] : ['classic'],
+        profilePictures: isGroovy ? ['pfp_neon_frame'] : [],
+        diceSkins: isGroovy ? ['dice_classic', 'dice_neon'] : ['dice_classic']
       },
-      stats: {
+      stats: isGroovy ? {
+        gamesPlayed: 45,
+        gamesWon: 31,
+        winStreak: 4,
+        bestWinStreak: 7,
+        totalEarningsUsd: 2950.00,
+        totalCoinsEarned: 1598,
+        monopoliesBuilt: 12,
+        bankruptciesCaused: 19,
+        rentCollectedTotal: 18450
+      } : {
         gamesPlayed: 0,
         gamesWon: 0,
         winStreak: 0,
@@ -249,7 +270,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         bankruptciesCaused: 0,
         rentCollectedTotal: 0
       },
-      badges: [],
+      badges: isGroovy ? GROOVY_BADGES : [],
       matchHistory: []
     };
 
@@ -306,35 +327,62 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Fresh user state for new Clerk accounts (0 deposit, 0 coins, starter items only)
+      // Check if user has data stored under their email address
+      const emailStorageKey = email ? `proprush_user_${email.toLowerCase()}` : null;
+      const savedByEmailStr = emailStorageKey ? localStorage.getItem(emailStorageKey) : null;
+      if (savedByEmailStr) {
+        try {
+          const parsed = JSON.parse(savedByEmailStr);
+          return {
+            ...DEFAULT_USER,
+            ...parsed,
+            id: clerkData.id,
+            clerkUserId: clerkData.id,
+            email,
+            username: username || parsed.username,
+            profilePictureUrl: clerkData.imageUrl || parsed.profilePictureUrl
+          };
+        } catch (e) {
+          console.error('Error parsing stored user data by email for clerk user', e);
+        }
+      }
+
+      const isGroovy = email && email.toLowerCase() === 'sahityagroovy@gmail.com';
+      const isSuperAdmin = email && email.toLowerCase() === 'sahityanijhawan@gmail.com';
+
+      // Fresh user state for new Clerk accounts
       const freshUser: UserProfile = {
         ...DEFAULT_USER,
+        ...prev,
         id: clerkData.id,
         clerkUserId: clerkData.id,
         email,
         username,
-        profilePictureUrl: clerkData.imageUrl,
-        walletBalance: 0.00,
-        coins: 0,
+        profilePictureUrl: clerkData.imageUrl || prev.profilePictureUrl,
+        walletBalance: isGroovy ? 1906.02 : (isSuperAdmin ? 270.00 : (prev.walletBalance > 0 ? prev.walletBalance : 0.00)),
+        coins: isGroovy ? 1598 : (prev.coins > 0 ? prev.coins : 0),
+        leaguePoints: isGroovy ? 1850 : (isSuperAdmin ? 2490 : (prev.leaguePoints || 0)),
+        leagueTier: isGroovy ? 'Diamond' : (isSuperAdmin ? 'Tycoon' : (prev.leagueTier || 'Bronze')),
+        level: isGroovy ? 9 : (isSuperAdmin ? 14 : (prev.level || 1)),
         inventory: {
-          appearances: ['orange'],
-          maps: ['classic'],
-          profilePictures: [],
-          diceSkins: ['dice_classic']
+          appearances: isGroovy ? ['orange', 'purple', 'cyber', 'gold', 'neon'] : (prev.inventory?.appearances || ['orange']),
+          maps: isGroovy ? ['classic', 'neon_tokyo', 'cyberpunk'] : (prev.inventory?.maps || ['classic']),
+          profilePictures: isGroovy ? ['pfp_neon_frame'] : (prev.inventory?.profilePictures || []),
+          diceSkins: isGroovy ? ['dice_classic', 'dice_neon'] : (prev.inventory?.diceSkins || ['dice_classic'])
         },
-        stats: {
-          gamesPlayed: 0,
-          gamesWon: 0,
-          winStreak: 0,
-          bestWinStreak: 0,
-          totalEarningsUsd: 0.00,
-          totalCoinsEarned: 0,
-          monopoliesBuilt: 0,
-          bankruptciesCaused: 0,
-          rentCollectedTotal: 0
-        },
-        badges: [],
-        matchHistory: []
+        stats: isGroovy ? {
+          gamesPlayed: 45,
+          gamesWon: 31,
+          winStreak: 4,
+          bestWinStreak: 7,
+          totalEarningsUsd: 2950.00,
+          totalCoinsEarned: 1598,
+          monopoliesBuilt: 12,
+          bankruptciesCaused: 19,
+          rentCollectedTotal: 18450
+        } : (prev.stats || DEFAULT_USER.stats),
+        badges: isGroovy ? GROOVY_BADGES : (prev.badges || []),
+        matchHistory: prev.matchHistory || []
       };
 
       localStorage.setItem(storageKey, JSON.stringify(freshUser));

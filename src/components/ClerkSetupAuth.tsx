@@ -166,6 +166,37 @@ export const ClerkSetupAuth: React.FC<ClerkSetupAuthProps> = ({ onClose }) => {
             Simulate a Google-verified login session with custom display name and email.
           </p>
 
+          <div className="flex gap-2 mb-1">
+            <button
+              type="button"
+              onClick={() => {
+                setDemoEmail('sahityanijhawan@gmail.com');
+                setDemoName('Sahitya Nijhawan');
+              }}
+              className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] font-bold border transition-colors ${
+                demoEmail === 'sahityanijhawan@gmail.com'
+                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+                  : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+              }`}
+            >
+              👑 Admin Account
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDemoEmail('sahityagroovy@gmail.com');
+                setDemoName('Sahitya');
+              }}
+              className={`flex-1 py-1.5 px-2 rounded-lg text-[10px] font-bold border transition-colors ${
+                demoEmail === 'sahityagroovy@gmail.com'
+                  ? 'bg-purple-500/20 border-purple-500/50 text-purple-300'
+                  : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+              }`}
+            >
+              🎮 Player (Sahitya)
+            </button>
+          </div>
+
           <div className="space-y-1.5">
             <label className={`text-xs font-bold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Google Email</label>
             <input
@@ -200,7 +231,7 @@ export const ClerkSetupAuth: React.FC<ClerkSetupAuthProps> = ({ onClose }) => {
             type="submit"
             className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs shadow-md transition-all cursor-pointer transform active:scale-98 mt-1"
           >
-            Sign In with Demo Google Session
+            Sign In with Google Session
           </button>
         </form>
       )}

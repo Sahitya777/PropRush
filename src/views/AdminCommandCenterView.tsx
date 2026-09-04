@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useUser } from '../context/UserContext';
 import { useTheme } from '../context/ThemeContext';
+import { useSafeClerkUser } from '../context/ClerkIntegration';
 import { isUserAdmin, getAdminEmails, addAdminEmail, removeAdminEmail } from '../utils/adminRegistry';
 import { getAllActiveRooms, ActiveRoomInfo } from '../utils/activeRoomsRegistry';
 import { fetchActiveRoomsFromServer } from '../utils/serverRoomSync';
@@ -52,8 +53,10 @@ export interface AdminCommandCenterViewProps {
 export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ onNavigateHome }) => {
   const { user } = useUser();
   const { isLight } = useTheme();
+  const { isLoaded: isClerkLoaded, isSignedIn: isClerkSignedIn, user: clerkUser } = useSafeClerkUser();
 
-  const effectiveEmail = user.email || 'sahityanijhawan@gmail.com';
+  const effectiveEmail = (isClerkSignedIn && clerkUser?.primaryEmailAddress?.emailAddress) || user.email || 'sahityanijhawan@gmail.com';
+  const effectiveUsername = (isClerkSignedIn && (clerkUser?.fullName || clerkUser?.username || clerkUser?.firstName)) || user.username || 'Sahitya Nijhawan';
   const isAuthorized = isUserAdmin(effectiveEmail) || effectiveEmail.toLowerCase().includes('sahityanijhawan@gmail.com');
 
   const [activeTab, setActiveTab] = useState<'overview' | 'matches' | 'users' | 'admins'>('overview');
@@ -191,7 +194,7 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
     // Current active session user
     const currentSessionUser: ManagedUser = {
       id: user.id || 'usr_current',
-      username: user.username || 'Sahitya Nijhawan',
+      username: effectiveUsername || user.username || 'Sahitya Nijhawan',
       email: effectiveEmail || 'sahityanijhawan@gmail.com',
       walletBalance: user.walletBalance,
       coins: user.coins,
@@ -208,19 +211,33 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
 
     // Merge server users
     if (serverUsers.length > 0) {
-      serverUsers.forEach(su => {
+      serverUsers.forEach(rawSu => {
+        const cleanEmail = (rawSu.email || '').trim();
+        const normalizedEmail = (cleanEmail.endsWith('@proprush.player') && rawSu.username.toLowerCase() === 'sahitya')
+          ? 'sahityagroovy@gmail.com'
+          : cleanEmail;
+        
+        const su: AdminUserRecord = {
+          ...rawSu,
+          email: normalizedEmail
+        };
+
         const isCurrent = (user.id && su.id === user.id) || 
           (su.email && effectiveEmail && su.email.toLowerCase() === effectiveEmail.toLowerCase());
         
+        const suGamesPlayed = su.stats?.gamesPlayed || 0;
+        const suGamesWon = su.stats?.gamesWon || 0;
+        const suWinRate = suGamesPlayed > 0 ? Number(((suGamesWon / suGamesPlayed) * 100).toFixed(0)) : 0;
+
         if (isCurrent) {
           list[0] = {
             ...list[0],
-            username: user.username || su.username,
+            username: effectiveUsername || su.username,
             email: su.email || effectiveEmail,
             walletBalance: user.walletBalance,
             coins: user.coins,
-            gamesPlayed: user.stats.gamesPlayed || su.gamesPlayed,
-            winRate: user.stats.gamesPlayed > 0 ? userWinRate : su.winRate,
+            gamesPlayed: user.stats.gamesPlayed || suGamesPlayed,
+            winRate: user.stats.gamesPlayed > 0 ? userWinRate : suWinRate,
             isBanned: isUserBanned(su.email, su.id) || bannedUserIds.includes(su.id) || su.isBanned,
             role: currentIsAdmin ? 'admin' : su.role
           };
@@ -233,8 +250,8 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
               email: su.email,
               walletBalance: su.walletBalance,
               coins: su.coins,
-              gamesPlayed: su.gamesPlayed,
-              winRate: su.winRate,
+              gamesPlayed: suGamesPlayed,
+              winRate: suWinRate,
               isBanned: isUserBanned(su.email, su.id) || bannedUserIds.includes(su.id) || su.isBanned,
               role: su.role
             };
@@ -245,8 +262,8 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
               email: su.email,
               walletBalance: su.walletBalance,
               coins: su.coins,
-              gamesPlayed: su.gamesPlayed,
-              winRate: su.winRate,
+              gamesPlayed: suGamesPlayed,
+              winRate: suWinRate,
               isBanned: isUserBanned(su.email, su.id) || bannedUserIds.includes(su.id) || su.isBanned,
               role: su.role,
               joinedDate: su.joinedDate,
