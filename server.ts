@@ -316,7 +316,7 @@ const defaultRooms: ServerRoom[] = [
   {
     code: 'tokyo88',
     name: 'Tokyo Fast 2x Blitz',
-    hostId: 'usr_kenji',
+    hostId: 'bot_yuki',
     maxPlayers: 4,
     betAmount: 0,
     turnTimeSeconds: 10,
@@ -325,8 +325,8 @@ const defaultRooms: ServerRoom[] = [
     initialCash: 1500,
     status: 'waiting',
     players: [
-      { id: 'usr_kenji', name: 'Kenji', avatar: 'cyber', color: '#06b6d4', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, isBankrupt: false, isAi: false, properties: [] },
-      { id: 'bot_yuki', name: 'Yuki_Speed', avatar: 'pink', color: '#ec4899', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, isBankrupt: false, isAi: true, properties: [] }
+      { id: 'bot_yuki', name: 'Yuki_Speed', avatar: 'pink', color: '#ec4899', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, isBankrupt: false, isAi: true, properties: [] },
+      { id: 'bot_ryo', name: 'Ryo_Cyber', avatar: 'cyber', color: '#06b6d4', cash: 1500, netWorth: 1500, position: 0, inJail: false, jailTurns: 0, isBankrupt: false, isAi: true, properties: [] }
     ],
     properties: [],
     currentTurnIndex: 0,
@@ -342,7 +342,7 @@ const defaultRooms: ServerRoom[] = [
   {
     code: 'whale50',
     name: 'Grandmaster Diamond Table',
-    hostId: 'usr_victor',
+    hostId: 'bot_elena',
     maxPlayers: 4,
     betAmount: 500,
     turnTimeSeconds: 20,
@@ -351,7 +351,6 @@ const defaultRooms: ServerRoom[] = [
     initialCash: 2500,
     status: 'waiting',
     players: [
-      { id: 'usr_victor', name: 'Victor_Mogul', avatar: 'gold', color: '#eab308', cash: 2500, netWorth: 2500, position: 0, inJail: false, jailTurns: 0, isBankrupt: false, isAi: false, properties: [] },
       { id: 'bot_elena', name: 'Elena_Tycoon', avatar: 'red', color: '#ef4444', cash: 2500, netWorth: 2500, position: 0, inJail: false, jailTurns: 0, isBankrupt: false, isAi: true, properties: [] },
       { id: 'bot_chen', name: 'Chen_Empire', avatar: 'cyan', color: '#0ea5e9', cash: 2500, netWorth: 2500, position: 0, inJail: false, jailTurns: 0, isBankrupt: false, isAi: true, properties: [] }
     ],
@@ -745,58 +744,6 @@ const INITIAL_PLATFORM_USERS: PlatformUser[] = [
     joinedDate: '2026-08-15',
     title: 'Diamond High Roller',
     lastActive: Date.now()
-  },
-  {
-    id: 'usr_kenji',
-    username: 'Kenji',
-    email: 'kenji@tokyo.proprush.live',
-    avatar: 'cyber',
-    walletBalance: 340.00,
-    coins: 450,
-    leaguePoints: 1420,
-    leagueTier: 'Platinum',
-    level: 6,
-    stats: {
-      gamesPlayed: 28,
-      gamesWon: 16,
-      winStreak: 2,
-      bestWinStreak: 4,
-      totalEarningsUsd: 920.00,
-      totalCoinsEarned: 450,
-    },
-    role: 'player',
-    isBanned: false,
-    country: 'Japan',
-    city: 'Tokyo',
-    joinedDate: '2026-08-20',
-    title: 'Cyber Fast Runner',
-    lastActive: Date.now()
-  },
-  {
-    id: 'usr_victor',
-    username: 'Victor_Mogul',
-    email: 'victor.mogul@vip.proprush.live',
-    avatar: 'gold',
-    walletBalance: 1250.00,
-    coins: 890,
-    leaguePoints: 2100,
-    leagueTier: 'Tycoon',
-    level: 11,
-    stats: {
-      gamesPlayed: 64,
-      gamesWon: 42,
-      winStreak: 5,
-      bestWinStreak: 8,
-      totalEarningsUsd: 5600.00,
-      totalCoinsEarned: 890,
-    },
-    role: 'player',
-    isBanned: false,
-    country: 'Monaco',
-    city: 'Monte Carlo',
-    joinedDate: '2026-08-12',
-    title: 'High Stakes Grandmaster',
-    lastActive: Date.now()
   }
 ];
 
@@ -1063,6 +1010,21 @@ app.post("/api/admin/users/action", (req: Request, res: Response): void => {
       target.isBanned = false;
       if (emailKey) bannedEmailsSet.delete(emailKey);
       if (target.id) bannedIdsSet.delete(target.id);
+    } else if (action === 'delete') {
+      if (target.id) {
+        platformUsersMap.delete(target.id);
+        bannedIdsSet.delete(target.id);
+      }
+      if (emailKey) {
+        bannedEmailsSet.delete(emailKey);
+        for (const [k, u] of platformUsersMap.entries()) {
+          if (u.email && u.email.toLowerCase().trim() === emailKey) {
+            platformUsersMap.delete(k);
+          }
+        }
+      }
+      res.json({ success: true, deleted: true, id: target.id });
+      return;
     } else if (action === 'role') {
       target.role = value === 'admin' ? 'admin' : 'player';
     }

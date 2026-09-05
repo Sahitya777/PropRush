@@ -9,6 +9,9 @@ import { sounds } from '../utils/audio';
 import { fetchServerUsers, performAdminUserAction, AdminUserRecord } from '../utils/serverUsersSync';
 import { isUserBanned, setUserBanStatus } from '../utils/banManager';
 import {
+  ShieldAlert, AlertTriangle, CheckCircle, Ban, Trash2, X, Loader2
+} from 'lucide-react';
+import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer
 } from 'recharts';
@@ -129,6 +132,12 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
   const [serverUsers, setServerUsers] = useState<AdminUserRecord[]>([]);
   const [userSearch, setUserSearch] = useState('');
   const [banFeedback, setBanFeedback] = useState<string | null>(null);
+
+  // Ban & Delete confirmation modal states
+  const [pendingBanAction, setPendingBanAction] = useState<{ user: ManagedUser; action: 'ban' | 'unban' } | null>(null);
+  const [isProcessingBan, setIsProcessingBan] = useState(false);
+  const [pendingDeleteUser, setPendingDeleteUser] = useState<ManagedUser | null>(null);
+  const [isProcessingDelete, setIsProcessingDelete] = useState(false);
 
   // Poll live verified platform users from server
   useEffect(() => {
@@ -324,33 +333,97 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
     setTimeout(() => setAdminFeedback(null), 4000);
   };
 
-  const handleToggleBan = async (targetUser: ManagedUser) => {
+  const initiateToggleBan = (targetUser: ManagedUser) => {
     sounds.playClick();
-    const newBanState = !targetUser.isBanned;
-
-    // 1. Sync through centralized banManager (localStorage + in-memory + server notify)
-    await setUserBanStatus(targetUser.email, newBanState, targetUser.id);
-
-    // 2. Update local state
-    setBannedUserIds(prev => {
-      const next = newBanState 
-        ? [...prev.filter(id => id !== targetUser.id), targetUser.id] 
-        : prev.filter(id => id !== targetUser.id);
-      return next;
+    if (targetUser.role === 'admin' || targetUser.email.toLowerCase() === 'sahityanijhawan@gmail.com') {
+      setBanFeedback('🛡️ Administrator accounts cannot be banned.');
+      setTimeout(() => setBanFeedback(null), 4000);
+      return;
+    }
+    setPendingBanAction({
+      user: targetUser,
+      action: targetUser.isBanned ? 'unban' : 'ban'
     });
+  };
 
-    setServerUsers(prev => prev.map(su => 
-      su.email.toLowerCase() === targetUser.email.toLowerCase() || su.id === targetUser.id 
-        ? { ...su, isBanned: newBanState } 
-        : su
-    ));
+  const handleConfirmBan = async () => {
+    if (!pendingBanAction) return;
+    setIsProcessingBan(true);
+    const { user: targetUser, action } = pendingBanAction;
+    const newBanState = action === 'ban';
 
-    setBanFeedback(
-      newBanState 
-        ? `⛔ ${targetUser.username} (${targetUser.email}) has been SUSPENDED. All match matchmaking, room creation, and Stripe deposits are blocked.`
-        : `✅ Account suspension lifted for ${targetUser.username} (${targetUser.email}). Normal player access restored.`
-    );
-    setTimeout(() => setBanFeedback(null), 5000);
+    try {
+      // 1. Sync through centralized banManager (localStorage + in-memory + server notify)
+      await setUserBanStatus(targetUser.email, newBanState, targetUser.id);
+
+      // 2. Update local state
+      setBannedUserIds(prev => {
+        const next = newBanState 
+          ? [...prev.filter(id => id !== targetUser.id), targetUser.id] 
+          : prev.filter(id => id !== targetUser.id);
+        return next;
+      });
+
+      setServerUsers(prev => prev.map(su => 
+        su.email.toLowerCase() === targetUser.email.toLowerCase() || su.id === targetUser.id 
+          ? { ...su, isBanned: newBanState } 
+          : su
+      ));
+
+      if (newBanState) {
+        sounds.playBankrupt();
+        setBanFeedback(
+          `⛔ ${targetUser.username} (${targetUser.email}) has been SUSPENDED. All match matchmaking, room creation, and deposits are blocked.`
+        );
+      } else {
+        sounds.playVictory();
+        setBanFeedback(
+          `✅ Account suspension lifted for ${targetUser.username} (${targetUser.email}). Normal player access restored.`
+        );
+      }
+      setTimeout(() => setBanFeedback(null), 5000);
+    } catch (err) {
+      console.error('Failed to change ban status:', err);
+      setBanFeedback(`❌ Failed to update ban status for ${targetUser.username}.`);
+      setTimeout(() => setBanFeedback(null), 5000);
+    } finally {
+      setIsProcessingBan(false);
+      setPendingBanAction(null);
+    }
+  };
+
+  const initiateDeleteUser = (targetUser: ManagedUser) => {
+    sounds.playClick();
+    if (targetUser.role === 'admin' || targetUser.email.toLowerCase() === 'sahityanijhawan@gmail.com') {
+      setBanFeedback('🛡️ Administrator accounts cannot be deleted.');
+      setTimeout(() => setBanFeedback(null), 4000);
+      return;
+    }
+    setPendingDeleteUser(targetUser);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDeleteUser) return;
+    setIsProcessingDelete(true);
+    try {
+      const targetUser = pendingDeleteUser;
+      const success = await performAdminUserAction(targetUser.email, 'delete', undefined, targetUser.id);
+      if (success) {
+        setServerUsers(prev => prev.filter(su => su.id !== targetUser.id && su.email.toLowerCase() !== targetUser.email.toLowerCase()));
+        setBanFeedback(`🗑️ Removed user account ${targetUser.username} (${targetUser.email}).`);
+        sounds.playBankrupt();
+      } else {
+        setBanFeedback(`❌ Failed to delete ${targetUser.username}.`);
+      }
+      setTimeout(() => setBanFeedback(null), 5000);
+    } catch (err) {
+      console.error('Failed to delete user:', err);
+      setBanFeedback(`❌ Error deleting user.`);
+      setTimeout(() => setBanFeedback(null), 5000);
+    } finally {
+      setIsProcessingDelete(false);
+      setPendingDeleteUser(null);
+    }
   };
 
   // Dynamic 7-day revenue chart based on real platform activity
@@ -964,17 +1037,32 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
                     </div>
                   </div>
 
-                  <div className="pt-1">
-                    <button
-                      onClick={() => handleToggleBan(u)}
-                      className={`w-full py-2.5 rounded-xl text-xs font-heading font-black transition-colors cursor-pointer ${
-                        u.isBanned
-                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                          : 'bg-red-600/80 hover:bg-red-600 text-white'
-                      }`}
-                    >
-                      {u.isBanned ? 'Lift Suspension (Unban)' : 'Ban Account'}
-                    </button>
+                  <div className="pt-1 flex gap-2">
+                    {u.role === 'admin' || u.email.toLowerCase() === 'sahityanijhawan@gmail.com' ? (
+                      <div className="w-full py-2 rounded-xl text-xs font-heading font-bold text-center text-purple-300 bg-purple-900/20 border border-purple-500/30">
+                        🛡️ Administrator (Protected)
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => initiateToggleBan(u)}
+                          className={`flex-1 py-2.5 rounded-xl text-xs font-heading font-black transition-colors cursor-pointer ${
+                            u.isBanned
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                              : 'bg-red-600/80 hover:bg-red-600 text-white'
+                          }`}
+                        >
+                          {u.isBanned ? 'Lift Suspension (Unban)' : 'Ban Account'}
+                        </button>
+                        <button
+                          onClick={() => initiateDeleteUser(u)}
+                          className="px-3 py-2.5 rounded-xl text-xs font-heading font-bold cursor-pointer transition-colors bg-slate-700/50 hover:bg-red-600 text-slate-300 hover:text-white"
+                          title="Delete user account"
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1033,16 +1121,31 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
                         )}
                       </td>
                       <td className="py-3 px-3 text-center">
-                        <button
-                          onClick={() => handleToggleBan(u)}
-                          className={`px-3 py-1.5 rounded-lg text-[11px] font-heading font-black cursor-pointer transition-colors ${
-                            u.isBanned
-                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                              : 'bg-red-600/80 hover:bg-red-600 text-white'
-                          }`}
-                        >
-                          {u.isBanned ? 'Lift Ban' : 'Ban'}
-                        </button>
+                        {u.role === 'admin' || u.email.toLowerCase() === 'sahityanijhawan@gmail.com' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-heading font-bold text-purple-300 bg-purple-900/20 border border-purple-500/30">
+                            🛡️ Protected
+                          </span>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => initiateToggleBan(u)}
+                              className={`px-3 py-1.5 rounded-lg text-[11px] font-heading font-black cursor-pointer transition-colors ${
+                                u.isBanned
+                                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                  : 'bg-red-600/80 hover:bg-red-600 text-white'
+                              }`}
+                            >
+                              {u.isBanned ? 'Lift Ban' : 'Ban'}
+                            </button>
+                            <button
+                              onClick={() => initiateDeleteUser(u)}
+                              title="Delete user account"
+                              className="px-2.5 py-1.5 rounded-lg text-[11px] font-heading font-bold cursor-pointer transition-colors bg-slate-700/50 hover:bg-red-600 text-slate-300 hover:text-white"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -1145,6 +1248,258 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
                     );
                   })}
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Ban / Unban Confirmation Modal */}
+        {pendingBanAction && (
+          <div
+            id="ban-confirmation-backdrop"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-fade-in"
+            onClick={() => {
+              if (!isProcessingBan) setPendingBanAction(null);
+            }}
+          >
+            <div
+              id="ban-confirmation-modal"
+              className={`relative w-full max-w-md rounded-2xl border p-6 shadow-2xl transition-all ${
+                isLight
+                  ? 'bg-white border-slate-200 text-slate-900 shadow-slate-200/50'
+                  : 'bg-[#150d2a] border-[#312359] text-white shadow-black/80'
+              }`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-11 h-11 rounded-xl flex items-center justify-center border ${
+                      pendingBanAction.action === 'ban'
+                        ? 'bg-red-500/20 border-red-500/30 text-red-400'
+                        : 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
+                    }`}
+                  >
+                    {pendingBanAction.action === 'ban' ? (
+                      <ShieldAlert className="w-6 h-6" />
+                    ) : (
+                      <CheckCircle className="w-6 h-6" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="font-heading font-black text-lg">
+                      {pendingBanAction.action === 'ban' ? 'Confirm Account Ban' : 'Lift Account Suspension'}
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      {pendingBanAction.action === 'ban'
+                        ? 'Administrative enforcement restriction'
+                        : 'Restore regular player access'}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  id="ban-modal-close-btn"
+                  onClick={() => {
+                    if (!isProcessingBan) setPendingBanAction(null);
+                  }}
+                  disabled={isProcessingBan}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Target User Details Box */}
+              <div
+                className={`rounded-xl p-3.5 mb-4 border text-xs ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1c1236] border-[#2f2255]'
+                }`}
+              >
+                <div className="flex items-center justify-between font-heading font-bold mb-1">
+                  <span className="text-sm font-black">{pendingBanAction.user.username}</span>
+                  <span className="font-mono-code text-emerald-400 font-bold">
+                    ${pendingBanAction.user.walletBalance.toFixed(2)}
+                  </span>
+                </div>
+                <div className="font-mono-code text-[11px] text-slate-400 mb-2">
+                  {pendingBanAction.user.email}
+                </div>
+                <div className="flex items-center gap-4 text-[10px] text-slate-400 pt-2 border-t border-slate-500/10">
+                  <span>Games: <strong className="text-slate-200">{pendingBanAction.user.gamesPlayed}</strong></span>
+                  <span>Win Rate: <strong className="text-slate-200">{pendingBanAction.user.winRate}%</strong></span>
+                  <span>Coins: <strong className="text-amber-400">{pendingBanAction.user.coins.toLocaleString()} 🪙</strong></span>
+                </div>
+              </div>
+
+              {/* Warning Notice */}
+              {pendingBanAction.action === 'ban' ? (
+                <div className="rounded-xl p-3.5 mb-5 bg-red-950/40 border border-red-500/30 text-red-200 text-xs space-y-1.5">
+                  <div className="font-heading font-black text-red-300 flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                    <span>Are you sure that you want to ban this user?</span>
+                  </div>
+                  <p className="text-[11px] text-red-300/80 leading-relaxed">
+                    This user will immediately be barred from table matchmaking, creating custom rooms, wagering funds, and depositing via Stripe.
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-xl p-3.5 mb-5 bg-emerald-950/40 border border-emerald-500/30 text-emerald-200 text-xs space-y-1.5">
+                  <div className="font-heading font-black text-emerald-300 flex items-center gap-1.5">
+                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Are you sure you want to restore access for this user?</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-300/80 leading-relaxed">
+                    Lifting the suspension restores regular matchmaking, room creation, and player balance access immediately.
+                  </p>
+                </div>
+              )}
+
+              {/* Modal Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  id="ban-modal-cancel-btn"
+                  type="button"
+                  disabled={isProcessingBan}
+                  onClick={() => setPendingBanAction(null)}
+                  className="px-4 py-2.5 rounded-xl font-heading font-bold text-xs cursor-pointer transition-colors bg-slate-700/40 hover:bg-slate-700 text-slate-300 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  id="ban-modal-confirm-btn"
+                  type="button"
+                  disabled={isProcessingBan}
+                  onClick={handleConfirmBan}
+                  className={`px-5 py-2.5 rounded-xl font-heading font-black text-xs cursor-pointer transition-colors flex items-center gap-2 text-white shadow-lg ${
+                    pendingBanAction.action === 'ban'
+                      ? 'bg-red-600 hover:bg-red-500 shadow-red-900/30'
+                      : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/30'
+                  }`}
+                >
+                  {isProcessingBan ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Applying...</span>
+                    </>
+                  ) : (
+                    <>
+                      {pendingBanAction.action === 'ban' ? (
+                        <>
+                          <Ban className="w-4 h-4" />
+                          <span>Yes, Ban User</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-4 h-4" />
+                          <span>Yes, Lift Ban</span>
+                        </>
+                      )}
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete User Confirmation Modal */}
+        {pendingDeleteUser && (
+          <div
+            id="delete-confirmation-backdrop"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-fade-in"
+            onClick={() => {
+              if (!isProcessingDelete) setPendingDeleteUser(null);
+            }}
+          >
+            <div
+              id="delete-confirmation-modal"
+              className={`relative w-full max-w-md rounded-2xl border p-6 shadow-2xl transition-all ${
+                isLight
+                  ? 'bg-white border-slate-200 text-slate-900 shadow-slate-200/50'
+                  : 'bg-[#150d2a] border-[#312359] text-white shadow-black/80'
+              }`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-xl flex items-center justify-center border bg-red-500/20 border-red-500/30 text-red-400">
+                    <Trash2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-heading font-black text-lg">Permanent Account Deletion</h3>
+                    <p className="text-xs text-slate-400">Irreversible user removal</p>
+                  </div>
+                </div>
+
+                <button
+                  id="delete-modal-close-btn"
+                  onClick={() => {
+                    if (!isProcessingDelete) setPendingDeleteUser(null);
+                  }}
+                  disabled={isProcessingDelete}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div
+                className={`rounded-xl p-3.5 mb-4 border text-xs ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1c1236] border-[#2f2255]'
+                }`}
+              >
+                <div className="flex items-center justify-between font-heading font-bold mb-1">
+                  <span className="text-sm font-black">{pendingDeleteUser.username}</span>
+                  <span className="font-mono-code text-emerald-400 font-bold">
+                    ${pendingDeleteUser.walletBalance.toFixed(2)}
+                  </span>
+                </div>
+                <div className="font-mono-code text-[11px] text-slate-400">
+                  {pendingDeleteUser.email}
+                </div>
+              </div>
+
+              <div className="rounded-xl p-3.5 mb-5 bg-red-950/40 border border-red-500/30 text-red-200 text-xs space-y-1.5">
+                <div className="font-heading font-black text-red-300 flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                  <span>Are you sure you want to permanently delete this user?</span>
+                </div>
+                <p className="text-[11px] text-red-300/80 leading-relaxed">
+                  This will permanently delete the player profile, match history, and records. This action cannot be undone.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  id="delete-modal-cancel-btn"
+                  type="button"
+                  disabled={isProcessingDelete}
+                  onClick={() => setPendingDeleteUser(null)}
+                  className="px-4 py-2.5 rounded-xl font-heading font-bold text-xs cursor-pointer transition-colors bg-slate-700/40 hover:bg-slate-700 text-slate-300 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  id="delete-modal-confirm-btn"
+                  type="button"
+                  disabled={isProcessingDelete}
+                  onClick={handleConfirmDelete}
+                  className="px-5 py-2.5 rounded-xl font-heading font-black text-xs cursor-pointer transition-colors flex items-center gap-2 text-white bg-red-600 hover:bg-red-500 shadow-lg shadow-red-900/30"
+                >
+                  {isProcessingDelete ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      <span>Delete Account Permanently</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>

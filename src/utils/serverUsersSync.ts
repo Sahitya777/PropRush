@@ -103,7 +103,7 @@ export async function syncUserProfileToServer(user: UserProfile): Promise<boolea
 
 export async function performAdminUserAction(
   email: string,
-  action: 'credit' | 'toggleBan' | 'role' | 'ban' | 'unban',
+  action: 'credit' | 'toggleBan' | 'role' | 'ban' | 'unban' | 'delete',
   value?: any,
   id?: string
 ): Promise<boolean> {
