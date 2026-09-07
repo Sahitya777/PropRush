@@ -9,6 +9,10 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+        'cross-fetch': path.resolve(__dirname, 'src/shims/cross-fetch.js'),
+        'cross-fetch/dist/browser-ponyfill.js': path.resolve(__dirname, 'src/shims/cross-fetch.js'),
+        'cross-fetch/dist/browser-polyfill.js': path.resolve(__dirname, 'src/shims/cross-fetch.js'),
+        'cross-fetch/dist/node-ponyfill.js': path.resolve(__dirname, 'src/shims/cross-fetch.js'),
       },
     },
     server: {

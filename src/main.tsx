@@ -1,13 +1,13 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
-import { ClerkIntegrationProvider } from './context/ClerkIntegration.tsx';
+import { DynamicIntegrationProvider } from './context/DynamicIntegration.tsx';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ClerkIntegrationProvider>
+    <DynamicIntegrationProvider>
       <App />
-    </ClerkIntegrationProvider>
+    </DynamicIntegrationProvider>
   </StrictMode>,
 );

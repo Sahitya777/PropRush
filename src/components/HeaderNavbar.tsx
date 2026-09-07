@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useUser } from '../context/UserContext';
-import { useClerkConfig, useSafeClerkUser, useSafeClerk } from '../context/ClerkIntegration';
+import { useSafeDynamic, useDynamicConfig } from '../context/DynamicIntegration';
 import { useTheme } from '../context/ThemeContext';
 import { AvatarCharacter } from './AvatarCharacter';
 import { sounds } from '../utils/audio';
@@ -27,10 +27,9 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
   roomCode
 }) => {
   const { user, isLoggedIn, openAuthModal, requireAuth, logoutUser } = useUser();
-  const { isClerkAvailable } = useClerkConfig();
+  const { isDynamicConfigured } = useDynamicConfig();
   const { isLight, toggleTheme } = useTheme();
-  const { isLoaded: isClerkLoaded, isSignedIn: isClerkSignedIn, user: clerkUser } = useSafeClerkUser();
-  const clerk = useSafeClerk();
+  const { isLoaded: isDynamicLoaded, isAuthenticated: isDynamicSignedIn, user: dynamicUser, primaryWallet, handleLogOut, setShowDynamicUserProfile } = useSafeDynamic();
 
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -63,25 +62,26 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const effectiveIsLoggedIn = isLoggedIn || (isClerkAvailable && isClerkLoaded && !!isClerkSignedIn);
-  const effectiveUsername = (isClerkSignedIn && (clerkUser?.fullName || clerkUser?.username || clerkUser?.firstName)) || user.username;
-  const effectiveProfilePic = (isClerkSignedIn && clerkUser?.imageUrl) || user.profilePictureUrl;
-  const effectiveEmail = (isClerkSignedIn && clerkUser?.primaryEmailAddress?.emailAddress) || user.email;
+  const effectiveIsLoggedIn = isLoggedIn || (isDynamicLoaded && !!isDynamicSignedIn);
+  const walletAddress = primaryWallet?.address || user.walletAddress;
+  const effectiveUsername = (isDynamicSignedIn && (dynamicUser?.username || dynamicUser?.firstName || (walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : undefined))) || user.username;
+  const effectiveProfilePic = (isDynamicSignedIn && (dynamicUser?.ens?.avatar || dynamicUser?.profilePictureUrl)) || user.profilePictureUrl;
+  const effectiveEmail = (isDynamicSignedIn && (dynamicUser?.email || dynamicUser?.verifiedCredentials?.find((c: any) => c.format === 'email')?.email)) || user.email;
   const isAdmin = isUserAdmin(effectiveEmail) || (effectiveEmail?.toLowerCase().includes('sahityanijhawan@gmail.com') ?? false);
 
   const handleWalletClick = () => {
-    requireAuth('Sign in with Google or Clerk to access your real-money wallet and deposit funds.', onOpenWallet);
+    requireAuth('Connect your Web3 wallet or sign in with Dynamic to access your real-money wallet and deposit funds.', onOpenWallet);
   };
 
   const handleSignOut = async () => {
     sounds.playClick();
     setShowUserDropdown(false);
     setIsDrawerOpen(false);
-    if (isClerkAvailable && clerk) {
+    if (isDynamicSignedIn) {
       try {
-        await clerk.signOut();
+        await handleLogOut();
       } catch (e) {
-        console.error('Clerk sign out error', e);
+        console.error('Dynamic sign out error', e);
       }
     }
     logoutUser();
@@ -252,12 +252,12 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
             {/* Auth / Profile State */}
             {!effectiveIsLoggedIn ? (
               <button
-                id="btn-nav-clerk-signin"
-                onClick={() => openAuthModal('Sign in to save progress, deposit cash, buy coins and play high-stakes.')}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-[#7059e2] to-[#8e76f7] hover:from-[#6047d8] hover:to-[#7d64f0] text-white font-heading font-black text-xs shadow-sm transition-all cursor-pointer active:scale-95 shrink-0 whitespace-nowrap"
+                id="btn-nav-dynamic-signin"
+                onClick={() => openAuthModal('Connect your Web3 crypto wallet or sign in with Dynamic to play matches.')}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-heading font-black text-xs shadow-md shadow-indigo-500/20 transition-all cursor-pointer active:scale-95 shrink-0 whitespace-nowrap"
               >
-                <span>⚡</span>
-                <span>Sign In</span>
+                <span>🦊</span>
+                <span>Connect Wallet</span>
               </button>
             ) : (
               <div className="relative shrink-0" ref={dropdownRef}>
@@ -286,18 +286,36 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
 
                 {/* Dropdown Menu */}
                 {showUserDropdown && (
-                  <div className={`absolute right-0 mt-2 w-52 rounded-2xl shadow-2xl p-2 z-50 flex flex-col gap-1 animate-fade-in border ${
+                  <div className={`absolute right-0 mt-2 w-56 rounded-2xl shadow-2xl p-2 z-50 flex flex-col gap-1 animate-fade-in border ${
                     isLight
                       ? 'bg-white border-slate-200 shadow-slate-300/50 text-slate-800'
                       : 'bg-[#17122b] border-[#372b5c] shadow-black/80 text-slate-200'
                   }`}>
-                    <div className={`px-3 py-2 border-b ${isLight ? 'border-slate-100' : 'border-slate-800'}`}>
+                    <div className={`px-3 py-2 border-b space-y-1 ${isLight ? 'border-slate-100' : 'border-slate-800'}`}>
                       <div className={`font-heading font-bold text-xs truncate ${isLight ? 'text-slate-900' : 'text-white'}`}>
                         {effectiveUsername}
                       </div>
                       <div className="text-[11px] text-slate-400 truncate font-mono-code">
-                        {effectiveEmail || 'Guest / Local Account'}
+                        {effectiveEmail || 'Dynamic Web3 User'}
                       </div>
+                      {walletAddress && (
+                        <div className={`flex items-center justify-between text-[10px] font-mono-code px-2 py-1 rounded-lg border ${
+                          isLight ? 'bg-indigo-50 border-indigo-200 text-indigo-800' : 'bg-indigo-950/40 border-indigo-500/30 text-indigo-300'
+                        }`}>
+                          <span className="truncate">🔗 {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(walletAddress);
+                              sounds.playClick();
+                            }}
+                            className="ml-1 text-xs hover:scale-110 cursor-pointer"
+                            title="Copy Wallet Address"
+                          >
+                            📋
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     <button
@@ -312,6 +330,20 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
                     >
                       <span>👤</span>
                       <span>Player Locker & Stats</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        sounds.playClick();
+                        setShowUserDropdown(false);
+                        setShowDynamicUserProfile(true);
+                      }}
+                      className={`w-full px-3 py-2 rounded-xl text-left text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+                        isLight ? 'hover:bg-indigo-50 text-indigo-700' : 'hover:bg-indigo-950/40 text-indigo-300'
+                      }`}
+                    >
+                      <span>🌐</span>
+                      <span>Dynamic Web3 Settings</span>
                     </button>
 
                     <button
@@ -651,12 +683,12 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
                   onClick={() => {
                     sounds.playClick();
                     setIsDrawerOpen(false);
-                    openAuthModal('Sign in to save progress, deposit cash, buy coins and play high-stakes.');
+                    openAuthModal('Connect your Web3 crypto wallet or sign in with Dynamic.');
                   }}
-                  className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#7059e2] to-[#8e76f7] hover:from-[#6047d8] hover:to-[#7d64f0] text-white font-heading font-black text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
+                  className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-heading font-black text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
                 >
-                  <span>⚡</span>
-                  <span>Sign In / Create Account</span>
+                  <span>🦊</span>
+                  <span>Connect Web3 Wallet</span>
                 </button>
               ) : (
                 <div className="space-y-3">
@@ -672,10 +704,27 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
                         {effectiveUsername}
                       </div>
                       <div className="text-xs text-slate-400 truncate font-mono-code">
-                        {effectiveEmail || 'Verified Player'}
+                        {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : (effectiveEmail || 'Dynamic Web3 User')}
                       </div>
                     </div>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      setIsDrawerOpen(false);
+                      setShowDynamicUserProfile(true);
+                    }}
+                    className={`w-full py-2 px-3 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                      isLight
+                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                        : 'bg-indigo-950/40 border-indigo-800/40 text-indigo-300 hover:bg-indigo-900/50'
+                    }`}
+                  >
+                    <span>🌐</span>
+                    <span>Dynamic Web3 Settings</span>
+                  </button>
 
                   <button
                     type="button"
@@ -687,7 +736,7 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
                     }`}
                   >
                     <span>🚪</span>
-                    <span>Sign Out</span>
+                    <span>Disconnect / Sign Out</span>
                   </button>
                 </div>
               )}

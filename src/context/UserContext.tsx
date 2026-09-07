@@ -40,6 +40,14 @@ interface UserContextType {
   loginWithGoogle: (email?: string, name?: string, avatar?: string) => void;
   loginWithSocial: (provider: 'github' | 'discord' | 'apple') => void;
   loginWithEmail: (email: string) => void;
+  syncDynamicUser: (dynamicData: {
+    id: string;
+    email?: string;
+    username?: string;
+    walletAddress?: string;
+    chain?: string;
+    imageUrl?: string;
+  }) => void;
   syncClerkUser: (clerkData: {
     id: string;
     email?: string;
@@ -161,7 +169,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
-    return localStorage.getItem('proprush_clerk_auth') === 'true';
+    return localStorage.getItem('proprush_dynamic_auth') === 'true' || localStorage.getItem('proprush_clerk_auth') === 'true';
   });
 
   // Track real-time ban status
@@ -304,6 +312,109 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loginWithGoogle(email, name);
   };
 
+  const syncDynamicUser = (dynamicData: {
+    id: string;
+    email?: string;
+    username?: string;
+    walletAddress?: string;
+    chain?: string;
+    imageUrl?: string;
+  }) => {
+    setIsLoggedIn(true);
+    localStorage.setItem('proprush_dynamic_auth', 'true');
+    setUser(prev => {
+      const email = dynamicData.email || prev.email;
+      const walletAddress = dynamicData.walletAddress || prev.walletAddress;
+      const username = dynamicData.username || (walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : (email ? email.split('@')[0] : prev.username || 'Web3 Tycoon'));
+      
+      const storageKey = `proprush_user_${dynamicData.id}`;
+      const savedUserStr = localStorage.getItem(storageKey);
+      if (savedUserStr) {
+        try {
+          const parsed = JSON.parse(savedUserStr);
+          return {
+            ...DEFAULT_USER,
+            ...parsed,
+            id: dynamicData.id,
+            dynamicUserId: dynamicData.id,
+            walletAddress: walletAddress || parsed.walletAddress,
+            chain: dynamicData.chain || parsed.chain || 'ETH',
+            email: email || parsed.email,
+            username: username || parsed.username,
+            profilePictureUrl: dynamicData.imageUrl || parsed.profilePictureUrl
+          };
+        } catch (e) {
+          console.error('Error parsing stored user data for dynamic user', e);
+        }
+      }
+
+      // Check if user has data stored under email or wallet address
+      const emailStorageKey = email ? `proprush_user_${email.toLowerCase()}` : null;
+      const savedByEmailStr = emailStorageKey ? localStorage.getItem(emailStorageKey) : null;
+      if (savedByEmailStr) {
+        try {
+          const parsed = JSON.parse(savedByEmailStr);
+          return {
+            ...DEFAULT_USER,
+            ...parsed,
+            id: dynamicData.id,
+            dynamicUserId: dynamicData.id,
+            walletAddress: walletAddress || parsed.walletAddress,
+            chain: dynamicData.chain || parsed.chain || 'ETH',
+            email,
+            username: username || parsed.username,
+            profilePictureUrl: dynamicData.imageUrl || parsed.profilePictureUrl
+          };
+        } catch (e) {
+          console.error('Error parsing stored user data by email for dynamic user', e);
+        }
+      }
+
+      const isGroovy = email && email.toLowerCase() === 'sahityagroovy@gmail.com';
+      const isSuperAdmin = (email && email.toLowerCase() === 'sahityanijhawan@gmail.com');
+
+      // Fresh user state for Dynamic accounts
+      const freshUser: UserProfile = {
+        ...DEFAULT_USER,
+        ...prev,
+        id: dynamicData.id,
+        dynamicUserId: dynamicData.id,
+        walletAddress,
+        chain: dynamicData.chain || 'ETH',
+        email,
+        username,
+        profilePictureUrl: dynamicData.imageUrl || prev.profilePictureUrl,
+        walletBalance: isGroovy ? 1906.02 : (isSuperAdmin ? 270.00 : (prev.walletBalance > 0 ? prev.walletBalance : 100.00)),
+        coins: isGroovy ? 1598 : (prev.coins > 0 ? prev.coins : 50),
+        leaguePoints: isGroovy ? 1850 : (isSuperAdmin ? 2490 : (prev.leaguePoints || 150)),
+        leagueTier: isGroovy ? 'Diamond' : (isSuperAdmin ? 'Tycoon' : (prev.leagueTier || 'Bronze')),
+        level: isGroovy ? 9 : (isSuperAdmin ? 14 : (prev.level || 1)),
+        inventory: isSuperAdmin ? DEFAULT_USER.inventory : (isGroovy ? {
+          appearances: ['orange', 'purple', 'cyber', 'gold', 'neon'],
+          maps: ['classic', 'neon_tokyo', 'cyberpunk'],
+          profilePictures: ['pfp_neon_frame'],
+          diceSkins: ['dice_classic', 'dice_neon']
+        } : (prev.inventory || DEFAULT_USER.inventory)),
+        stats: isSuperAdmin ? DEFAULT_USER.stats : (isGroovy ? {
+          gamesPlayed: 45,
+          gamesWon: 31,
+          winStreak: 4,
+          bestWinStreak: 7,
+          totalEarningsUsd: 2950.00,
+          totalCoinsEarned: 1598,
+          monopoliesBuilt: 12,
+          bankruptciesCaused: 19,
+          rentCollectedTotal: 18450
+        } : (prev.stats || DEFAULT_USER.stats)),
+        badges: isSuperAdmin ? DEFAULT_USER.badges : (isGroovy ? GROOVY_BADGES : (prev.badges || [])),
+        matchHistory: prev.matchHistory || []
+      };
+
+      localStorage.setItem(storageKey, JSON.stringify(freshUser));
+      return freshUser;
+    });
+  };
+
   const syncClerkUser = (clerkData: {
     id: string;
     email?: string;
@@ -413,6 +524,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logoutUser = () => {
     setIsLoggedIn(false);
     localStorage.removeItem('proprush_clerk_auth');
+    localStorage.removeItem('proprush_dynamic_auth');
     sounds.playClick();
   };
 
@@ -432,7 +544,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     localStorage.setItem('proprush_user_profile', JSON.stringify(user));
-    if (user.clerkUserId) {
+    if (user.dynamicUserId) {
+      localStorage.setItem(`proprush_user_${user.dynamicUserId}`, JSON.stringify(user));
+    } else if (user.walletAddress) {
+      localStorage.setItem(`proprush_user_${user.walletAddress.toLowerCase()}`, JSON.stringify(user));
+    } else if (user.clerkUserId) {
       localStorage.setItem(`proprush_user_${user.clerkUserId}`, JSON.stringify(user));
     } else if (user.email) {
       localStorage.setItem(`proprush_user_${user.email.toLowerCase()}`, JSON.stringify(user));
@@ -730,6 +846,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginWithGoogle,
         loginWithSocial,
         loginWithEmail,
+        syncDynamicUser,
         syncClerkUser,
         logoutUser,
         isLoggedIn,

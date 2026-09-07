@@ -71,10 +71,10 @@ export const MatchStatsAnalyticsModal: React.FC<MatchStatsAnalyticsModalProps> =
   const analytics: MatchAnalytics = room.analytics || calculateMatchAnalytics(room);
   const players = room.players || [];
   const winnerObj =
-    typeof room.winner === 'object' && room.winner !== null
+    room.winner && typeof room.winner === 'object'
       ? (room.winner as Player)
-      : typeof room.winner === 'string'
-        ? players.find(p => p.name === room.winner)
+      : typeof (room.winner as unknown) === 'string'
+        ? players.find(p => p.name === (room.winner as unknown as string) || p.id === (room.winner as unknown as string))
         : (players.find(p => !p.isBankrupt) || players[0]);
   const winner = winnerObj || players[0];
   const myPlayer = players.find(p => p.id === myPlayerId);

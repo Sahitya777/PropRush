@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useUser } from '../context/UserContext';
 import { useTheme } from '../context/ThemeContext';
-import { useClerkConfig, useSafeClerkUser, useSafeClerk } from '../context/ClerkIntegration';
+import { useSafeDynamic, useDynamicConfig } from '../context/DynamicIntegration';
 import { BADGES_LIST, LEAGUE_TIERS_INFO, STORE_ITEMS } from '../data/storeData';
 import { AvatarCharacter } from '../components/AvatarCharacter';
 import { DiceFaceMini } from '../components/DiceFaceMini';
@@ -11,18 +11,18 @@ import { sounds } from '../utils/audio';
 export const ProfileView: React.FC = () => {
   const { user, updateUsername, claimDailyReward, lastDailyClaim, equipItem, isLoggedIn, openAuthModal, logoutUser } = useUser();
   const { isLight } = useTheme();
-  const { isClerkAvailable } = useClerkConfig();
-  const { isLoaded: isClerkLoaded, isSignedIn: isClerkSignedIn, user: clerkUser } = useSafeClerkUser();
-  const clerk = useSafeClerk();
+  const { isDynamicConfigured } = useDynamicConfig();
+  const { isLoaded: isDynamicLoaded, isAuthenticated: isDynamicSignedIn, user: dynamicUser, primaryWallet, handleLogOut, setShowDynamicUserProfile } = useSafeDynamic();
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(user.username);
   const [dailyClaimMsg, setDailyClaimMsg] = useState<string | null>(null);
 
-  const effectiveIsLoggedIn = isLoggedIn || (isClerkAvailable && isClerkLoaded && !!isClerkSignedIn);
-  const effectiveUsername = (isClerkSignedIn && (clerkUser?.fullName || clerkUser?.username || clerkUser?.firstName)) || user.username;
-  const effectiveProfilePic = (isClerkSignedIn && clerkUser?.imageUrl) || user.profilePictureUrl;
-  const effectiveEmail = (isClerkSignedIn && clerkUser?.primaryEmailAddress?.emailAddress) || user.email;
+  const effectiveIsLoggedIn = isLoggedIn || (isDynamicLoaded && !!isDynamicSignedIn);
+  const walletAddress = primaryWallet?.address || user.walletAddress;
+  const effectiveUsername = (isDynamicSignedIn && (dynamicUser?.username || dynamicUser?.firstName || (walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : undefined))) || user.username;
+  const effectiveProfilePic = (isDynamicSignedIn && (dynamicUser?.ens?.avatar || dynamicUser?.profilePictureUrl)) || user.profilePictureUrl;
+  const effectiveEmail = (isDynamicSignedIn && (dynamicUser?.email || dynamicUser?.verifiedCredentials?.find((c: any) => c.format === 'email')?.email)) || user.email;
 
   const tierInfo = LEAGUE_TIERS_INFO[user.leagueTier];
   const winRate = user.stats.gamesPlayed > 0 
@@ -39,11 +39,11 @@ export const ProfileView: React.FC = () => {
 
   const handleSignOut = async () => {
     sounds.playClick();
-    if (isClerkAvailable && clerk) {
+    if (isDynamicSignedIn) {
       try {
-        await clerk.signOut();
+        await handleLogOut();
       } catch (e) {
-        console.error('Clerk sign out error', e);
+        console.error('Dynamic sign out error', e);
       }
     }
     logoutUser();
@@ -124,10 +124,10 @@ export const ProfileView: React.FC = () => {
               <span className={`text-xs font-mono-code ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>{effectiveEmail}</span>
               {effectiveIsLoggedIn ? (
                 <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono-code font-bold flex items-center gap-1 border ${
-                  isLight ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                  isLight ? 'bg-indigo-50 text-indigo-800 border-indigo-300' : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
                 }`}>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  Google Verified
+                  {walletAddress ? `Web3: ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'Dynamic Verified'}
                 </span>
               ) : (
                 <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono-code font-bold flex items-center gap-1 border ${
@@ -183,24 +183,41 @@ export const ProfileView: React.FC = () => {
           {/* Account Authentication Control */}
           {!effectiveIsLoggedIn ? (
             <button
-              onClick={() => openAuthModal('Sign in with Google or Clerk to protect your balance and items.')}
-              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-[#7059e2] to-[#8e76f7] hover:from-[#6047d8] hover:to-[#7d64f0] text-white font-heading font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+              onClick={() => openAuthModal('Connect your Web3 crypto wallet or sign in to protect your balance and items.')}
+              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-heading font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
             >
-              <span>⚡</span>
-              <span>Sign In with Google</span>
+              <span>🦊</span>
+              <span>Connect Web3 Wallet</span>
             </button>
           ) : (
-            <button
-              onClick={handleSignOut}
-              className={`w-full sm:w-auto px-4 py-1.5 rounded-xl border font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                isLight
-                  ? 'bg-slate-100 hover:bg-rose-50 border-slate-300 hover:border-rose-300 text-slate-600 hover:text-rose-700'
-                  : 'bg-slate-900/80 hover:bg-rose-950/60 border-slate-800 hover:border-rose-500/40 text-slate-400 hover:text-rose-300'
-              }`}
-            >
-              <span>🚪</span>
-              <span>Sign Out</span>
-            </button>
+            <div className="flex flex-col sm:flex-row md:flex-col gap-2 w-full sm:w-auto">
+              <button
+                onClick={() => {
+                  sounds.playClick();
+                  setShowDynamicUserProfile(true);
+                }}
+                className={`w-full sm:w-auto px-4 py-1.5 rounded-xl border font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  isLight
+                    ? 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-700'
+                    : 'bg-indigo-950/40 hover:bg-indigo-900/50 border-indigo-800/40 text-indigo-300'
+                }`}
+              >
+                <span>⚙️</span>
+                <span>Dynamic Settings</span>
+              </button>
+
+              <button
+                onClick={handleSignOut}
+                className={`w-full sm:w-auto px-4 py-1.5 rounded-xl border font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                  isLight
+                    ? 'bg-slate-100 hover:bg-rose-50 border-slate-300 hover:border-rose-300 text-slate-600 hover:text-rose-700'
+                    : 'bg-slate-900/80 hover:bg-rose-950/60 border-slate-800 hover:border-rose-500/40 text-slate-400 hover:text-rose-300'
+                }`}
+              >
+                <span>🚪</span>
+                <span>Disconnect</span>
+              </button>
+            </div>
           )}
         </div>
       </div>

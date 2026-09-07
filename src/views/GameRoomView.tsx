@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { GameRoom, Player, BoardTile } from '../types/game';
+import { GameRoom, Player, BoardTile, BoardMapTheme, TradeOffer } from '../types/game';
 import { BASE_BOARD_TILES, CHANCE_CARDS, CHEST_CARDS, GROUP_PROPERTY_COUNTS } from '../data/boardTiles';
 import { useUser } from '../context/UserContext';
 import { useTheme } from '../context/ThemeContext';
@@ -28,8 +28,9 @@ interface GameRoomViewProps {
     betAmount: number;
     initialCash: number;
     turnTimeSeconds: number;
-    boardTheme: string;
+    boardTheme: string | BoardMapTheme;
     fillWithBots: boolean;
+    isPrivate?: boolean;
   };
   onLeaveRoom: () => void;
   isMuted?: boolean;
@@ -125,26 +126,32 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         name: roomConfig.roomName,
         code: roomConfig.roomCode,
         hostId: user.id,
+        isPrivate: false,
+        maxPlayers: roomConfig.maxPlayers,
         players: initialPlayers,
         status: 'playing', // Active game ready to roll
         currentTurnPlayerId: user.id,
         currentTurnIndex: 0,
         turnPhase: 'roll',
         turnTimer: roomConfig.turnTimeSeconds || 15,
+        turnTimeLimit: roomConfig.turnTimeSeconds || 15,
         lastDice: [1, 2],
         isDouble: false,
+        consecutiveDoubles: 0,
         doubleCount: 0,
         freeParkingPool: 100,
         auction: null,
         activeTrade: null,
         pendingCard: null,
+        messages: [],
+        winner: null,
         logs: [
           { id: 'l1', timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), text: `Game started with a randomized players order. Good luck!`, type: 'info' }
         ],
         betAmount: roomConfig.betAmount,
         totalPrizePool: roomConfig.betAmount * roomConfig.maxPlayers,
         platformFeeRate: 0.05,
-        boardTheme: roomConfig.boardTheme,
+        boardTheme: (roomConfig.boardTheme || 'classic') as BoardMapTheme,
         fastSpeed: true
       };
     }
@@ -239,7 +246,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       betAmount: roomConfig.betAmount,
       totalPrizePool: roomConfig.betAmount * 1,
       platformFeeRate: 0.05,
-      boardTheme: roomConfig.boardTheme,
+      boardTheme: (roomConfig.boardTheme || 'classic') as BoardMapTheme,
       fastSpeed: true
     };
 
@@ -2654,13 +2661,15 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           tiles={tiles}
           myPlayerId={myPlayer?.id || user.id}
           onSendTradeOffer={(offer) => {
-            const resolvedOffer = {
+            const resolvedOffer: TradeOffer = {
+              id: 'trade_' + Date.now(),
               fromPlayerId: offer.fromPlayerId || myPlayer?.id || user.id,
               toPlayerId: offer.toPlayerId,
               offeredCash: offer.offeredCash,
               offeredProperties: offer.offeredProperties,
               requestedCash: offer.requestedCash,
-              requestedProperties: offer.requestedProperties
+              requestedProperties: offer.requestedProperties,
+              status: 'pending'
             };
             setRoom(prev => {
               const updated: GameRoom = { ...prev, activeTrade: resolvedOffer };
@@ -2729,6 +2738,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         <GameOverModal
           room={room}
           myPlayerId={myPlayer?.id || user.id}
+          onPlayAgain={onLeaveRoom}
           onReturnHome={onLeaveRoom}
           statsSummary={matchSummaryStats}
         />

@@ -52,6 +52,9 @@ export interface UserProfile {
   avatarFrame?: string; // frame id: 'pfp_crown' | 'pfp_neon' | 'pfp_fire' | 'pfp_diamond' | 'pfp_cosmic' | etc.
   profilePictureUrl?: string;
   clerkUserId?: string;
+  dynamicUserId?: string;
+  walletAddress?: string;
+  chain?: string;
   diceSkin?: string; // 'dice_golden' | 'dice_neon' | 'dice_magma' | etc.
   mapSkin?: string; // 'worldwide' | 'death_valley' | 'cyber' | 'candy' | etc.
   title: string;

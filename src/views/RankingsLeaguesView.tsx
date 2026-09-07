@@ -55,7 +55,7 @@ const LEAGUES_TIERS_INFO = [
     borderColor: 'border-yellow-400',
     bgColor: 'bg-yellow-500/10',
     textColor: 'text-yellow-400',
-    rewards: '80 Coins / wk + Golden Crown Avatar Frame + 0% Cashout Fee',
+    rewards: '15 Coins / wk + Golden Crown Avatar Frame + 0% Cashout Fee',
     perks: 'VIP High Roller Matchmaking, Exclusive Diamond Dice Rolls, Hall of Fame Banner'
   },
   {
@@ -68,7 +68,7 @@ const LEAGUES_TIERS_INFO = [
     borderColor: 'border-purple-400',
     bgColor: 'bg-purple-500/10',
     textColor: 'text-purple-400',
-    rewards: '65 Coins / wk + Cosmic Frame + Custom Table Themes',
+    rewards: '12 Coins / wk + Cosmic Frame + Custom Table Themes',
     perks: 'Fast-Track Cashout, Top 100 Leaderboard Badge, 1.5x Daily Reward Multiplier'
   },
   {
@@ -81,7 +81,7 @@ const LEAGUES_TIERS_INFO = [
     borderColor: 'border-cyan-400',
     bgColor: 'bg-cyan-500/10',
     textColor: 'text-cyan-400',
-    rewards: '50 Coins / wk + Diamond Badge + 10% Store Discount',
+    rewards: '10 Coins / wk + Diamond Badge + 10% Store Discount',
     perks: 'Priority Room Hosting, Custom Win Fanfare, Diamond Dice Skin Unlock'
   },
   {
@@ -94,7 +94,7 @@ const LEAGUES_TIERS_INFO = [
     borderColor: 'border-slate-300',
     bgColor: 'bg-slate-500/10',
     textColor: 'text-slate-200',
-    rewards: '35 Coins / wk + Platinum Nameplate',
+    rewards: '7 Coins / wk + Platinum Nameplate',
     perks: 'Reduced Table Commission, Custom Chat Emotes'
   },
   {
@@ -107,7 +107,7 @@ const LEAGUES_TIERS_INFO = [
     borderColor: 'border-amber-500',
     bgColor: 'bg-amber-500/10',
     textColor: 'text-amber-400',
-    rewards: '25 Coins / wk + Gold Rank Shield',
+    rewards: '5 Coins / wk + Gold Rank Shield',
     perks: 'Access to $50 Buy-in Tournaments'
   },
   {
@@ -120,7 +120,7 @@ const LEAGUES_TIERS_INFO = [
     borderColor: 'border-slate-400',
     bgColor: 'bg-slate-500/10',
     textColor: 'text-slate-300',
-    rewards: '15 Coins / wk',
+    rewards: '3 Coins / wk',
     perks: 'Ranked Matchmaking Enabled'
   },
   {
@@ -133,7 +133,7 @@ const LEAGUES_TIERS_INFO = [
     borderColor: 'border-amber-700',
     bgColor: 'bg-amber-700/10',
     textColor: 'text-amber-600',
-    rewards: '10 Coins / wk',
+    rewards: '2 Coins / wk',
     perks: 'Beginner Match Protection'
   }
 ];
@@ -414,10 +414,10 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
 
     return sourceList.map((p, idx) => {
       const rank = idx + 1;
-      let prize = '+10 🪙';
-      if (rank === 1) prize = '🥇 +60 🪙 & Diamond Badge';
-      else if (rank === 2) prize = '🥈 +40 🪙';
-      else if (rank === 3) prize = '🥉 +25 🪙';
+      let prize = '+2 🪙';
+      if (rank === 1) prize = '🥇 +15 🪙 & Diamond Badge';
+      else if (rank === 2) prize = '🥈 +10 🪙';
+      else if (rank === 3) prize = '🥉 +6 🪙';
 
       return {
         ...p,
@@ -1311,7 +1311,7 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
                   Total Prize Pool
                 </div>
                 <div className="text-2xl sm:text-3xl font-heading font-black text-amber-400 font-mono-code">
-                  50,000 🪙 + $2,500
+                  1,500 🪙 + $2,500
                 </div>
                 <div className="text-[10px] text-slate-400 mt-1">
                   1st Place takes 40% ($1,000 USD)

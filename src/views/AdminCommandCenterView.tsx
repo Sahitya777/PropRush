@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useUser } from '../context/UserContext';
 import { useTheme } from '../context/ThemeContext';
-import { useSafeClerkUser } from '../context/ClerkIntegration';
+import { useSafeDynamic } from '../context/DynamicIntegration';
 import { isUserAdmin, getAdminEmails, addAdminEmail, removeAdminEmail } from '../utils/adminRegistry';
 import { getAllActiveRooms, ActiveRoomInfo } from '../utils/activeRoomsRegistry';
 import { fetchActiveRoomsFromServer } from '../utils/serverRoomSync';
@@ -56,10 +56,10 @@ export interface AdminCommandCenterViewProps {
 export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ onNavigateHome }) => {
   const { user } = useUser();
   const { isLight } = useTheme();
-  const { isLoaded: isClerkLoaded, isSignedIn: isClerkSignedIn, user: clerkUser } = useSafeClerkUser();
+  const { isLoaded: isDynamicLoaded, isAuthenticated: isDynamicSignedIn, user: dynamicUser } = useSafeDynamic();
 
-  const effectiveEmail = (isClerkSignedIn && clerkUser?.primaryEmailAddress?.emailAddress) || user.email || 'sahityanijhawan@gmail.com';
-  const effectiveUsername = (isClerkSignedIn && (clerkUser?.fullName || clerkUser?.username || clerkUser?.firstName)) || user.username || 'Sahitya Nijhawan';
+  const effectiveEmail = (isDynamicSignedIn && (dynamicUser?.email || dynamicUser?.verifiedCredentials?.find((c: any) => c.format === 'email')?.email)) || user.email || 'sahityanijhawan@gmail.com';
+  const effectiveUsername = (isDynamicSignedIn && (dynamicUser?.username || dynamicUser?.firstName)) || user.username || 'Sahitya Nijhawan';
   const isAuthorized = isUserAdmin(effectiveEmail) || effectiveEmail.toLowerCase().includes('sahityanijhawan@gmail.com');
 
   const [activeTab, setActiveTab] = useState<'overview' | 'matches' | 'users' | 'admins'>('overview');

@@ -11,9 +11,9 @@ import { AdminCommandCenterView } from './views/AdminCommandCenterView';
 import { NotFoundView } from './views/NotFoundView';
 import { WalletModal } from './components/WalletModal';
 import { RulesModal } from './components/RulesModal';
-import { ClerkAuthModal } from './components/ClerkAuthModal';
-import { ClerkUserSync } from './components/ClerkUserSync';
-import { useClerkConfig } from './context/ClerkIntegration';
+import { DynamicAuthModal } from './components/DynamicAuthModal';
+import { DynamicUserSync } from './components/DynamicUserSync';
+import { useDynamicConfig } from './context/DynamicIntegration';
 import { sounds } from './utils/audio';
 import { getActiveMatch } from './utils/reconnectStorage';
 import { findActiveRoomByCode, findActiveRoomByCodeAsync } from './utils/activeRoomsRegistry';
@@ -54,7 +54,7 @@ function getInitialView(): 'home' | 'game' | 'store' | 'profile' | 'rankings' | 
 
 function AppContent() {
   const { user, deductBuyIn, depositFunds, isBanned } = useUser();
-  const { isClerkAvailable } = useClerkConfig();
+  const { isDynamicConfigured } = useDynamicConfig();
   const { isLight } = useTheme();
   const [currentView, setCurrentView] = useState<'home' | 'game' | 'store' | 'profile' | 'rankings' | 'admin' | '404'>(getInitialView);
   const [activeRoomConfig, setActiveRoomConfig] = useState<{
@@ -438,9 +438,9 @@ function AppContent() {
         onClose={() => setIsRulesOpen(false)}
       />
 
-      {/* Clerk Authentication Modal & Sync Listener */}
-      {isClerkAvailable && <ClerkUserSync />}
-      <ClerkAuthModal />
+      {/* Dynamic Web3 Authentication Modal & Sync Listener */}
+      <DynamicUserSync />
+      <DynamicAuthModal />
     </div>
   );
 }

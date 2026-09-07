@@ -1,6 +1,49 @@
 <!doctype html>
 <html lang="en" prefix="og: https://ogp.me/ns#">
   <head>
+    <script>
+      /**
+       * Polyfill protection against read-only fetch in iframe environments.
+       * Prevents "TypeError: Cannot assign to read only property 'fetch' of object '#<Window>'".
+       */
+      (function() {
+        try {
+          var realFetch = window.fetch;
+          if (typeof realFetch === 'function') {
+            var activeFetch = realFetch;
+            try {
+              Object.defineProperty(window, 'fetch', {
+                get: function() {
+                  return activeFetch;
+                },
+                set: function(newFetch) {
+                  if (this === window || this === globalThis || !this) {
+                    activeFetch = newFetch;
+                  } else {
+                    try {
+                      Object.defineProperty(this, 'fetch', {
+                        value: newFetch,
+                        writable: true,
+                        configurable: true,
+                        enumerable: true
+                      });
+                    } catch (e) {
+                      this.fetch = newFetch;
+                    }
+                  }
+                },
+                configurable: true,
+                enumerable: true
+              });
+            } catch (err) {
+              // If already non-configurable, define on prototype or ignore
+            }
+          }
+        } catch (e) {
+          // Silent fallback
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>PropRush - Fast-Paced Multiplayer Real Estate & Property Monopoly Game</title>
