@@ -70,39 +70,43 @@ const getTabSessionId = (): string => {
 };
 
 const DEFAULT_USER: UserProfile = {
-  id: getTabSessionId(),
-  username: 'Sahitya',
-  email: '',
-  avatar: 'orange',
-  avatarFrame: undefined,
+  id: 'usr_sahi_super',
+  username: 'Sahitya Nijhawan',
+  email: 'sahityanijhawan@gmail.com',
+  avatar: 'vip',
+  avatarFrame: 'pfp_gold_sparkle',
   diceSkin: 'dice_classic',
   mapSkin: 'classic',
-  title: 'Rookie Landlord',
-  coins: 0, // Fresh new user starts with 0 coins
-  walletBalance: 0.00, // $0.00 initial deposit amount
-  leaguePoints: 0, // Bronze Tier
-  leagueTier: 'Bronze',
-  level: 1,
-  xp: 0,
-  maxXp: 100,
+  title: 'Platform Administrator',
+  coins: 3200,
+  walletBalance: 270.00,
+  leaguePoints: 2490,
+  leagueTier: 'Tycoon',
+  level: 14,
+  xp: 450,
+  maxXp: 1000,
   inventory: {
-    appearances: ['orange'],
-    maps: ['classic'],
-    profilePictures: [],
-    diceSkins: ['dice_classic']
+    appearances: ['orange', 'vip', 'gold', 'cyber'],
+    maps: ['classic', 'neon_tokyo', 'worldwide'],
+    profilePictures: ['pfp_gold_sparkle'],
+    diceSkins: ['dice_classic', 'dice_gold']
   },
   stats: {
-    gamesPlayed: 0,
-    gamesWon: 0,
-    winStreak: 0,
-    bestWinStreak: 0,
-    totalEarningsUsd: 0.00,
-    totalCoinsEarned: 0,
-    monopoliesBuilt: 0,
-    bankruptciesCaused: 0,
-    rentCollectedTotal: 0
+    gamesPlayed: 184,
+    gamesWon: 135,
+    winStreak: 6,
+    bestWinStreak: 9,
+    totalEarningsUsd: 8450.00,
+    totalCoinsEarned: 3200,
+    monopoliesBuilt: 58,
+    bankruptciesCaused: 82,
+    rentCollectedTotal: 49200
   },
-  badges: [],
+  badges: [
+    { id: 'b_super_admin', name: 'Platform Admin', description: 'Platform creator & administrator', icon: '👑', rarity: 'legendary', unlockedAt: '2026-08-10' },
+    { id: 'b_tycoon_league', name: 'Tycoon League', description: 'Reached Tycoon Tier (2,300+ LP)', icon: '🏆', rarity: 'legendary', unlockedAt: '2026-08-15' },
+    { id: 'b_high_roller', name: 'High Roller', description: 'Won $5,000+ in competitive matches', icon: '💎', rarity: 'epic', unlockedAt: '2026-08-18' }
+  ],
   matchHistory: []
 };
 
@@ -234,7 +238,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const freshUser: UserProfile = {
       ...DEFAULT_USER,
-      id: isGroovy ? 'usr_player_sahitya' : ('usr_' + Math.random().toString(36).substring(2, 9)),
+      id: isGroovy ? 'usr_player_sahitya' : (isSuperAdmin ? 'usr_sahi_super' : ('usr_' + Math.random().toString(36).substring(2, 9))),
       email: userEmail,
       username: userName,
       avatar: avatar || (isGroovy ? 'purple' : 'orange'),
@@ -243,13 +247,18 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       leaguePoints: isGroovy ? 1850 : (isSuperAdmin ? 2490 : 0),
       leagueTier: isGroovy ? 'Diamond' : (isSuperAdmin ? 'Tycoon' : 'Bronze'),
       level: isGroovy ? 9 : (isSuperAdmin ? 14 : 1),
-      inventory: {
-        appearances: isGroovy ? ['orange', 'purple', 'cyber', 'gold', 'neon'] : ['orange'],
-        maps: isGroovy ? ['classic', 'neon_tokyo', 'cyberpunk'] : ['classic'],
-        profilePictures: isGroovy ? ['pfp_neon_frame'] : [],
-        diceSkins: isGroovy ? ['dice_classic', 'dice_neon'] : ['dice_classic']
+      inventory: isSuperAdmin ? DEFAULT_USER.inventory : isGroovy ? {
+        appearances: ['orange', 'purple', 'cyber', 'gold', 'neon'],
+        maps: ['classic', 'neon_tokyo', 'cyberpunk'],
+        profilePictures: ['pfp_neon_frame'],
+        diceSkins: ['dice_classic', 'dice_neon']
+      } : {
+        appearances: ['orange'],
+        maps: ['classic'],
+        profilePictures: [],
+        diceSkins: ['dice_classic']
       },
-      stats: isGroovy ? {
+      stats: isSuperAdmin ? DEFAULT_USER.stats : isGroovy ? {
         gamesPlayed: 45,
         gamesWon: 31,
         winStreak: 4,
@@ -270,7 +279,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         bankruptciesCaused: 0,
         rentCollectedTotal: 0
       },
-      badges: isGroovy ? GROOVY_BADGES : [],
+      badges: isSuperAdmin ? DEFAULT_USER.badges : (isGroovy ? GROOVY_BADGES : []),
       matchHistory: []
     };
 
@@ -364,13 +373,13 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         leaguePoints: isGroovy ? 1850 : (isSuperAdmin ? 2490 : (prev.leaguePoints || 0)),
         leagueTier: isGroovy ? 'Diamond' : (isSuperAdmin ? 'Tycoon' : (prev.leagueTier || 'Bronze')),
         level: isGroovy ? 9 : (isSuperAdmin ? 14 : (prev.level || 1)),
-        inventory: {
-          appearances: isGroovy ? ['orange', 'purple', 'cyber', 'gold', 'neon'] : (prev.inventory?.appearances || ['orange']),
-          maps: isGroovy ? ['classic', 'neon_tokyo', 'cyberpunk'] : (prev.inventory?.maps || ['classic']),
-          profilePictures: isGroovy ? ['pfp_neon_frame'] : (prev.inventory?.profilePictures || []),
-          diceSkins: isGroovy ? ['dice_classic', 'dice_neon'] : (prev.inventory?.diceSkins || ['dice_classic'])
-        },
-        stats: isGroovy ? {
+        inventory: isSuperAdmin ? DEFAULT_USER.inventory : (isGroovy ? {
+          appearances: ['orange', 'purple', 'cyber', 'gold', 'neon'],
+          maps: ['classic', 'neon_tokyo', 'cyberpunk'],
+          profilePictures: ['pfp_neon_frame'],
+          diceSkins: ['dice_classic', 'dice_neon']
+        } : (prev.inventory || DEFAULT_USER.inventory)),
+        stats: isSuperAdmin ? DEFAULT_USER.stats : (isGroovy ? {
           gamesPlayed: 45,
           gamesWon: 31,
           winStreak: 4,
@@ -380,8 +389,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
           monopoliesBuilt: 12,
           bankruptciesCaused: 19,
           rentCollectedTotal: 18450
-        } : (prev.stats || DEFAULT_USER.stats),
-        badges: isGroovy ? GROOVY_BADGES : (prev.badges || []),
+        } : (prev.stats || DEFAULT_USER.stats)),
+        badges: isSuperAdmin ? DEFAULT_USER.badges : (isGroovy ? GROOVY_BADGES : (prev.badges || [])),
         matchHistory: prev.matchHistory || []
       };
 
@@ -579,7 +588,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const today = new Date().toDateString();
     if (lastDailyClaim === today) return null;
 
-    const rewardCoins = 60;
+    const rewardCoins = 15;
     sounds.playVictory();
     setLastDailyClaim(today);
     localStorage.setItem('proprush_daily_claim', today);

@@ -173,7 +173,7 @@ export const ProfileView: React.FC = () => {
                   : 'bg-slate-800 text-slate-500 cursor-not-allowed'
               }`}
             >
-              {canClaimToday ? 'Claim 50 Coins 🪙' : 'Claimed Today ✓'}
+              {canClaimToday ? 'Claim 15 Coins 🪙' : 'Claimed Today ✓'}
             </button>
             {dailyClaimMsg && (
               <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 animate-bounce">{dailyClaimMsg}</span>

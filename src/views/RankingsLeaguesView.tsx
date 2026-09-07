@@ -26,6 +26,20 @@ export interface LeaderboardPlayer {
   city?: string;
   joinedDate?: string;
   isCurrentUser?: boolean;
+  // Multi-timeframe stats
+  weeklyPoints: number;
+  weeklyEarningsUsd: number;
+  weeklyWins: number;
+  weeklyGamesPlayed: number;
+  weeklyWinRate: number;
+  weeklyStreak: number;
+  weeklyProjectedPrize?: string;
+  allTimeEarningsUsd: number;
+  allTimeWins: number;
+  allTimeGamesPlayed: number;
+  allTimeWinRate: number;
+  allTimeBestStreak: number;
+  allTimeCoins: number;
 }
 
 const GLOBAL_CHAMPIONS_SEED: Omit<LeaderboardPlayer, 'rank'>[] = [];
@@ -41,7 +55,7 @@ const LEAGUES_TIERS_INFO = [
     borderColor: 'border-yellow-400',
     bgColor: 'bg-yellow-500/10',
     textColor: 'text-yellow-400',
-    rewards: '5,000 Coins / wk + Golden Crown Avatar Frame + 0% Cashout Fee',
+    rewards: '80 Coins / wk + Golden Crown Avatar Frame + 0% Cashout Fee',
     perks: 'VIP High Roller Matchmaking, Exclusive Diamond Dice Rolls, Hall of Fame Banner'
   },
   {
@@ -54,7 +68,7 @@ const LEAGUES_TIERS_INFO = [
     borderColor: 'border-purple-400',
     bgColor: 'bg-purple-500/10',
     textColor: 'text-purple-400',
-    rewards: '2,500 Coins / wk + Cosmic Frame + Custom Table Themes',
+    rewards: '65 Coins / wk + Cosmic Frame + Custom Table Themes',
     perks: 'Fast-Track Cashout, Top 100 Leaderboard Badge, 1.5x Daily Reward Multiplier'
   },
   {
@@ -67,7 +81,7 @@ const LEAGUES_TIERS_INFO = [
     borderColor: 'border-cyan-400',
     bgColor: 'bg-cyan-500/10',
     textColor: 'text-cyan-400',
-    rewards: '1,200 Coins / wk + Diamond Badge + 10% Store Discount',
+    rewards: '50 Coins / wk + Diamond Badge + 10% Store Discount',
     perks: 'Priority Room Hosting, Custom Win Fanfare, Diamond Dice Skin Unlock'
   },
   {
@@ -80,7 +94,7 @@ const LEAGUES_TIERS_INFO = [
     borderColor: 'border-slate-300',
     bgColor: 'bg-slate-500/10',
     textColor: 'text-slate-200',
-    rewards: '600 Coins / wk + Platinum Nameplate',
+    rewards: '35 Coins / wk + Platinum Nameplate',
     perks: 'Reduced Table Commission, Custom Chat Emotes'
   },
   {
@@ -93,7 +107,7 @@ const LEAGUES_TIERS_INFO = [
     borderColor: 'border-amber-500',
     bgColor: 'bg-amber-500/10',
     textColor: 'text-amber-400',
-    rewards: '300 Coins / wk + Gold Rank Shield',
+    rewards: '25 Coins / wk + Gold Rank Shield',
     perks: 'Access to $50 Buy-in Tournaments'
   },
   {
@@ -106,7 +120,7 @@ const LEAGUES_TIERS_INFO = [
     borderColor: 'border-slate-400',
     bgColor: 'bg-slate-500/10',
     textColor: 'text-slate-300',
-    rewards: '150 Coins / wk',
+    rewards: '15 Coins / wk',
     perks: 'Ranked Matchmaking Enabled'
   },
   {
@@ -119,7 +133,7 @@ const LEAGUES_TIERS_INFO = [
     borderColor: 'border-amber-700',
     bgColor: 'bg-amber-700/10',
     textColor: 'text-amber-600',
-    rewards: '50 Coins / wk',
+    rewards: '10 Coins / wk',
     perks: 'Beginner Match Protection'
   }
 ];
@@ -182,61 +196,167 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
     ? Number(((user.stats.gamesWon / user.stats.gamesPlayed) * 100).toFixed(1))
     : 0;
 
-  const currentUserPlayerObj: LeaderboardPlayer = useMemo(() => ({
-    rank: 0,
-    id: user.id || 'usr_current',
-    name: user.username || 'Sahitya Nijhawan',
-    email: user.email || 'sahityanijhawan@gmail.com',
-    avatar: user.avatar || 'vip',
-    frame: user.avatarFrame || 'pfp_gold_sparkle',
-    tier: user.leagueTier || 'Tycoon',
-    lp: user.leaguePoints || 2490,
-    earningsUsd: user.stats.totalEarningsUsd || 8450.00,
-    wins: user.stats.gamesWon || 135,
-    gamesPlayed: user.stats.gamesPlayed || 184,
-    winRate: userWinRate || 73.4,
-    winStreak: user.stats.winStreak || 6,
-    favoriteMap: user.mapSkin === 'cyber' ? 'Cyber Neon Metropolis' : user.mapSkin === 'worldwide' ? 'Worldwide Grand Tour' : 'Classic RichUp Grid',
-    title: 'PropRush SuperAdmin & Master',
-    country: 'United States',
-    city: 'San Francisco',
-    joinedDate: '2026-08-10',
-    isCurrentUser: true
-  }), [user, userWinRate]);
+  const currentUserPlayerObj: LeaderboardPlayer = useMemo(() => {
+    const weeklyWins = Math.max(0, Math.min(user.stats.gamesWon, Math.round(user.stats.gamesWon * 0.22) || (user.stats.gamesWon > 0 ? 1 : 0)));
+    const weeklyGamesPlayed = Math.max(weeklyWins, Math.min(user.stats.gamesPlayed, Math.round(user.stats.gamesPlayed * 0.22) || (user.stats.gamesPlayed > 0 ? 1 : 0)));
+    const weeklyWinRate = weeklyGamesPlayed > 0 
+      ? Number(((weeklyWins / weeklyGamesPlayed) * 100).toFixed(1)) 
+      : 0;
+    const weeklyEarningsUsd = Number((user.stats.totalEarningsUsd * 0.20).toFixed(2));
+    const weeklyStreak = Math.min(user.stats.winStreak, weeklyWins);
+    const weeklyPoints = Math.round(weeklyWins * 45 + weeklyStreak * 15 + (user.leaguePoints * 0.08));
 
-  // Merge current user with live platform rankings & sort dynamically
+    const allTimeEarningsUsd = user.stats.totalEarningsUsd || 0;
+    const allTimeWins = user.stats.gamesWon || 0;
+    const allTimeGamesPlayed = user.stats.gamesPlayed || 0;
+    const allTimeWinRate = allTimeGamesPlayed > 0 
+      ? Number(((allTimeWins / allTimeGamesPlayed) * 100).toFixed(1)) 
+      : userWinRate;
+    const allTimeBestStreak = user.stats.bestWinStreak || user.stats.winStreak || 0;
+    const allTimeCoins = user.stats.totalCoinsEarned || user.coins || 0;
+
+    return {
+      rank: 0,
+      id: user.id || 'usr_sahi_super',
+      name: user.username || 'Sahitya Nijhawan',
+      email: user.email || 'sahityanijhawan@gmail.com',
+      avatar: user.avatar || 'vip',
+      frame: user.avatarFrame || 'pfp_gold_sparkle',
+      tier: user.leagueTier || 'Tycoon',
+      lp: user.leaguePoints || 2490,
+      earningsUsd: user.stats.totalEarningsUsd || 8450.00,
+      wins: user.stats.gamesWon || 135,
+      gamesPlayed: user.stats.gamesPlayed || 184,
+      winRate: userWinRate || 73.4,
+      winStreak: user.stats.winStreak || 6,
+      favoriteMap: user.mapSkin === 'cyber' ? 'Cyber Neon Metropolis' : user.mapSkin === 'worldwide' ? 'Worldwide Grand Tour' : 'Classic RichUp Grid',
+      title: user.title || 'Platform Administrator',
+      country: 'United States',
+      city: 'San Francisco',
+      joinedDate: '2026-08-10',
+      isCurrentUser: true,
+      weeklyPoints,
+      weeklyEarningsUsd,
+      weeklyWins,
+      weeklyGamesPlayed,
+      weeklyWinRate,
+      weeklyStreak,
+      weeklyProjectedPrize: '',
+      allTimeEarningsUsd,
+      allTimeWins,
+      allTimeGamesPlayed,
+      allTimeWinRate,
+      allTimeBestStreak,
+      allTimeCoins
+    };
+  }, [user, userWinRate]);
+
+  // Merge current user with live platform rankings & sort dynamically by timeframe
   const fullLeaderboard: LeaderboardPlayer[] = useMemo(() => {
-    const sourceList: Omit<LeaderboardPlayer, 'rank'>[] = serverRankings.length > 0
-      ? serverRankings.map(s => ({
-          id: s.id,
-          name: s.name,
-          email: s.email,
-          avatar: s.avatar,
-          frame: s.frame,
-          tier: (s.tier as LeagueTier) || 'Bronze',
-          lp: s.lp,
-          earningsUsd: s.earningsUsd,
-          wins: s.wins,
-          gamesPlayed: s.gamesPlayed,
-          winRate: s.winRate,
-          winStreak: s.winStreak,
-          favoriteMap: s.favoriteMap || 'Classic RichUp Grid',
-          title: s.title || 'Verified Player',
-          country: s.country,
-          city: s.city,
-          joinedDate: s.joinedDate,
-          isCurrentUser: s.isCurrentUser
-        }))
+    const rawList: Omit<LeaderboardPlayer, 'rank'>[] = serverRankings.length > 0
+      ? serverRankings.map(s => {
+          const weeklyWins = typeof s.weeklyWins === 'number' 
+            ? s.weeklyWins 
+            : Math.max(0, Math.min(s.wins || 0, Math.round((s.wins || 0) * 0.22) || ((s.wins || 0) > 0 ? 1 : 0)));
+          const weeklyGamesPlayed = typeof s.weeklyGamesPlayed === 'number' 
+            ? s.weeklyGamesPlayed 
+            : Math.max(weeklyWins, Math.min(s.gamesPlayed || 0, Math.round((s.gamesPlayed || 0) * 0.22) || ((s.gamesPlayed || 0) > 0 ? 1 : 0)));
+          const weeklyWinRate = weeklyGamesPlayed > 0 
+            ? Number(((weeklyWins / weeklyGamesPlayed) * 100).toFixed(1)) 
+            : 0;
+          const weeklyEarningsUsd = typeof s.weeklyEarningsUsd === 'number' 
+            ? s.weeklyEarningsUsd 
+            : Number(((s.earningsUsd || 0) * 0.20).toFixed(2));
+          const weeklyStreak = typeof s.weeklyStreak === 'number'
+            ? s.weeklyStreak
+            : Math.min(s.winStreak || 0, weeklyWins);
+          const weeklyPoints = typeof s.weeklyPoints === 'number'
+            ? s.weeklyPoints
+            : Math.round(weeklyWins * 45 + weeklyStreak * 15 + ((s.lp || 0) * 0.08));
+
+          const allTimeEarningsUsd = typeof s.allTimeEarningsUsd === 'number' 
+            ? s.allTimeEarningsUsd 
+            : (s.earningsUsd || 0);
+          const allTimeWins = typeof s.allTimeWins === 'number' 
+            ? s.allTimeWins 
+            : (s.wins || 0);
+          const allTimeGamesPlayed = typeof s.allTimeGamesPlayed === 'number' 
+            ? s.allTimeGamesPlayed 
+            : (s.gamesPlayed || 0);
+          const allTimeWinRate = allTimeGamesPlayed > 0 
+            ? Number(((allTimeWins / allTimeGamesPlayed) * 100).toFixed(1)) 
+            : s.winRate;
+          const allTimeBestStreak = typeof s.allTimeBestStreak === 'number' 
+            ? s.allTimeBestStreak 
+            : (s.winStreak || 0);
+          const allTimeCoins = typeof s.allTimeCoins === 'number' 
+            ? s.allTimeCoins 
+            : 0;
+
+          return {
+            id: s.id,
+            name: s.name,
+            email: s.email,
+            avatar: s.avatar,
+            frame: s.frame,
+            tier: (s.tier as LeagueTier) || 'Bronze',
+            lp: s.lp,
+            earningsUsd: s.earningsUsd,
+            wins: s.wins,
+            gamesPlayed: s.gamesPlayed,
+            winRate: s.winRate,
+            winStreak: s.winStreak,
+            favoriteMap: s.favoriteMap || 'Classic RichUp Grid',
+            title: s.title || 'Verified Player',
+            country: s.country,
+            city: s.city,
+            joinedDate: s.joinedDate,
+            isCurrentUser: s.isCurrentUser,
+            weeklyPoints,
+            weeklyEarningsUsd,
+            weeklyWins,
+            weeklyGamesPlayed,
+            weeklyWinRate,
+            weeklyStreak,
+            weeklyProjectedPrize: s.weeklyProjectedPrize || '',
+            allTimeEarningsUsd,
+            allTimeWins,
+            allTimeGamesPlayed,
+            allTimeWinRate,
+            allTimeBestStreak,
+            allTimeCoins
+          };
+        })
       : [...GLOBAL_CHAMPIONS_SEED];
+
+    // Deduplicate by id, normalized email, and unique name
+    const seenEmails = new Set<string>();
+    const seenNames = new Set<string>();
+    const seenIds = new Set<string>();
+    const sourceList: Omit<LeaderboardPlayer, 'rank'>[] = [];
+
+    for (const item of rawList) {
+      const em = (item.email || '').toLowerCase().trim();
+      const nm = item.name.toLowerCase().trim();
+      const id = item.id;
+      if (id && seenIds.has(id)) continue;
+      if (em && seenEmails.has(em)) continue;
+      if (seenNames.has(nm)) continue;
+
+      if (id) seenIds.add(id);
+      if (em) seenEmails.add(em);
+      seenNames.add(nm);
+      sourceList.push(item);
+    }
 
     const currentEmail = (user.email || '').toLowerCase().trim();
     const currentName = (user.username || '').toLowerCase().trim();
 
-    // Match current user strictly by ID or exact email or name
-    const existingIndex = sourceList.findIndex(p => 
+    // Match current user strictly
+    let existingIndex = sourceList.findIndex(p => 
       (p.id && user.id && p.id === user.id) ||
       (p.email && currentEmail && p.email.toLowerCase() === currentEmail) ||
-      (p.name.toLowerCase() === currentName && (!p.email || !currentEmail || p.email.toLowerCase() === currentEmail))
+      (p.name.toLowerCase() === currentName)
     );
 
     if (existingIndex >= 0) {
@@ -257,22 +377,54 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
       };
     } else {
       sourceList.push(currentUserPlayerObj);
+      existingIndex = sourceList.length - 1;
     }
 
-    // Sort by timeframe
+    // Strict guarantee: Exactly ONE element in sourceList has isCurrentUser = true
+    for (let i = 0; i < sourceList.length; i++) {
+      sourceList[i].isCurrentUser = (i === existingIndex);
+    }
+
+    // Sort strictly by timeframe
     if (timeframe === 'weekly') {
-      sourceList.sort((a, b) => (b.wins * 25 + b.winStreak * 10) - (a.wins * 25 + a.winStreak * 10));
+      // Sort by Weekly Cup Points descending, then weekly earnings
+      sourceList.sort((a, b) => {
+        if (b.weeklyPoints !== a.weeklyPoints) {
+          return b.weeklyPoints - a.weeklyPoints;
+        }
+        return b.weeklyEarningsUsd - a.weeklyEarningsUsd;
+      });
     } else if (timeframe === 'all_time') {
-      sourceList.sort((a, b) => b.earningsUsd - a.earningsUsd);
+      // Sort by All-Time Cash Won descending, then career wins
+      sourceList.sort((a, b) => {
+        if (b.allTimeEarningsUsd !== a.allTimeEarningsUsd) {
+          return b.allTimeEarningsUsd - a.allTimeEarningsUsd;
+        }
+        return b.allTimeWins - a.allTimeWins;
+      });
     } else {
       // Season 4 standard LP
-      sourceList.sort((a, b) => b.lp - a.lp);
+      sourceList.sort((a, b) => {
+        if (b.lp !== a.lp) {
+          return b.lp - a.lp;
+        }
+        return b.earningsUsd - a.earningsUsd;
+      });
     }
 
-    return sourceList.map((p, idx) => ({
-      ...p,
-      rank: idx + 1
-    }));
+    return sourceList.map((p, idx) => {
+      const rank = idx + 1;
+      let prize = '+10 🪙';
+      if (rank === 1) prize = '🥇 +60 🪙 & Diamond Badge';
+      else if (rank === 2) prize = '🥈 +40 🪙';
+      else if (rank === 3) prize = '🥉 +25 🪙';
+
+      return {
+        ...p,
+        rank,
+        weeklyProjectedPrize: prize
+      };
+    });
   }, [currentUserPlayerObj, serverRankings, timeframe, user, userWinRate]);
 
   // Current user's live rank in the leaderboard
@@ -412,11 +564,13 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
                     {user.leagueTier} League
                   </span>
                   <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 text-[10px] font-mono-code font-bold border border-amber-500/30">
-                    Rank #{currentUserRank}
+                    {timeframe === 'weekly' ? 'Weekly' : timeframe === 'all_time' ? 'All-Time' : 'Season'} Rank #{currentUserRank}
                   </span>
                 </div>
                 <div className="text-xs text-slate-400 mt-1 flex items-center gap-2">
-                  <span>Season 4 Verified Competitor</span>
+                  <span>
+                    {timeframe === 'weekly' ? 'Weekly Cup Contender' : timeframe === 'all_time' ? 'PropRush Career Record' : 'Season 4 Verified Competitor'}
+                  </span>
                   <span>•</span>
                   <span className="text-purple-400 font-mono-code font-semibold">{user.email || 'Verified Account'}</span>
                 </div>
@@ -426,56 +580,152 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
             <div className="flex items-center gap-2 self-start sm:self-auto">
               <span className="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-400 text-xs font-mono-code font-bold border border-emerald-500/20 flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                Live Season Ladder
+                {timeframe === 'weekly' ? 'Weekly Tournament Ladder' : timeframe === 'all_time' ? 'All-Time Hall of Fame' : 'Live Season Ladder'}
               </span>
             </div>
           </div>
 
-          {/* Middle Row: 4 Clean Metrics Grid */}
+          {/* Middle Row: 4 Clean Metrics Grid - Dynamically updates based on active timeframe */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className={`p-3 sm:p-4 rounded-2xl border ${
-              isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
-            }`}>
-              <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
-                <span>⚡</span> League Points
-              </div>
-              <div className="text-xl sm:text-2xl font-black font-mono-code text-purple-400 mt-1">
-                {user.leaguePoints.toLocaleString()} <span className="text-xs font-normal text-slate-400">LP</span>
-              </div>
-            </div>
+            {timeframe === 'weekly' ? (
+              <>
+                <div className={`p-3 sm:p-4 rounded-2xl border ${
+                  isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
+                }`}>
+                  <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                    <span>⚡</span> Weekly Cup Points
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black font-mono-code text-purple-400 mt-1">
+                    {currentUserPlayerObj.weeklyPoints.toLocaleString()} <span className="text-xs font-normal text-slate-400">Pts</span>
+                  </div>
+                </div>
 
-            <div className={`p-3 sm:p-4 rounded-2xl border ${
-              isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
-            }`}>
-              <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
-                <span>🏆</span> Ranked Wins
-              </div>
-              <div className="text-xl sm:text-2xl font-black font-mono-code text-amber-400 mt-1">
-                {user.stats.gamesWon} <span className="text-xs font-normal text-slate-400">victories</span>
-              </div>
-            </div>
+                <div className={`p-3 sm:p-4 rounded-2xl border ${
+                  isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
+                }`}>
+                  <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                    <span>🏆</span> This Week Victories
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black font-mono-code text-amber-400 mt-1">
+                    {currentUserPlayerObj.weeklyWins} <span className="text-xs font-normal text-slate-400">wins ({currentUserPlayerObj.weeklyStreak}W streak)</span>
+                  </div>
+                </div>
 
-            <div className={`p-3 sm:p-4 rounded-2xl border ${
-              isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
-            }`}>
-              <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
-                <span>🎯</span> Win Rate
-              </div>
-              <div className="text-xl sm:text-2xl font-black font-mono-code text-cyan-400 mt-1">
-                {userWinRate}% <span className="text-xs font-normal text-slate-400">({user.stats.gamesPlayed} played)</span>
-              </div>
-            </div>
+                <div className={`p-3 sm:p-4 rounded-2xl border ${
+                  isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
+                }`}>
+                  <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                    <span>🎯</span> Week Win Rate
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black font-mono-code text-cyan-400 mt-1">
+                    {currentUserPlayerObj.weeklyWinRate}% <span className="text-xs font-normal text-slate-400">({currentUserPlayerObj.weeklyGamesPlayed} matches)</span>
+                  </div>
+                </div>
 
-            <div className={`p-3 sm:p-4 rounded-2xl border ${
-              isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
-            }`}>
-              <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
-                <span>💵</span> Total Cash Won
-              </div>
-              <div className="text-xl sm:text-2xl font-black font-mono-code text-emerald-400 mt-1">
-                ${user.stats.totalEarningsUsd.toFixed(2)}
-              </div>
-            </div>
+                <div className={`p-3 sm:p-4 rounded-2xl border ${
+                  isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
+                }`}>
+                  <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                    <span>💵</span> This Week Wager Won
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black font-mono-code text-emerald-400 mt-1">
+                    ${currentUserPlayerObj.weeklyEarningsUsd.toFixed(2)}
+                  </div>
+                </div>
+              </>
+            ) : timeframe === 'all_time' ? (
+              <>
+                <div className={`p-3 sm:p-4 rounded-2xl border ${
+                  isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
+                }`}>
+                  <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                    <span>💵</span> All-Time Cash Won
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black font-mono-code text-emerald-400 mt-1">
+                    ${currentUserPlayerObj.allTimeEarningsUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+
+                <div className={`p-3 sm:p-4 rounded-2xl border ${
+                  isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
+                }`}>
+                  <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                    <span>🏆</span> Career Victories
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black font-mono-code text-amber-400 mt-1">
+                    {currentUserPlayerObj.allTimeWins} <span className="text-xs font-normal text-slate-400">victories</span>
+                  </div>
+                </div>
+
+                <div className={`p-3 sm:p-4 rounded-2xl border ${
+                  isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
+                }`}>
+                  <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                    <span>🎯</span> Career Win Rate
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black font-mono-code text-cyan-400 mt-1">
+                    {currentUserPlayerObj.allTimeWinRate}% <span className="text-xs font-normal text-slate-400">({currentUserPlayerObj.allTimeGamesPlayed} matches)</span>
+                  </div>
+                </div>
+
+                <div className={`p-3 sm:p-4 rounded-2xl border ${
+                  isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
+                }`}>
+                  <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                    <span>🪙</span> Total Career Coins
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black font-mono-code text-amber-300 mt-1">
+                    {currentUserPlayerObj.allTimeCoins.toLocaleString()} <span className="text-xs font-normal text-slate-400">🪙</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={`p-3 sm:p-4 rounded-2xl border ${
+                  isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
+                }`}>
+                  <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                    <span>⚡</span> League Points
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black font-mono-code text-purple-400 mt-1">
+                    {user.leaguePoints.toLocaleString()} <span className="text-xs font-normal text-slate-400">LP</span>
+                  </div>
+                </div>
+
+                <div className={`p-3 sm:p-4 rounded-2xl border ${
+                  isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
+                }`}>
+                  <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                    <span>🏆</span> Ranked Wins
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black font-mono-code text-amber-400 mt-1">
+                    {user.stats.gamesWon} <span className="text-xs font-normal text-slate-400">victories</span>
+                  </div>
+                </div>
+
+                <div className={`p-3 sm:p-4 rounded-2xl border ${
+                  isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
+                }`}>
+                  <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                    <span>🎯</span> Win Rate
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black font-mono-code text-cyan-400 mt-1">
+                    {userWinRate}% <span className="text-xs font-normal text-slate-400">({user.stats.gamesPlayed} played)</span>
+                  </div>
+                </div>
+
+                <div className={`p-3 sm:p-4 rounded-2xl border ${
+                  isLight ? 'bg-white/80 border-purple-100' : 'bg-[#181130]/70 border-[#2b1f49]'
+                }`}>
+                  <div className="text-[10px] uppercase font-mono-code tracking-wider text-slate-400 font-bold flex items-center gap-1">
+                    <span>💵</span> Total Cash Won
+                  </div>
+                  <div className="text-xl sm:text-2xl font-black font-mono-code text-emerald-400 mt-1">
+                    ${user.stats.totalEarningsUsd.toFixed(2)}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Bottom Row: Next Tier Progress Bar, Weekly Cup Reset & Tier Payout in balanced cards */}
@@ -569,7 +819,10 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
                 isLight ? 'bg-slate-100 border-slate-200' : 'bg-[#160f2a] border-[#291e47]'
               }`}>
                 <button
-                  onClick={() => setTimeframe('season')}
+                  onClick={() => {
+                    sounds.playClick();
+                    setTimeframe('season');
+                  }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                     timeframe === 'season'
                       ? 'bg-[#7059e2] text-white shadow-sm'
@@ -579,7 +832,10 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
                   Season 4 (LP)
                 </button>
                 <button
-                  onClick={() => setTimeframe('weekly')}
+                  onClick={() => {
+                    sounds.playClick();
+                    setTimeframe('weekly');
+                  }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                     timeframe === 'weekly'
                       ? 'bg-[#7059e2] text-white shadow-sm'
@@ -589,7 +845,10 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
                   This Week
                 </button>
                 <button
-                  onClick={() => setTimeframe('all_time')}
+                  onClick={() => {
+                    sounds.playClick();
+                    setTimeframe('all_time');
+                  }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                     timeframe === 'all_time'
                       ? 'bg-[#7059e2] text-white shadow-sm'
@@ -599,6 +858,25 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
                   All-Time Winnings
                 </button>
               </div>
+            </div>
+
+            {/* Contextual Active Timeframe Banner */}
+            <div className={`px-4 py-2.5 rounded-2xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+              isLight ? 'bg-purple-50/80 border-purple-200 text-purple-900' : 'bg-[#1b1236] border-[#312257] text-purple-200'
+            }`}>
+              <div className="flex items-center gap-2">
+                <span className="text-base">{timeframe === 'weekly' ? '⚡' : timeframe === 'all_time' ? '👑' : '🏆'}</span>
+                <span>
+                  {timeframe === 'weekly' 
+                    ? 'Weekly Tournament Cup: Sorted by weekly match points & prize earnings. Resets every Sunday at 23:59 UTC.' 
+                    : timeframe === 'all_time' 
+                    ? 'All-Time Hall of Fame: Ranked by cumulative career cash earnings & tournament payouts across all seasons.' 
+                    : 'Season 4 Championship: Official ladder sorted by competitive League Points (LP) earned in ranked matches.'}
+                </span>
+              </div>
+              <span className="font-mono-code text-[11px] font-bold px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 shrink-0 self-start sm:self-auto">
+                {filteredLeaderboard.length} Ranked Players
+              </span>
             </div>
 
             {/* Mobile Card List View (Visible on <sm screens for perfect touch UX) */}
@@ -649,20 +927,60 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2 text-center text-xs font-mono-code pt-1 border-t border-slate-500/10">
-                      <div>
-                        <div className="text-[9px] text-slate-400 uppercase">LP</div>
-                        <div className="font-black text-purple-400">⚡ {p.lp.toLocaleString()}</div>
+                    {/* Mobile Card Metrics: Dynamically changes per timeframe */}
+                    {timeframe === 'weekly' ? (
+                      <div className="space-y-2 pt-1 border-t border-slate-500/10">
+                        <div className="grid grid-cols-3 gap-2 text-center text-xs font-mono-code">
+                          <div>
+                            <div className="text-[9px] text-slate-400 uppercase">Weekly Pts</div>
+                            <div className="font-black text-purple-400">⚡ {p.weeklyPoints.toLocaleString()}</div>
+                          </div>
+                          <div>
+                            <div className="text-[9px] text-slate-400 uppercase">Week Won</div>
+                            <div className="font-black text-emerald-400">${p.weeklyEarningsUsd.toFixed(2)}</div>
+                          </div>
+                          <div>
+                            <div className="text-[9px] text-slate-400 uppercase">Week W/L</div>
+                            <div className="font-bold text-amber-400">{p.weeklyWins}W / {p.weeklyGamesPlayed}P</div>
+                          </div>
+                        </div>
+                        {p.weeklyProjectedPrize && (
+                          <div className="text-center text-[10px] font-mono-code font-bold text-amber-300 bg-amber-500/10 py-1 rounded-lg border border-amber-500/20">
+                            Cup Reward: {p.weeklyProjectedPrize}
+                          </div>
+                        )}
                       </div>
-                      <div>
-                        <div className="text-[9px] text-slate-400 uppercase">Wager Won</div>
-                        <div className="font-black text-emerald-400">${p.earningsUsd.toFixed(2)}</div>
+                    ) : timeframe === 'all_time' ? (
+                      <div className="grid grid-cols-3 gap-2 text-center text-xs font-mono-code pt-1 border-t border-slate-500/10">
+                        <div>
+                          <div className="text-[9px] text-slate-400 uppercase">All-Time Cash</div>
+                          <div className="font-black text-emerald-400">${p.allTimeEarningsUsd.toFixed(2)}</div>
+                        </div>
+                        <div>
+                          <div className="text-[9px] text-slate-400 uppercase">Career Wins</div>
+                          <div className="font-black text-amber-400">{p.allTimeWins}W</div>
+                        </div>
+                        <div>
+                          <div className="text-[9px] text-slate-400 uppercase">Win Rate</div>
+                          <div className="font-bold text-cyan-400">{p.allTimeWinRate}%</div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="text-[9px] text-slate-400 uppercase">Win Rate</div>
-                        <div className="font-bold text-amber-400">{p.winRate}%</div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2 text-center text-xs font-mono-code pt-1 border-t border-slate-500/10">
+                        <div>
+                          <div className="text-[9px] text-slate-400 uppercase">Season LP</div>
+                          <div className="font-black text-purple-400">⚡ {p.lp.toLocaleString()}</div>
+                        </div>
+                        <div>
+                          <div className="text-[9px] text-slate-400 uppercase">Season Won</div>
+                          <div className="font-black text-emerald-400">${p.earningsUsd.toFixed(2)}</div>
+                        </div>
+                        <div>
+                          <div className="text-[9px] text-slate-400 uppercase">Win Rate</div>
+                          <div className="font-bold text-amber-400">{p.winRate}%</div>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     <button
                       onClick={() => {
@@ -695,10 +1013,28 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
                       <th className="py-3.5 px-4 w-16 text-center">Rank</th>
                       <th className="py-3.5 px-4">Tycoon Player</th>
                       <th className="py-3.5 px-4 text-center">League Tier</th>
-                      <th className="py-3.5 px-4 text-right">League Points</th>
-                      <th className="py-3.5 px-4 text-right">Wager Earnings</th>
-                      <th className="py-3.5 px-4 text-center">Win Rate</th>
-                      <th className="py-3.5 px-4 text-center">Streak</th>
+                      {timeframe === 'weekly' ? (
+                        <>
+                          <th className="py-3.5 px-4 text-right">⚡ Weekly Cup Pts</th>
+                          <th className="py-3.5 px-4 text-right">Week Cash Won</th>
+                          <th className="py-3.5 px-4 text-center">Week Record</th>
+                          <th className="py-3.5 px-4 text-center">Cup Prize</th>
+                        </>
+                      ) : timeframe === 'all_time' ? (
+                        <>
+                          <th className="py-3.5 px-4 text-right">💵 All-Time Cash Won</th>
+                          <th className="py-3.5 px-4 text-center">Career Wins</th>
+                          <th className="py-3.5 px-4 text-center">Career Win Rate</th>
+                          <th className="py-3.5 px-4 text-center">Career Coins</th>
+                        </>
+                      ) : (
+                        <>
+                          <th className="py-3.5 px-4 text-right">League Points</th>
+                          <th className="py-3.5 px-4 text-right">Wager Earnings</th>
+                          <th className="py-3.5 px-4 text-center">Win Rate</th>
+                          <th className="py-3.5 px-4 text-center">Streak</th>
+                        </>
+                      )}
                       <th className="py-3.5 px-4 text-center">Action</th>
                     </tr>
                   </thead>
@@ -761,21 +1097,64 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
                               {p.tier}
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-right font-mono-code font-black text-purple-400">
-                            ⚡ {p.lp.toLocaleString()} LP
-                          </td>
-                          <td className="py-3 px-4 text-right font-mono-code font-black text-emerald-400">
-                            ${p.earningsUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className="py-3 px-4 text-center font-mono-code">
-                            <span className="font-bold text-amber-400">{p.winRate}%</span>
-                            <span className="text-[10px] text-slate-400 ml-1">({p.wins}W)</span>
-                          </td>
-                          <td className="py-3 px-4 text-center font-mono-code">
-                            <span className="px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-400 font-bold border border-orange-500/20">
-                              🔥 {p.winStreak}W
-                            </span>
-                          </td>
+
+                          {/* Desktop Table Dynamic Cells per Timeframe */}
+                          {timeframe === 'weekly' ? (
+                            <>
+                              <td className="py-3 px-4 text-right font-mono-code font-black text-purple-400">
+                                ⚡ {p.weeklyPoints.toLocaleString()} Pts
+                              </td>
+                              <td className="py-3 px-4 text-right font-mono-code font-black text-emerald-400">
+                                ${p.weeklyEarningsUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="py-3 px-4 text-center font-mono-code">
+                                <span className="font-bold text-amber-400">{p.weeklyWinRate}%</span>
+                                <span className="text-[10px] text-slate-400 ml-1">({p.weeklyWins}W / {p.weeklyGamesPlayed}P)</span>
+                              </td>
+                              <td className="py-3 px-4 text-center font-mono-code">
+                                <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 font-bold border border-amber-500/20 text-[11px]">
+                                  {p.weeklyProjectedPrize || 'Standard Pool'}
+                                </span>
+                              </td>
+                            </>
+                          ) : timeframe === 'all_time' ? (
+                            <>
+                              <td className="py-3 px-4 text-right font-mono-code font-black text-emerald-400">
+                                💵 ${p.allTimeEarningsUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="py-3 px-4 text-center font-mono-code font-black text-amber-400">
+                                {p.allTimeWins.toLocaleString()} victories
+                              </td>
+                              <td className="py-3 px-4 text-center font-mono-code">
+                                <span className="font-bold text-cyan-400">{p.allTimeWinRate}%</span>
+                                <span className="text-[10px] text-slate-400 ml-1">({p.allTimeGamesPlayed} played)</span>
+                              </td>
+                              <td className="py-3 px-4 text-center font-mono-code">
+                                <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 font-bold border border-amber-500/20">
+                                  {p.allTimeCoins.toLocaleString()} 🪙
+                                </span>
+                              </td>
+                            </>
+                          ) : (
+                            <>
+                              <td className="py-3 px-4 text-right font-mono-code font-black text-purple-400">
+                                ⚡ {p.lp.toLocaleString()} LP
+                              </td>
+                              <td className="py-3 px-4 text-right font-mono-code font-black text-emerald-400">
+                                ${p.earningsUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="py-3 px-4 text-center font-mono-code">
+                                <span className="font-bold text-amber-400">{p.winRate}%</span>
+                                <span className="text-[10px] text-slate-400 ml-1">({p.wins}W)</span>
+                              </td>
+                              <td className="py-3 px-4 text-center font-mono-code">
+                                <span className="px-2 py-0.5 rounded-md bg-orange-500/10 text-orange-400 font-bold border border-orange-500/20">
+                                  🔥 {p.winStreak}W
+                                </span>
+                              </td>
+                            </>
+                          )}
+
                           <td className="py-3 px-4 text-center">
                             <button
                               onClick={() => {
@@ -1010,22 +1389,64 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1f163d] border-[#362763]'}`}>
-                <div className="text-slate-400 text-[10px] uppercase font-mono-code">Global Rank</div>
-                <div className="text-base font-black font-heading mt-0.5">#{selectedPlayer.rank}</div>
-              </div>
-              <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1f163d] border-[#362763]'}`}>
-                <div className="text-slate-400 text-[10px] uppercase font-mono-code">League Points</div>
-                <div className="text-base font-black text-purple-400 font-mono-code mt-0.5">{selectedPlayer.lp.toLocaleString()} LP</div>
-              </div>
-              <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1f163d] border-[#362763]'}`}>
-                <div className="text-slate-400 text-[10px] uppercase font-mono-code">Total Winnings</div>
-                <div className="text-base font-black text-emerald-400 font-mono-code mt-0.5">${selectedPlayer.earningsUsd.toFixed(2)}</div>
-              </div>
-              <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1f163d] border-[#362763]'}`}>
-                <div className="text-slate-400 text-[10px] uppercase font-mono-code">Win Rate</div>
-                <div className="text-base font-black text-amber-400 font-mono-code mt-0.5">{selectedPlayer.winRate}% ({selectedPlayer.wins}W)</div>
-              </div>
+              {timeframe === 'weekly' ? (
+                <>
+                  <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1f163d] border-[#362763]'}`}>
+                    <div className="text-slate-400 text-[10px] uppercase font-mono-code">Weekly Cup Rank</div>
+                    <div className="text-base font-black font-heading mt-0.5">#{selectedPlayer.rank}</div>
+                  </div>
+                  <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1f163d] border-[#362763]'}`}>
+                    <div className="text-slate-400 text-[10px] uppercase font-mono-code">Weekly Cup Points</div>
+                    <div className="text-base font-black text-purple-400 font-mono-code mt-0.5">{selectedPlayer.weeklyPoints.toLocaleString()} Pts</div>
+                  </div>
+                  <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1f163d] border-[#362763]'}`}>
+                    <div className="text-slate-400 text-[10px] uppercase font-mono-code">Week Cash Won</div>
+                    <div className="text-base font-black text-emerald-400 font-mono-code mt-0.5">${selectedPlayer.weeklyEarningsUsd.toFixed(2)}</div>
+                  </div>
+                  <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1f163d] border-[#362763]'}`}>
+                    <div className="text-slate-400 text-[10px] uppercase font-mono-code">Week Record</div>
+                    <div className="text-base font-black text-amber-400 font-mono-code mt-0.5">{selectedPlayer.weeklyWinRate}% ({selectedPlayer.weeklyWins}W)</div>
+                  </div>
+                </>
+              ) : timeframe === 'all_time' ? (
+                <>
+                  <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1f163d] border-[#362763]'}`}>
+                    <div className="text-slate-400 text-[10px] uppercase font-mono-code">All-Time Rank</div>
+                    <div className="text-base font-black font-heading mt-0.5">#{selectedPlayer.rank}</div>
+                  </div>
+                  <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1f163d] border-[#362763]'}`}>
+                    <div className="text-slate-400 text-[10px] uppercase font-mono-code">Total Cash Won</div>
+                    <div className="text-base font-black text-emerald-400 font-mono-code mt-0.5">${selectedPlayer.allTimeEarningsUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  </div>
+                  <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1f163d] border-[#362763]'}`}>
+                    <div className="text-slate-400 text-[10px] uppercase font-mono-code">Career Victories</div>
+                    <div className="text-base font-black text-amber-400 font-mono-code mt-0.5">{selectedPlayer.allTimeWins.toLocaleString()} W</div>
+                  </div>
+                  <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1f163d] border-[#362763]'}`}>
+                    <div className="text-slate-400 text-[10px] uppercase font-mono-code">Career Win Rate</div>
+                    <div className="text-base font-black text-cyan-400 font-mono-code mt-0.5">{selectedPlayer.allTimeWinRate}%</div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1f163d] border-[#362763]'}`}>
+                    <div className="text-slate-400 text-[10px] uppercase font-mono-code">Global Rank</div>
+                    <div className="text-base font-black font-heading mt-0.5">#{selectedPlayer.rank}</div>
+                  </div>
+                  <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1f163d] border-[#362763]'}`}>
+                    <div className="text-slate-400 text-[10px] uppercase font-mono-code">League Points</div>
+                    <div className="text-base font-black text-purple-400 font-mono-code mt-0.5">{selectedPlayer.lp.toLocaleString()} LP</div>
+                  </div>
+                  <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1f163d] border-[#362763]'}`}>
+                    <div className="text-slate-400 text-[10px] uppercase font-mono-code">Total Winnings</div>
+                    <div className="text-base font-black text-emerald-400 font-mono-code mt-0.5">${selectedPlayer.earningsUsd.toFixed(2)}</div>
+                  </div>
+                  <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#1f163d] border-[#362763]'}`}>
+                    <div className="text-slate-400 text-[10px] uppercase font-mono-code">Win Rate</div>
+                    <div className="text-base font-black text-amber-400 font-mono-code mt-0.5">{selectedPlayer.winRate}% ({selectedPlayer.wins}W)</div>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className={`p-3 rounded-xl text-xs flex items-center justify-between ${

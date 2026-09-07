@@ -94,7 +94,7 @@ export const ClerkActiveAuth: React.FC<ClerkActiveAuthProps> = ({ onClose }) => 
 
   const handleInstantGoogleDemo = () => {
     sounds.playCashRegister();
-    loginWithGoogle('sahityanijhawan@gmail.com', 'Sahi (Google)');
+    loginWithGoogle('sahityanijhawan@gmail.com', 'Sahitya Nijhawan');
     onClose();
   };
 

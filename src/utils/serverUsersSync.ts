@@ -21,6 +21,20 @@ export interface PlatformMember {
   joinedDate?: string;
   isCurrentUser?: boolean;
   rank?: number;
+  // Multi-timeframe stats
+  weeklyPoints?: number;
+  weeklyEarningsUsd?: number;
+  weeklyWins?: number;
+  weeklyGamesPlayed?: number;
+  weeklyWinRate?: number;
+  weeklyStreak?: number;
+  weeklyProjectedPrize?: string;
+  allTimeEarningsUsd?: number;
+  allTimeWins?: number;
+  allTimeGamesPlayed?: number;
+  allTimeWinRate?: number;
+  allTimeBestStreak?: number;
+  allTimeCoins?: number;
 }
 
 export interface AdminUserRecord {
