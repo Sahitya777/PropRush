@@ -23,5 +23,29 @@ export default defineConfig(() => {
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
+    build: {
+      target: 'esnext',
+      sourcemap: false,
+      minify: 'esbuild',
+      chunkSizeWarningLimit: 3000,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules/@walletconnect') || id.includes('node_modules/@reown') || id.includes('node_modules/ox')) {
+              return 'walletconnect-vendor';
+            }
+            if (id.includes('node_modules/@dynamic-labs')) {
+              return 'dynamic-vendor';
+            }
+            if (id.includes('node_modules/@clerk')) {
+              return 'clerk-vendor';
+            }
+            if (id.includes('node_modules/recharts')) {
+              return 'charts-vendor';
+            }
+          },
+        },
+      },
+    },
   };
 });
