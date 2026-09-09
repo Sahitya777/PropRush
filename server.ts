@@ -1,6 +1,5 @@
 import express, { Request, Response } from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import Stripe from "stripe";
 import dotenv from "dotenv";
 
@@ -8,7 +7,12 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+
+// In AI Studio development sandbox, internal nginx reverse proxy directs external traffic to port 3000.
+// In a published Cloud Run service (user GCP project), Cloud Run routes to process.env.PORT (typically 8080).
+const PORT = (process.env.NGINX_PORT || process.env.DEFAULT_APP_PORT)
+  ? 3000
+  : (process.env.PORT ? parseInt(process.env.PORT, 10) : 3000);
 
 // Lazy Stripe initialization to prevent crashes when API key is not yet set
 let stripeClient: Stripe | null = null;
@@ -663,6 +667,7 @@ export interface PlatformUser {
   id: string;
   username: string;
   email: string;
+  walletAddress?: string;
   avatar: string;
   avatarFrame?: string;
   profilePictureUrl?: string;
@@ -689,51 +694,25 @@ export interface PlatformUser {
   isCurrentUser?: boolean;
 }
 
-// Store actual platform users (supports multiple concurrent players, verified global champions, and admin)
-const INITIAL_PLATFORM_USERS: PlatformUser[] = [
-  {
-    id: 'usr_sahi_super',
-    username: 'Sahitya Nijhawan',
-    email: 'sahityanijhawan@gmail.com',
-    avatar: 'vip',
-    avatarFrame: 'pfp_gold_sparkle',
-    walletBalance: 270.00,
-    coins: 3200,
-    leaguePoints: 2490,
-    leagueTier: 'Tycoon',
-    level: 14,
-    stats: {
-      gamesPlayed: 184,
-      gamesWon: 135,
-      winStreak: 6,
-      bestWinStreak: 9,
-      totalEarningsUsd: 8450.00,
-      totalCoinsEarned: 3200,
-    },
-    role: 'admin',
-    isBanned: false,
-    country: 'United States',
-    city: 'San Francisco',
-    joinedDate: '2026-08-10',
-    title: 'Platform Administrator',
-    lastActive: Date.now()
-  }
-];
+// Store real platform users (populated exclusively by real authenticated Dynamic players)
+const INITIAL_PLATFORM_USERS: PlatformUser[] = [];
 
 const platformUsersMap = new Map<string, PlatformUser>();
 INITIAL_PLATFORM_USERS.forEach(u => platformUsersMap.set(u.id, u));
 
-// Helper to look up users by ID or by email
-function findPlatformUser(id?: string, email?: string): PlatformUser | undefined {
+// Helper to look up users by ID, email, or wallet
+function findPlatformUser(id?: string, email?: string, walletAddress?: string): PlatformUser | undefined {
   if (id && platformUsersMap.has(id)) {
     return platformUsersMap.get(id);
   }
-  if (email && email.trim() !== '') {
-    const cleanEmail = email.trim().toLowerCase();
-    for (const u of platformUsersMap.values()) {
-      if (u.email && u.email.toLowerCase() === cleanEmail) {
-        return u;
-      }
+  const cleanEmail = email ? email.trim().toLowerCase() : '';
+  const cleanWallet = walletAddress ? walletAddress.trim().toLowerCase() : '';
+  for (const u of platformUsersMap.values()) {
+    if (cleanWallet && u.walletAddress && u.walletAddress.toLowerCase() === cleanWallet) {
+      return u;
+    }
+    if (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) {
+      return u;
     }
   }
   return undefined;
@@ -783,82 +762,63 @@ app.post("/api/users/sync", (req: Request, res: Response): void => {
       return;
     }
 
-    const rawId = (user.id || '').trim();
+    const rawId = (user.id || user.dynamicUserId || '').trim();
+    const rawWallet = (user.walletAddress || '').trim();
     const rawEmail = (user.email || '').trim();
     const rawUsername = (user.username || '').trim();
 
-    // Check if there is an existing user by ID or Email
-    let existing = findPlatformUser(rawId, rawEmail);
+    // Check if there is an existing user by ID, Wallet, or Email
+    let existing = findPlatformUser(rawId, rawEmail, rawWallet);
 
-    // If matching Sahitya player account or admin account
-    if (!existing && (rawEmail.toLowerCase() === 'sahityanijhawan@gmail.com' || rawUsername.toLowerCase() === 'sahitya nijhawan')) {
-      existing = findPlatformUser('usr_sahi_super', 'sahityanijhawan@gmail.com');
-    } else if (!existing && (rawEmail.toLowerCase() === 'sahityagroovy@gmail.com' || (rawUsername.toLowerCase() === 'sahitya' && !rawEmail.includes('sahityanijhawan')))) {
-      existing = findPlatformUser('usr_player_sahitya', 'sahityagroovy@gmail.com');
-    }
+    const resolvedId = existing?.id || rawId || (rawWallet ? `usr_${rawWallet.slice(2, 10)}` : ('usr_' + Date.now()));
+    const resolvedEmail = rawEmail || existing?.email || '';
+    const resolvedWallet = rawWallet || existing?.walletAddress || '';
 
-    const resolvedId = existing?.id || (rawEmail.toLowerCase() === 'sahityanijhawan@gmail.com' ? 'usr_sahi_super' : rawId || ('usr_' + Date.now()));
-
-    let resolvedEmail = rawEmail;
-    if (!resolvedEmail || resolvedEmail.endsWith('@proprush.player')) {
-      if (existing?.email && !existing.email.endsWith('@proprush.player')) {
-        resolvedEmail = existing.email;
-      } else if (rawUsername.toLowerCase() === 'sahitya nijhawan' || resolvedId === 'usr_sahi_super') {
-        resolvedEmail = 'sahityanijhawan@gmail.com';
-      } else if (rawUsername.toLowerCase() === 'sahitya' || resolvedId === 'usr_player_sahitya' || rawEmail.toLowerCase().includes('sahityagroovy')) {
-        resolvedEmail = 'sahityagroovy@gmail.com';
-      } else {
-        const cleanName = (rawUsername || 'player').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const shortId = resolvedId.replace(/^usr_/, '').slice(-4);
-        resolvedEmail = `${cleanName || 'player'}_${shortId}@proprush.player`;
-      }
-    }
-
-    const isAdmin = resolvedEmail.toLowerCase() === 'sahityanijhawan@gmail.com' || (existing?.role === 'admin');
+    // An admin is someone whose email is sahityanijhawan@gmail.com, or has admin role, or in configured admin list
+    const isAdmin = resolvedEmail.toLowerCase() === 'sahityanijhawan@gmail.com' || (existing?.role === 'admin') || (user.role === 'admin');
 
     const updatedUser: PlatformUser = {
       id: resolvedId,
-      username: rawUsername || existing?.username || (isAdmin ? 'Sahitya Nijhawan' : 'Player'),
+      username: rawUsername || existing?.username || (resolvedWallet ? `${resolvedWallet.slice(0, 6)}...${resolvedWallet.slice(-4)}` : (resolvedEmail ? resolvedEmail.split('@')[0] : 'Player')),
       email: resolvedEmail,
-      avatar: user.avatar || existing?.avatar || (isAdmin ? 'vip' : 'purple'),
-      avatarFrame: user.avatarFrame || existing?.avatarFrame || (isAdmin ? 'pfp_gold_sparkle' : undefined),
+      walletAddress: resolvedWallet,
+      avatar: user.avatar || existing?.avatar || 'orange',
+      avatarFrame: user.avatarFrame || existing?.avatarFrame,
       profilePictureUrl: user.profilePictureUrl || existing?.profilePictureUrl,
-      walletBalance: typeof user.walletBalance === 'number' && user.walletBalance > 0
+      walletBalance: typeof user.walletBalance === 'number'
         ? user.walletBalance
-        : (existing?.walletBalance ?? user.walletBalance ?? (isAdmin ? 270.00 : 0)),
-      coins: typeof user.coins === 'number' && user.coins > 0
+        : (existing?.walletBalance ?? 0),
+      coins: typeof user.coins === 'number'
         ? user.coins
-        : (existing?.coins ?? user.coins ?? (isAdmin ? 3200 : 0)),
-      leaguePoints: typeof user.leaguePoints === 'number' && user.leaguePoints > 0
+        : (existing?.coins ?? 0),
+      leaguePoints: typeof user.leaguePoints === 'number'
         ? user.leaguePoints
-        : (existing?.leaguePoints ?? user.leaguePoints ?? (isAdmin ? 2490 : 0)),
-      leagueTier: user.leagueTier && user.leagueTier !== 'Bronze'
-        ? user.leagueTier
-        : (existing?.leagueTier || (isAdmin ? 'Tycoon' : 'Bronze')),
-      level: user.level && user.level > 1 ? user.level : (existing?.level || (isAdmin ? 14 : 1)),
+        : (existing?.leaguePoints ?? 0),
+      leagueTier: user.leagueTier || existing?.leagueTier || 'Bronze',
+      level: user.level || existing?.level || 1,
       stats: {
-        gamesPlayed: Math.max(user.stats?.gamesPlayed || 0, existing?.stats?.gamesPlayed || (isAdmin ? 184 : 0)),
-        gamesWon: Math.max(user.stats?.gamesWon || 0, existing?.stats?.gamesWon || (isAdmin ? 135 : 0)),
-        winStreak: Math.max(user.stats?.winStreak || 0, existing?.stats?.winStreak || (isAdmin ? 6 : 0)),
-        bestWinStreak: Math.max(user.stats?.bestWinStreak || 0, existing?.stats?.bestWinStreak || (isAdmin ? 9 : 0)),
-        totalEarningsUsd: Math.max(user.stats?.totalEarningsUsd || 0, existing?.stats?.totalEarningsUsd || (isAdmin ? 8450.00 : 0)),
-        totalCoinsEarned: Math.max(user.stats?.totalCoinsEarned || 0, existing?.stats?.totalCoinsEarned || (isAdmin ? 3200 : 0)),
+        gamesPlayed: typeof user.stats?.gamesPlayed === 'number' ? user.stats.gamesPlayed : (existing?.stats?.gamesPlayed || 0),
+        gamesWon: typeof user.stats?.gamesWon === 'number' ? user.stats.gamesWon : (existing?.stats?.gamesWon || 0),
+        winStreak: typeof user.stats?.winStreak === 'number' ? user.stats.winStreak : (existing?.stats?.winStreak || 0),
+        bestWinStreak: typeof user.stats?.bestWinStreak === 'number' ? user.stats.bestWinStreak : (existing?.stats?.bestWinStreak || 0),
+        totalEarningsUsd: typeof user.stats?.totalEarningsUsd === 'number' ? user.stats.totalEarningsUsd : (existing?.stats?.totalEarningsUsd || 0),
+        totalCoinsEarned: typeof user.stats?.totalCoinsEarned === 'number' ? user.stats.totalCoinsEarned : (existing?.stats?.totalCoinsEarned || 0),
       },
       role: isAdmin ? 'admin' : (existing?.role || 'player'),
       isBanned: existing?.isBanned || (Boolean(resolvedEmail) && bannedEmailsSet.has(resolvedEmail.toLowerCase())) || bannedIdsSet.has(resolvedId),
       country: existing?.country || 'United States',
       city: existing?.city || 'San Francisco',
-      joinedDate: existing?.joinedDate || '2026-08-10',
-      title: existing?.title || (isAdmin ? 'Platform Administrator' : 'Diamond High Roller'),
+      joinedDate: existing?.joinedDate || new Date().toISOString().split('T')[0],
+      title: existing?.title || (isAdmin ? 'Platform Administrator' : 'Competitive Player'),
       lastActive: Date.now()
     };
 
-    // Clean up duplicate entries by email, id, or exact admin username in platformUsersMap
+    // Clean up duplicate entries by email, wallet, or id in platformUsersMap
     for (const [key, val] of platformUsersMap.entries()) {
       if (
-        (val.email && val.email.toLowerCase() === resolvedEmail.toLowerCase()) ||
-        (key === resolvedId) ||
-        (isAdmin && (val.email?.toLowerCase() === 'sahityanijhawan@gmail.com' || val.username.toLowerCase() === 'sahitya nijhawan'))
+        (resolvedEmail && val.email && val.email.toLowerCase() === resolvedEmail.toLowerCase()) ||
+        (resolvedWallet && val.walletAddress && val.walletAddress.toLowerCase() === resolvedWallet.toLowerCase()) ||
+        (key === resolvedId)
       ) {
         platformUsersMap.delete(key);
       }
@@ -1108,6 +1068,7 @@ app.post("/api/admin/users/action", (req: Request, res: Response): void => {
 // ==========================================
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true, host: "0.0.0.0", port: PORT },
       appType: "spa",
@@ -1117,7 +1078,11 @@ async function startServer() {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (_req: Request, res: Response) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      res.sendFile(path.join(distPath, "index.html"), (err) => {
+        if (err && !res.headersSent) {
+          res.status(500).send("Error serving application entry point.");
+        }
+      });
     });
   }
 

@@ -1,9 +1,8 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 import {
   DynamicContextProvider,
   useDynamicContext as useDynamicContextOriginal,
 } from '@dynamic-labs/sdk-react-core';
-import { EthereumWalletConnectors } from '@dynamic-labs/ethereum';
 
 interface DynamicConfigContextType {
   environmentId: string | null;
@@ -187,24 +186,6 @@ export const DynamicIntegrationProvider: React.FC<{ children: React.ReactNode }>
     clearEnvironmentId,
   };
 
-  // Safely wrap Ethereum wallet connectors to prevent "t is not a function"
-  const safeWalletConnectors = useMemo(() => {
-    if (typeof EthereumWalletConnectors === 'function') {
-      return [
-        (props: any) => {
-          try {
-            const connectors = EthereumWalletConnectors(props);
-            return Array.isArray(connectors) ? connectors : [];
-          } catch (err) {
-            console.warn('[Dynamic] Safe connector fallback:', err);
-            return [];
-          }
-        },
-      ];
-    }
-    return [];
-  }, []);
-
   const fallbackContent = (
     <DynamicStateContext.Provider
       value={{
@@ -228,7 +209,6 @@ export const DynamicIntegrationProvider: React.FC<{ children: React.ReactNode }>
         <DynamicContextProvider
           settings={{
             environmentId: activeEnvironmentId,
-            walletConnectors: safeWalletConnectors,
             appName: 'PropRush Monopoly',
             initialAuthenticationMode: 'connect-and-sign',
           }}

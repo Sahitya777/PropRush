@@ -4,6 +4,7 @@ import { BADGES_LIST, LEAGUE_TIERS_INFO } from '../data/storeData';
 import { sounds } from '../utils/audio';
 import { syncUserProfileToServer } from '../utils/serverUsersSync';
 import { isUserBanned } from '../utils/banManager';
+import { isUserAdmin } from '../utils/adminRegistry';
 
 interface UserContextType {
   user: UserProfile;
@@ -78,43 +79,39 @@ const getTabSessionId = (): string => {
 };
 
 const DEFAULT_USER: UserProfile = {
-  id: 'usr_sahi_super',
-  username: 'Sahitya Nijhawan',
-  email: 'sahityanijhawan@gmail.com',
-  avatar: 'vip',
-  avatarFrame: 'pfp_gold_sparkle',
+  id: 'usr_guest',
+  username: 'Guest Player',
+  email: '',
+  avatar: 'orange',
+  avatarFrame: undefined,
   diceSkin: 'dice_classic',
   mapSkin: 'classic',
-  title: 'Platform Administrator',
-  coins: 3200,
-  walletBalance: 270.00,
-  leaguePoints: 2490,
-  leagueTier: 'Tycoon',
-  level: 14,
-  xp: 450,
-  maxXp: 1000,
+  title: 'Guest Tycoon',
+  coins: 0,
+  walletBalance: 0.00,
+  leaguePoints: 0,
+  leagueTier: 'Bronze',
+  level: 1,
+  xp: 0,
+  maxXp: 500,
   inventory: {
-    appearances: ['orange', 'vip', 'gold', 'cyber'],
-    maps: ['classic', 'neon_tokyo', 'worldwide'],
-    profilePictures: ['pfp_gold_sparkle'],
-    diceSkins: ['dice_classic', 'dice_gold']
+    appearances: ['orange'],
+    maps: ['classic'],
+    profilePictures: [],
+    diceSkins: ['dice_classic']
   },
   stats: {
-    gamesPlayed: 184,
-    gamesWon: 135,
-    winStreak: 6,
-    bestWinStreak: 9,
-    totalEarningsUsd: 8450.00,
-    totalCoinsEarned: 3200,
-    monopoliesBuilt: 58,
-    bankruptciesCaused: 82,
-    rentCollectedTotal: 49200
+    gamesPlayed: 0,
+    gamesWon: 0,
+    winStreak: 0,
+    bestWinStreak: 0,
+    totalEarningsUsd: 0.00,
+    totalCoinsEarned: 0,
+    monopoliesBuilt: 0,
+    bankruptciesCaused: 0,
+    rentCollectedTotal: 0
   },
-  badges: [
-    { id: 'b_super_admin', name: 'Platform Admin', description: 'Platform creator & administrator', icon: '👑', rarity: 'legendary', unlockedAt: '2026-08-10' },
-    { id: 'b_tycoon_league', name: 'Tycoon League', description: 'Reached Tycoon Tier (2,300+ LP)', icon: '🏆', rarity: 'legendary', unlockedAt: '2026-08-15' },
-    { id: 'b_high_roller', name: 'High Roller', description: 'Won $5,000+ in competitive matches', icon: '💎', rarity: 'epic', unlockedAt: '2026-08-18' }
-  ],
+  badges: [],
   matchHistory: []
 };
 
@@ -137,39 +134,48 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile>(() => {
-    // Check clean version flag to reset legacy mock profiles (which had $50 balance and 450 coins)
-    const cleanFlag = localStorage.getItem('proprush_clean_account_v1');
+    // Check clean version flag to reset legacy mock profiles
+    const cleanFlag = localStorage.getItem('proprush_real_dynamic_v3');
     if (!cleanFlag) {
       localStorage.removeItem('proprush_user_profile');
       localStorage.removeItem('richup_user_profile');
-      localStorage.setItem('proprush_clean_account_v1', 'true');
-      return DEFAULT_USER;
+      localStorage.removeItem('proprush_clean_account_v1');
+      localStorage.removeItem('proprush_dynamic_auth');
+      localStorage.removeItem('proprush_clerk_auth');
+      localStorage.setItem('proprush_real_dynamic_v3', 'true');
+      return { ...DEFAULT_USER, id: getTabSessionId() };
+    }
+
+    const isDynamicAuth = localStorage.getItem('proprush_dynamic_auth') === 'true';
+    if (!isDynamicAuth) {
+      return { ...DEFAULT_USER, id: getTabSessionId() };
     }
 
     const saved = localStorage.getItem('proprush_user_profile');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return {
-          ...DEFAULT_USER,
-          ...parsed,
-          id: getTabSessionId(),
-          inventory: {
-            appearances: parsed.inventory?.appearances || ['orange'],
-            maps: parsed.inventory?.maps || ['classic'],
-            profilePictures: parsed.inventory?.profilePictures || [],
-            diceSkins: parsed.inventory?.diceSkins || ['dice_classic']
-          }
-        };
+        if (parsed.dynamicUserId || parsed.walletAddress) {
+          return {
+            ...DEFAULT_USER,
+            ...parsed,
+            inventory: {
+              appearances: parsed.inventory?.appearances || ['orange'],
+              maps: parsed.inventory?.maps || ['classic'],
+              profilePictures: parsed.inventory?.profilePictures || [],
+              diceSkins: parsed.inventory?.diceSkins || ['dice_classic']
+            }
+          };
+        }
       } catch (e) {
         console.error('Error loading saved profile', e);
       }
     }
-    return DEFAULT_USER;
+    return { ...DEFAULT_USER, id: getTabSessionId() };
   });
 
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
-    return localStorage.getItem('proprush_dynamic_auth') === 'true' || localStorage.getItem('proprush_clerk_auth') === 'true';
+    return localStorage.getItem('proprush_dynamic_auth') === 'true';
   });
 
   // Track real-time ban status
@@ -241,42 +247,27 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    const isGroovy = userEmail.toLowerCase() === 'sahityagroovy@gmail.com';
-    const isSuperAdmin = userEmail.toLowerCase() === 'sahityanijhawan@gmail.com';
+    const isAdmin = isUserAdmin(userEmail) || userEmail.toLowerCase() === 'sahityanijhawan@gmail.com';
 
     const freshUser: UserProfile = {
       ...DEFAULT_USER,
-      id: isGroovy ? 'usr_player_sahitya' : (isSuperAdmin ? 'usr_sahi_super' : ('usr_' + Math.random().toString(36).substring(2, 9))),
+      id: 'usr_' + Math.random().toString(36).substring(2, 9),
       email: userEmail,
       username: userName,
-      avatar: avatar || (isGroovy ? 'purple' : 'orange'),
-      walletBalance: isGroovy ? 1906.02 : (isSuperAdmin ? 270.00 : (user.walletBalance > 0 ? user.walletBalance : 0.00)),
-      coins: isGroovy ? 1598 : (user.coins > 0 ? user.coins : 0),
-      leaguePoints: isGroovy ? 1850 : (isSuperAdmin ? 2490 : 0),
-      leagueTier: isGroovy ? 'Diamond' : (isSuperAdmin ? 'Tycoon' : 'Bronze'),
-      level: isGroovy ? 9 : (isSuperAdmin ? 14 : 1),
-      inventory: isSuperAdmin ? DEFAULT_USER.inventory : isGroovy ? {
-        appearances: ['orange', 'purple', 'cyber', 'gold', 'neon'],
-        maps: ['classic', 'neon_tokyo', 'cyberpunk'],
-        profilePictures: ['pfp_neon_frame'],
-        diceSkins: ['dice_classic', 'dice_neon']
-      } : {
+      avatar: avatar || 'orange',
+      walletBalance: user.walletBalance > 0 ? user.walletBalance : 0.00,
+      coins: user.coins > 0 ? user.coins : 0,
+      leaguePoints: user.leaguePoints || 0,
+      leagueTier: 'Bronze',
+      level: 1,
+      title: isAdmin ? 'Platform Administrator' : 'Player',
+      inventory: {
         appearances: ['orange'],
         maps: ['classic'],
         profilePictures: [],
         diceSkins: ['dice_classic']
       },
-      stats: isSuperAdmin ? DEFAULT_USER.stats : isGroovy ? {
-        gamesPlayed: 45,
-        gamesWon: 31,
-        winStreak: 4,
-        bestWinStreak: 7,
-        totalEarningsUsd: 2950.00,
-        totalCoinsEarned: 1598,
-        monopoliesBuilt: 12,
-        bankruptciesCaused: 19,
-        rentCollectedTotal: 18450
-      } : {
+      stats: {
         gamesPlayed: 0,
         gamesWon: 0,
         winStreak: 0,
@@ -287,7 +278,7 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         bankruptciesCaused: 0,
         rentCollectedTotal: 0
       },
-      badges: isSuperAdmin ? DEFAULT_USER.badges : (isGroovy ? GROOVY_BADGES : []),
+      badges: isAdmin ? [{ id: 'b_admin', name: 'Platform Admin', description: 'Platform Administrator', icon: '👑', rarity: 'legendary', unlockedAt: new Date().toISOString().split('T')[0] }] : [],
       matchHistory: []
     };
 
@@ -323,95 +314,69 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoggedIn(true);
     localStorage.setItem('proprush_dynamic_auth', 'true');
     setUser(prev => {
-      const email = dynamicData.email || prev.email;
-      const walletAddress = dynamicData.walletAddress || prev.walletAddress;
-      const username = dynamicData.username || (walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : (email ? email.split('@')[0] : prev.username || 'Web3 Tycoon'));
+      const email = dynamicData.email || prev.email || '';
+      const walletAddress = dynamicData.walletAddress || prev.walletAddress || '';
+      const username = dynamicData.username || (walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : (email ? email.split('@')[0] : 'Player'));
       
-      const storageKey = `proprush_user_${dynamicData.id}`;
+      const storageKey = `proprush_dynamic_${dynamicData.id}`;
+      let savedUser: Partial<UserProfile> = {};
       const savedUserStr = localStorage.getItem(storageKey);
       if (savedUserStr) {
         try {
-          const parsed = JSON.parse(savedUserStr);
-          return {
-            ...DEFAULT_USER,
-            ...parsed,
-            id: dynamicData.id,
-            dynamicUserId: dynamicData.id,
-            walletAddress: walletAddress || parsed.walletAddress,
-            chain: dynamicData.chain || parsed.chain || 'ETH',
-            email: email || parsed.email,
-            username: username || parsed.username,
-            profilePictureUrl: dynamicData.imageUrl || parsed.profilePictureUrl
-          };
+          savedUser = JSON.parse(savedUserStr);
         } catch (e) {
           console.error('Error parsing stored user data for dynamic user', e);
         }
       }
 
-      // Check if user has data stored under email or wallet address
-      const emailStorageKey = email ? `proprush_user_${email.toLowerCase()}` : null;
-      const savedByEmailStr = emailStorageKey ? localStorage.getItem(emailStorageKey) : null;
-      if (savedByEmailStr) {
-        try {
-          const parsed = JSON.parse(savedByEmailStr);
-          return {
-            ...DEFAULT_USER,
-            ...parsed,
-            id: dynamicData.id,
-            dynamicUserId: dynamicData.id,
-            walletAddress: walletAddress || parsed.walletAddress,
-            chain: dynamicData.chain || parsed.chain || 'ETH',
-            email,
-            username: username || parsed.username,
-            profilePictureUrl: dynamicData.imageUrl || parsed.profilePictureUrl
-          };
-        } catch (e) {
-          console.error('Error parsing stored user data by email for dynamic user', e);
-        }
-      }
+      const isAdmin = (email && email.toLowerCase() === 'sahityanijhawan@gmail.com') || isUserAdmin(email || walletAddress);
 
-      const isGroovy = email && email.toLowerCase() === 'sahityagroovy@gmail.com';
-      const isSuperAdmin = (email && email.toLowerCase() === 'sahityanijhawan@gmail.com');
-
-      // Fresh user state for Dynamic accounts
-      const freshUser: UserProfile = {
+      // Real user state - starting from 0 unless real matches were recorded
+      const realUser: UserProfile = {
         ...DEFAULT_USER,
-        ...prev,
+        ...savedUser,
         id: dynamicData.id,
         dynamicUserId: dynamicData.id,
         walletAddress,
         chain: dynamicData.chain || 'ETH',
         email,
-        username,
-        profilePictureUrl: dynamicData.imageUrl || prev.profilePictureUrl,
-        walletBalance: isGroovy ? 1906.02 : (isSuperAdmin ? 270.00 : (prev.walletBalance > 0 ? prev.walletBalance : 100.00)),
-        coins: isGroovy ? 1598 : (prev.coins > 0 ? prev.coins : 50),
-        leaguePoints: isGroovy ? 1850 : (isSuperAdmin ? 2490 : (prev.leaguePoints || 150)),
-        leagueTier: isGroovy ? 'Diamond' : (isSuperAdmin ? 'Tycoon' : (prev.leagueTier || 'Bronze')),
-        level: isGroovy ? 9 : (isSuperAdmin ? 14 : (prev.level || 1)),
-        inventory: isSuperAdmin ? DEFAULT_USER.inventory : (isGroovy ? {
-          appearances: ['orange', 'purple', 'cyber', 'gold', 'neon'],
-          maps: ['classic', 'neon_tokyo', 'cyberpunk'],
-          profilePictures: ['pfp_neon_frame'],
-          diceSkins: ['dice_classic', 'dice_neon']
-        } : (prev.inventory || DEFAULT_USER.inventory)),
-        stats: isSuperAdmin ? DEFAULT_USER.stats : (isGroovy ? {
-          gamesPlayed: 45,
-          gamesWon: 31,
-          winStreak: 4,
-          bestWinStreak: 7,
-          totalEarningsUsd: 2950.00,
-          totalCoinsEarned: 1598,
-          monopoliesBuilt: 12,
-          bankruptciesCaused: 19,
-          rentCollectedTotal: 18450
-        } : (prev.stats || DEFAULT_USER.stats)),
-        badges: isSuperAdmin ? DEFAULT_USER.badges : (isGroovy ? GROOVY_BADGES : (prev.badges || [])),
-        matchHistory: prev.matchHistory || []
+        username: savedUser.username || username,
+        profilePictureUrl: dynamicData.imageUrl || savedUser.profilePictureUrl || prev.profilePictureUrl,
+        title: isAdmin ? 'Platform Administrator' : (savedUser.title || 'Dynamic Player'),
+        walletBalance: typeof savedUser.walletBalance === 'number' ? savedUser.walletBalance : 0.00,
+        coins: typeof savedUser.coins === 'number' ? savedUser.coins : 0,
+        leaguePoints: typeof savedUser.leaguePoints === 'number' ? savedUser.leaguePoints : 0,
+        leagueTier: savedUser.leagueTier || 'Bronze',
+        level: savedUser.level || 1,
+        xp: savedUser.xp || 0,
+        inventory: savedUser.inventory || {
+          appearances: ['orange'],
+          maps: ['classic'],
+          profilePictures: [],
+          diceSkins: ['dice_classic']
+        },
+        stats: savedUser.stats || {
+          gamesPlayed: 0,
+          gamesWon: 0,
+          winStreak: 0,
+          bestWinStreak: 0,
+          totalEarningsUsd: 0.00,
+          totalCoinsEarned: 0,
+          monopoliesBuilt: 0,
+          bankruptciesCaused: 0,
+          rentCollectedTotal: 0
+        },
+        badges: savedUser.badges || (isAdmin ? [{ id: 'b_admin', name: 'Platform Admin', description: 'Verified administrator', icon: '👑', rarity: 'legendary', unlockedAt: new Date().toISOString().split('T')[0] }] : []),
+        matchHistory: savedUser.matchHistory || []
       };
 
-      localStorage.setItem(storageKey, JSON.stringify(freshUser));
-      return freshUser;
+      localStorage.setItem(storageKey, JSON.stringify(realUser));
+      localStorage.setItem('proprush_user_profile', JSON.stringify(realUser));
+
+      // Synchronize real profile to server
+      syncUserProfileToServer(realUser);
+
+      return realUser;
     });
   };
 
@@ -467,10 +432,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      const isGroovy = email && email.toLowerCase() === 'sahityagroovy@gmail.com';
-      const isSuperAdmin = email && email.toLowerCase() === 'sahityanijhawan@gmail.com';
+      const isAdmin = (email && email.toLowerCase() === 'sahityanijhawan@gmail.com') || isUserAdmin(email || '');
 
-      // Fresh user state for new Clerk accounts
+      // Fresh user state for new accounts
       const freshUser: UserProfile = {
         ...DEFAULT_USER,
         ...prev,
@@ -479,29 +443,30 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email,
         username,
         profilePictureUrl: clerkData.imageUrl || prev.profilePictureUrl,
-        walletBalance: isGroovy ? 1906.02 : (isSuperAdmin ? 270.00 : (prev.walletBalance > 0 ? prev.walletBalance : 0.00)),
-        coins: isGroovy ? 1598 : (prev.coins > 0 ? prev.coins : 0),
-        leaguePoints: isGroovy ? 1850 : (isSuperAdmin ? 2490 : (prev.leaguePoints || 0)),
-        leagueTier: isGroovy ? 'Diamond' : (isSuperAdmin ? 'Tycoon' : (prev.leagueTier || 'Bronze')),
-        level: isGroovy ? 9 : (isSuperAdmin ? 14 : (prev.level || 1)),
-        inventory: isSuperAdmin ? DEFAULT_USER.inventory : (isGroovy ? {
-          appearances: ['orange', 'purple', 'cyber', 'gold', 'neon'],
-          maps: ['classic', 'neon_tokyo', 'cyberpunk'],
-          profilePictures: ['pfp_neon_frame'],
-          diceSkins: ['dice_classic', 'dice_neon']
-        } : (prev.inventory || DEFAULT_USER.inventory)),
-        stats: isSuperAdmin ? DEFAULT_USER.stats : (isGroovy ? {
-          gamesPlayed: 45,
-          gamesWon: 31,
-          winStreak: 4,
-          bestWinStreak: 7,
-          totalEarningsUsd: 2950.00,
-          totalCoinsEarned: 1598,
-          monopoliesBuilt: 12,
-          bankruptciesCaused: 19,
-          rentCollectedTotal: 18450
-        } : (prev.stats || DEFAULT_USER.stats)),
-        badges: isSuperAdmin ? DEFAULT_USER.badges : (isGroovy ? GROOVY_BADGES : (prev.badges || [])),
+        title: isAdmin ? 'Platform Administrator' : 'Player',
+        walletBalance: prev.walletBalance > 0 ? prev.walletBalance : 0.00,
+        coins: prev.coins > 0 ? prev.coins : 0,
+        leaguePoints: prev.leaguePoints || 0,
+        leagueTier: 'Bronze',
+        level: 1,
+        inventory: {
+          appearances: ['orange'],
+          maps: ['classic'],
+          profilePictures: [],
+          diceSkins: ['dice_classic']
+        },
+        stats: {
+          gamesPlayed: 0,
+          gamesWon: 0,
+          winStreak: 0,
+          bestWinStreak: 0,
+          totalEarningsUsd: 0.00,
+          totalCoinsEarned: 0,
+          monopoliesBuilt: 0,
+          bankruptciesCaused: 0,
+          rentCollectedTotal: 0
+        },
+        badges: isAdmin ? [{ id: 'b_admin', name: 'Platform Admin', description: 'Platform Administrator', icon: '👑', rarity: 'legendary', unlockedAt: new Date().toISOString().split('T')[0] }] : [],
         matchHistory: prev.matchHistory || []
       };
 
@@ -533,32 +498,34 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   useEffect(() => {
-    // Immediate sync on mount and on window focus
-    syncUserProfileToServer(user);
-    const handleFocus = () => {
+    // Only sync to server if user is authenticated via Dynamic
+    if (isLoggedIn && (user.dynamicUserId || user.walletAddress)) {
       syncUserProfileToServer(user);
+    }
+    const handleFocus = () => {
+      if (isLoggedIn && (user.dynamicUserId || user.walletAddress)) {
+        syncUserProfileToServer(user);
+      }
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, []);
+  }, [isLoggedIn, user.dynamicUserId, user.walletAddress]);
 
   useEffect(() => {
-    localStorage.setItem('proprush_user_profile', JSON.stringify(user));
-    if (user.dynamicUserId) {
-      localStorage.setItem(`proprush_user_${user.dynamicUserId}`, JSON.stringify(user));
-    } else if (user.walletAddress) {
-      localStorage.setItem(`proprush_user_${user.walletAddress.toLowerCase()}`, JSON.stringify(user));
-    } else if (user.clerkUserId) {
-      localStorage.setItem(`proprush_user_${user.clerkUserId}`, JSON.stringify(user));
-    } else if (user.email) {
-      localStorage.setItem(`proprush_user_${user.email.toLowerCase()}`, JSON.stringify(user));
-    }
+    if (isLoggedIn && (user.dynamicUserId || user.walletAddress)) {
+      localStorage.setItem('proprush_user_profile', JSON.stringify(user));
+      if (user.dynamicUserId) {
+        localStorage.setItem(`proprush_dynamic_${user.dynamicUserId}`, JSON.stringify(user));
+      } else if (user.walletAddress) {
+        localStorage.setItem(`proprush_dynamic_${user.walletAddress.toLowerCase()}`, JSON.stringify(user));
+      }
 
-    const timer = setTimeout(() => {
-      syncUserProfileToServer(user);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [user]);
+      const timer = setTimeout(() => {
+        syncUserProfileToServer(user);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [user, isLoggedIn]);
 
   const updateUser = (updates: Partial<UserProfile>) => {
     setUser(prev => ({ ...prev, ...updates }));

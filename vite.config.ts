@@ -31,9 +31,6 @@ export default defineConfig(() => {
       rollupOptions: {
         output: {
           manualChunks(id) {
-            if (id.includes('node_modules/@walletconnect') || id.includes('node_modules/@reown') || id.includes('node_modules/ox')) {
-              return 'walletconnect-vendor';
-            }
             if (id.includes('node_modules/@dynamic-labs')) {
               return 'dynamic-vendor';
             }
@@ -42,6 +39,9 @@ export default defineConfig(() => {
             }
             if (id.includes('node_modules/recharts')) {
               return 'charts-vendor';
+            }
+            if (id.includes('node_modules/lucide-react')) {
+              return 'icons-vendor';
             }
           },
         },

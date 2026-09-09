@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useUser } from '../context/UserContext';
+import { useSafeDynamic } from '../context/DynamicIntegration';
 import { LeagueTier } from '../types/user';
 import { useTheme } from '../context/ThemeContext';
 import { AvatarCharacter } from '../components/AvatarCharacter';
@@ -139,8 +140,21 @@ const LEAGUES_TIERS_INFO = [
 ];
 
 export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ onNavigateHome }) => {
-  const { user } = useUser();
+  const { user, isLoggedIn } = useUser();
   const { isLight } = useTheme();
+  const { isLoaded: isDynamicLoaded, isAuthenticated: isDynamicSignedIn, user: dynamicUser, primaryWallet } = useSafeDynamic();
+
+  const isRealDynamicPlayer = Boolean(
+    (isDynamicLoaded && isDynamicSignedIn) || 
+    isLoggedIn || 
+    user.dynamicUserId || 
+    user.walletAddress
+  );
+
+  const currentDisplayName = (isDynamicSignedIn && (dynamicUser?.username || dynamicUser?.firstName)) ||
+    (primaryWallet?.address ? `${primaryWallet.address.slice(0, 6)}...${primaryWallet.address.slice(-4)}` : (user.username && user.username !== 'Guest Player' ? user.username : 'Player'));
+
+  const currentDisplayEmail = (isDynamicSignedIn && (dynamicUser?.email || (dynamicUser?.verifiedCredentials as any[])?.find(c => c.format === 'email')?.email)) || user.email || '';
 
   const [activeTab, setActiveTab] = useState<'leaderboard' | 'leagues' | 'tournament'>('leaderboard');
   const [timeframe, setTimeframe] = useState<'season' | 'weekly' | 'all_time'>('season');
@@ -193,47 +207,54 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
 
   // Compute live user stats for the leaderboard
   const userWinRate = user.stats.gamesPlayed > 0 
-    ? Number(((user.stats.gamesWon / user.stats.gamesPlayed) * 100).toFixed(1))
+    ? Number(((user.stats.gamesWon / user.stats.gamesPlayed) * 100).toFixed(1)) 
     : 0;
 
   const currentUserPlayerObj: LeaderboardPlayer = useMemo(() => {
-    const weeklyWins = Math.max(0, Math.min(user.stats.gamesWon, Math.round(user.stats.gamesWon * 0.22) || (user.stats.gamesWon > 0 ? 1 : 0)));
-    const weeklyGamesPlayed = Math.max(weeklyWins, Math.min(user.stats.gamesPlayed, Math.round(user.stats.gamesPlayed * 0.22) || (user.stats.gamesPlayed > 0 ? 1 : 0)));
+    const gamesPlayed = user.stats?.gamesPlayed || 0;
+    const gamesWon = user.stats?.gamesWon || 0;
+    const winStreak = user.stats?.winStreak || 0;
+    const bestWinStreak = user.stats?.bestWinStreak || winStreak;
+    const totalEarningsUsd = user.stats?.totalEarningsUsd || 0;
+    const leaguePoints = user.leaguePoints || 0;
+
+    const weeklyWins = Math.max(0, Math.min(gamesWon, Math.round(gamesWon * 0.22) || (gamesWon > 0 ? 1 : 0)));
+    const weeklyGamesPlayed = Math.max(weeklyWins, Math.min(gamesPlayed, Math.round(gamesPlayed * 0.22) || (gamesPlayed > 0 ? 1 : 0)));
     const weeklyWinRate = weeklyGamesPlayed > 0 
       ? Number(((weeklyWins / weeklyGamesPlayed) * 100).toFixed(1)) 
       : 0;
-    const weeklyEarningsUsd = Number((user.stats.totalEarningsUsd * 0.20).toFixed(2));
-    const weeklyStreak = Math.min(user.stats.winStreak, weeklyWins);
-    const weeklyPoints = Math.round(weeklyWins * 45 + weeklyStreak * 15 + (user.leaguePoints * 0.08));
+    const weeklyEarningsUsd = Number((totalEarningsUsd * 0.20).toFixed(2));
+    const weeklyStreak = Math.min(winStreak, weeklyWins);
+    const weeklyPoints = Math.round(weeklyWins * 45 + weeklyStreak * 15 + (leaguePoints * 0.08));
 
-    const allTimeEarningsUsd = user.stats.totalEarningsUsd || 0;
-    const allTimeWins = user.stats.gamesWon || 0;
-    const allTimeGamesPlayed = user.stats.gamesPlayed || 0;
+    const allTimeEarningsUsd = totalEarningsUsd;
+    const allTimeWins = gamesWon;
+    const allTimeGamesPlayed = gamesPlayed;
     const allTimeWinRate = allTimeGamesPlayed > 0 
       ? Number(((allTimeWins / allTimeGamesPlayed) * 100).toFixed(1)) 
       : userWinRate;
-    const allTimeBestStreak = user.stats.bestWinStreak || user.stats.winStreak || 0;
-    const allTimeCoins = user.stats.totalCoinsEarned || user.coins || 0;
+    const allTimeBestStreak = bestWinStreak;
+    const allTimeCoins = user.stats?.totalCoinsEarned || user.coins || 0;
 
     return {
       rank: 0,
-      id: user.id || 'usr_sahi_super',
-      name: user.username || 'Sahitya Nijhawan',
-      email: user.email || 'sahityanijhawan@gmail.com',
-      avatar: user.avatar || 'vip',
-      frame: user.avatarFrame || 'pfp_gold_sparkle',
-      tier: user.leagueTier || 'Tycoon',
-      lp: user.leaguePoints || 2490,
-      earningsUsd: user.stats.totalEarningsUsd || 8450.00,
-      wins: user.stats.gamesWon || 135,
-      gamesPlayed: user.stats.gamesPlayed || 184,
-      winRate: userWinRate || 73.4,
-      winStreak: user.stats.winStreak || 6,
+      id: user.dynamicUserId || user.id || 'usr_player',
+      name: currentDisplayName,
+      email: currentDisplayEmail,
+      avatar: user.avatar || 'orange',
+      frame: user.avatarFrame,
+      tier: user.leagueTier || 'Bronze',
+      lp: leaguePoints,
+      earningsUsd: totalEarningsUsd,
+      wins: gamesWon,
+      gamesPlayed,
+      winRate: userWinRate,
+      winStreak,
       favoriteMap: user.mapSkin === 'cyber' ? 'Cyber Neon Metropolis' : user.mapSkin === 'worldwide' ? 'Worldwide Grand Tour' : 'Classic RichUp Grid',
-      title: user.title || 'Platform Administrator',
+      title: user.title || 'Dynamic Player',
       country: 'United States',
       city: 'San Francisco',
-      joinedDate: '2026-08-10',
+      joinedDate: new Date().toISOString().split('T')[0],
       isCurrentUser: true,
       weeklyPoints,
       weeklyEarningsUsd,
@@ -249,7 +270,7 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
       allTimeBestStreak,
       allTimeCoins
     };
-  }, [user, userWinRate]);
+  }, [user, userWinRate, currentDisplayName, currentDisplayEmail]);
 
   // Merge current user with live platform rankings & sort dynamically by timeframe
   const fullLeaderboard: LeaderboardPlayer[] = useMemo(() => {
@@ -349,40 +370,45 @@ export const RankingsLeaguesView: React.FC<{ onNavigateHome: () => void }> = ({ 
       sourceList.push(item);
     }
 
-    const currentEmail = (user.email || '').toLowerCase().trim();
-    const currentName = (user.username || '').toLowerCase().trim();
+    // Match current user strictly only if authenticated via Dynamic
+    let existingIndex = -1;
+    if (isRealDynamicPlayer) {
+      existingIndex = sourceList.findIndex(p => 
+        (p.id && user.id && p.id === user.id) ||
+        (p.id && user.dynamicUserId && p.id === user.dynamicUserId) ||
+        (p.email && currentDisplayEmail && p.email.toLowerCase() === currentDisplayEmail.toLowerCase()) ||
+        (p.name.toLowerCase() === currentDisplayName.toLowerCase())
+      );
 
-    // Match current user strictly
-    let existingIndex = sourceList.findIndex(p => 
-      (p.id && user.id && p.id === user.id) ||
-      (p.email && currentEmail && p.email.toLowerCase() === currentEmail) ||
-      (p.name.toLowerCase() === currentName)
-    );
+      if (existingIndex >= 0) {
+        sourceList[existingIndex] = {
+          ...sourceList[existingIndex],
+          id: user.dynamicUserId || user.id || sourceList[existingIndex].id,
+          name: currentDisplayName || sourceList[existingIndex].name,
+          email: currentDisplayEmail || sourceList[existingIndex].email,
+          avatar: user.avatar || sourceList[existingIndex].avatar,
+          frame: user.avatarFrame ?? sourceList[existingIndex].frame,
+          lp: user.leaguePoints || sourceList[existingIndex].lp,
+          earningsUsd: user.stats.totalEarningsUsd || sourceList[existingIndex].earningsUsd,
+          wins: user.stats.gamesWon || sourceList[existingIndex].wins,
+          gamesPlayed: user.stats.gamesPlayed || sourceList[existingIndex].gamesPlayed,
+          winStreak: user.stats.winStreak || sourceList[existingIndex].winStreak,
+          winRate: user.stats.gamesPlayed > 0 ? userWinRate : sourceList[existingIndex].winRate,
+          isCurrentUser: true
+        };
+      } else {
+        sourceList.push(currentUserPlayerObj);
+        existingIndex = sourceList.length - 1;
+      }
 
-    if (existingIndex >= 0) {
-      sourceList[existingIndex] = {
-        ...sourceList[existingIndex],
-        id: user.id || sourceList[existingIndex].id,
-        name: user.username || sourceList[existingIndex].name,
-        email: user.email || sourceList[existingIndex].email,
-        avatar: user.avatar || sourceList[existingIndex].avatar,
-        frame: user.avatarFrame ?? sourceList[existingIndex].frame,
-        lp: Math.max(sourceList[existingIndex].lp, user.leaguePoints || 0),
-        earningsUsd: Math.max(sourceList[existingIndex].earningsUsd, user.stats.totalEarningsUsd || 0),
-        wins: Math.max(sourceList[existingIndex].wins, user.stats.gamesWon || 0),
-        gamesPlayed: Math.max(sourceList[existingIndex].gamesPlayed, user.stats.gamesPlayed || 0),
-        winStreak: Math.max(sourceList[existingIndex].winStreak, user.stats.winStreak || 0),
-        winRate: user.stats.gamesPlayed > 0 ? userWinRate : sourceList[existingIndex].winRate,
-        isCurrentUser: true
-      };
+      // Strict guarantee: Exactly ONE element in sourceList has isCurrentUser = true
+      for (let i = 0; i < sourceList.length; i++) {
+        sourceList[i].isCurrentUser = (i === existingIndex);
+      }
     } else {
-      sourceList.push(currentUserPlayerObj);
-      existingIndex = sourceList.length - 1;
-    }
-
-    // Strict guarantee: Exactly ONE element in sourceList has isCurrentUser = true
-    for (let i = 0; i < sourceList.length; i++) {
-      sourceList[i].isCurrentUser = (i === existingIndex);
+      for (let i = 0; i < sourceList.length; i++) {
+        sourceList[i].isCurrentUser = false;
+      }
     }
 
     // Sort strictly by timeframe

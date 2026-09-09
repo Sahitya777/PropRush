@@ -4,6 +4,7 @@ export interface PlatformMember {
   id: string;
   name: string;
   email: string;
+  walletAddress?: string;
   avatar: string;
   frame?: string;
   profilePictureUrl?: string;
@@ -41,6 +42,7 @@ export interface AdminUserRecord {
   id: string;
   username: string;
   email: string;
+  walletAddress?: string;
   avatar: string;
   avatarFrame?: string;
   profilePictureUrl?: string;

@@ -56,11 +56,17 @@ export interface AdminCommandCenterViewProps {
 export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ onNavigateHome }) => {
   const { user } = useUser();
   const { isLight } = useTheme();
-  const { isLoaded: isDynamicLoaded, isAuthenticated: isDynamicSignedIn, user: dynamicUser } = useSafeDynamic();
+  const { isLoaded: isDynamicLoaded, isAuthenticated: isDynamicSignedIn, user: dynamicUser, primaryWallet } = useSafeDynamic();
 
-  const effectiveEmail = (isDynamicSignedIn && (dynamicUser?.email || dynamicUser?.verifiedCredentials?.find((c: any) => c.format === 'email')?.email)) || user.email || 'sahityanijhawan@gmail.com';
-  const effectiveUsername = (isDynamicSignedIn && (dynamicUser?.username || dynamicUser?.firstName)) || user.username || 'Sahitya Nijhawan';
-  const isAuthorized = isUserAdmin(effectiveEmail) || effectiveEmail.toLowerCase().includes('sahityanijhawan@gmail.com');
+  const dynamicEmail = dynamicUser?.email || (dynamicUser?.verifiedCredentials as any[])?.find(c => c.format === 'email')?.email;
+  const effectiveEmail = dynamicEmail || user.email || '';
+  const effectiveUsername = (isDynamicSignedIn && (dynamicUser?.username || dynamicUser?.firstName)) ||
+    (primaryWallet?.address ? `${primaryWallet.address.slice(0, 6)}...${primaryWallet.address.slice(-4)}` : (user.username && user.username !== 'Guest Player' ? user.username : ''));
+  
+  const isAuthorized = isUserAdmin(effectiveEmail) || 
+    isUserAdmin(primaryWallet?.address || '') || 
+    isUserAdmin(user.walletAddress || '') ||
+    (effectiveEmail && effectiveEmail.toLowerCase() === 'sahityanijhawan@gmail.com');
 
   const [activeTab, setActiveTab] = useState<'overview' | 'matches' | 'users' | 'admins'>('overview');
   const [adminList, setAdminList] = useState<string[]>(getAdminEmails);
@@ -191,97 +197,81 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
   const totalGrossVolume = activeEscrowPot + concludedGrossVolume;
   const totalPlatformRake = Number((totalGrossVolume * 0.05).toFixed(2));
 
-  // Build real user accounts list using verified platform people
+  // Build real user accounts list using verified Dynamic players
   const usersList: ManagedUser[] = useMemo(() => {
-    const currentIsAdmin = isUserAdmin(effectiveEmail) || effectiveEmail.toLowerCase().includes('sahityanijhawan@gmail.com');
-    const userWinRate = user.stats.gamesPlayed > 0 
-      ? Number(((user.stats.gamesWon / user.stats.gamesPlayed) * 100).toFixed(0))
-      : 0;
+    const isRealDynamicPlayer = Boolean(
+      (isDynamicLoaded && isDynamicSignedIn) || 
+      user.dynamicUserId || 
+      user.walletAddress
+    );
 
     const list: ManagedUser[] = [];
 
-    // Current active session user
-    const currentSessionUser: ManagedUser = {
-      id: user.id || 'usr_current',
-      username: effectiveUsername || user.username || 'Sahitya Nijhawan',
-      email: effectiveEmail || 'sahityanijhawan@gmail.com',
-      walletBalance: user.walletBalance,
-      coins: user.coins,
-      gamesPlayed: user.stats.gamesPlayed,
-      winRate: userWinRate,
-      isBanned: isUserBanned(effectiveEmail, user.id) || bannedUserIds.includes(user.id || 'usr_current'),
-      role: currentIsAdmin ? 'admin' : 'player',
-      joinedDate: 'Active Session',
-      country: 'United States',
-      city: 'San Francisco'
-    };
-
-    list.push(currentSessionUser);
-
-    // Merge server users
+    // Add server users first (these are real Dynamic users registered in server registry)
     if (serverUsers.length > 0) {
-      serverUsers.forEach(rawSu => {
-        const cleanEmail = (rawSu.email || '').trim();
-        const normalizedEmail = (cleanEmail.endsWith('@proprush.player') && rawSu.username.toLowerCase() === 'sahitya')
-          ? 'sahityagroovy@gmail.com'
-          : cleanEmail;
-        
-        const su: AdminUserRecord = {
-          ...rawSu,
-          email: normalizedEmail
-        };
-
-        const isCurrent = (user.id && su.id === user.id) || 
-          (su.email && effectiveEmail && su.email.toLowerCase() === effectiveEmail.toLowerCase());
-        
+      serverUsers.forEach(su => {
         const suGamesPlayed = su.stats?.gamesPlayed || 0;
         const suGamesWon = su.stats?.gamesWon || 0;
         const suWinRate = suGamesPlayed > 0 ? Number(((suGamesWon / suGamesPlayed) * 100).toFixed(0)) : 0;
+        const userIsAdmin = isUserAdmin(su.email) || isUserAdmin(su.walletAddress || '') || (su.email && su.email.toLowerCase() === 'sahityanijhawan@gmail.com');
 
-        if (isCurrent) {
-          list[0] = {
-            ...list[0],
-            username: effectiveUsername || su.username,
-            email: su.email || effectiveEmail,
-            walletBalance: user.walletBalance,
-            coins: user.coins,
-            gamesPlayed: user.stats.gamesPlayed || suGamesPlayed,
-            winRate: user.stats.gamesPlayed > 0 ? userWinRate : suWinRate,
-            isBanned: isUserBanned(su.email, su.id) || bannedUserIds.includes(su.id) || su.isBanned,
-            role: currentIsAdmin ? 'admin' : su.role
-          };
-        } else {
-          const existingIdx = list.findIndex(b => b.id === su.id || (su.email && b.email.toLowerCase() === su.email.toLowerCase()));
-          if (existingIdx >= 0) {
-            list[existingIdx] = {
-              ...list[existingIdx],
-              username: su.username,
-              email: su.email,
-              walletBalance: su.walletBalance,
-              coins: su.coins,
-              gamesPlayed: suGamesPlayed,
-              winRate: suWinRate,
-              isBanned: isUserBanned(su.email, su.id) || bannedUserIds.includes(su.id) || su.isBanned,
-              role: su.role
-            };
-          } else {
-            list.push({
-              id: su.id,
-              username: su.username,
-              email: su.email,
-              walletBalance: su.walletBalance,
-              coins: su.coins,
-              gamesPlayed: suGamesPlayed,
-              winRate: suWinRate,
-              isBanned: isUserBanned(su.email, su.id) || bannedUserIds.includes(su.id) || su.isBanned,
-              role: su.role,
-              joinedDate: su.joinedDate,
-              country: su.country,
-              city: su.city
-            });
-          }
-        }
+        list.push({
+          id: su.id,
+          username: su.username || (su.walletAddress ? `${su.walletAddress.slice(0, 6)}...${su.walletAddress.slice(-4)}` : 'Player'),
+          email: su.email || su.walletAddress || '',
+          walletBalance: typeof su.walletBalance === 'number' ? su.walletBalance : 0,
+          coins: typeof su.coins === 'number' ? su.coins : 0,
+          gamesPlayed: suGamesPlayed,
+          winRate: suWinRate,
+          isBanned: isUserBanned(su.email, su.id) || bannedUserIds.includes(su.id) || Boolean(su.isBanned),
+          role: userIsAdmin ? 'admin' : (su.role || 'player'),
+          joinedDate: su.joinedDate || 'Recently',
+          country: su.country,
+          city: su.city
+        });
       });
+    }
+
+    // If current session is an authenticated Dynamic user, merge or append them
+    if (isRealDynamicPlayer) {
+      const currentEmail = effectiveEmail || user.walletAddress || '';
+      const currentId = user.dynamicUserId || user.id;
+      const currentGamesPlayed = user.stats?.gamesPlayed || 0;
+      const currentGamesWon = user.stats?.gamesWon || 0;
+      const currentWinRate = currentGamesPlayed > 0 ? Number(((currentGamesWon / currentGamesPlayed) * 100).toFixed(0)) : 0;
+      const currentIsAdmin = isUserAdmin(currentEmail) || isUserAdmin(user.walletAddress || '') || (currentEmail && currentEmail.toLowerCase() === 'sahityanijhawan@gmail.com');
+
+      const existingIdx = list.findIndex(u => 
+        (currentId && u.id === currentId) || 
+        (currentEmail && u.email.toLowerCase() === currentEmail.toLowerCase())
+      );
+
+      if (existingIdx >= 0) {
+        list[existingIdx] = {
+          ...list[existingIdx],
+          username: effectiveUsername || list[existingIdx].username,
+          walletBalance: user.walletBalance,
+          coins: user.coins,
+          gamesPlayed: currentGamesPlayed || list[existingIdx].gamesPlayed,
+          winRate: currentGamesPlayed > 0 ? currentWinRate : list[existingIdx].winRate,
+          role: currentIsAdmin ? 'admin' : list[existingIdx].role
+        };
+      } else {
+        list.push({
+          id: currentId || 'usr_dynamic',
+          username: effectiveUsername || user.username || 'Dynamic Player',
+          email: currentEmail,
+          walletBalance: user.walletBalance || 0,
+          coins: user.coins || 0,
+          gamesPlayed: currentGamesPlayed,
+          winRate: currentWinRate,
+          isBanned: isUserBanned(currentEmail, currentId) || bannedUserIds.includes(currentId),
+          role: currentIsAdmin ? 'admin' : 'player',
+          joinedDate: 'Active Session',
+          country: 'United States',
+          city: 'San Francisco'
+        });
+      }
     }
 
     // Deduplicate strictly by ID
@@ -291,7 +281,7 @@ export const AdminCommandCenterView: React.FC<AdminCommandCenterViewProps> = ({ 
       seenIds.add(u.id);
       return true;
     });
-  }, [bannedUserIds, effectiveEmail, serverUsers, user]);
+  }, [bannedUserIds, effectiveEmail, effectiveUsername, isDynamicLoaded, isDynamicSignedIn, serverUsers, user]);
 
   const filteredUsers = useMemo(() => {
     if (!userSearch.trim()) return usersList;
