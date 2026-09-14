@@ -3,6 +3,7 @@ import {
   DynamicContextProvider,
   useDynamicContext as useDynamicContextOriginal,
 } from '@dynamic-labs/sdk-react-core';
+import { EthereumWalletConnectors } from '@dynamic-labs/ethereum';
 
 interface DynamicConfigContextType {
   environmentId: string | null;
@@ -142,8 +143,8 @@ const DynamicStateBridge: React.FC<{
   );
 };
 
-// Fallback demo environment ID if none configured yet
-export const DEFAULT_DEMO_ENVIRONMENT_ID = '2762a57b-faa4-41ce-9f16-abff9300e2c9';
+// Fallback demo environment ID - defaults to user's sandbox ID from Dynamic dashboard
+export const DEFAULT_DEMO_ENVIRONMENT_ID = 'ee9cc749-fbf9-478e-8885-c144fda9b3ef';
 
 function isValidDynamicEnvId(id: string | null | undefined): boolean {
   if (!id) return false;
@@ -156,8 +157,8 @@ export const DynamicIntegrationProvider: React.FC<{ children: React.ReactNode }>
   const envVarId = (((import.meta as any).env?.VITE_DYNAMIC_ENVIRONMENT_ID as string | undefined) || '').trim();
 
   const [environmentId, setEnvironmentIdInternal] = useState<string>(() => {
-    const local = localStorage.getItem('proprush_dynamic_env_id')?.trim() || '';
     if (isValidDynamicEnvId(envVarId)) return envVarId;
+    const local = localStorage.getItem('proprush_dynamic_env_id')?.trim() || '';
     if (isValidDynamicEnvId(local)) return local;
     return DEFAULT_DEMO_ENVIRONMENT_ID;
   });
@@ -209,8 +210,8 @@ export const DynamicIntegrationProvider: React.FC<{ children: React.ReactNode }>
         <DynamicContextProvider
           settings={{
             environmentId: activeEnvironmentId,
-            appName: 'PropRush Monopoly',
-            initialAuthenticationMode: 'connect-and-sign',
+            appName: 'PropRush',
+            walletConnectors: [EthereumWalletConnectors],
           }}
           theme="dark"
         >

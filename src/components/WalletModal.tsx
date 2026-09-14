@@ -41,7 +41,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
     }
 
     if (!isLoggedIn) {
-      openAuthModal('Sign in with Google or Clerk to deposit funds into your secure wallet.');
+      openAuthModal('Log in or connect with Dynamic to deposit funds into your secure wallet.');
       return;
     }
 
@@ -91,7 +91,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
     e.preventDefault();
     setErrorMsg(null);
     if (!isLoggedIn) {
-      openAuthModal('Sign in with Google or Clerk to withdraw balance to your payment method.');
+      openAuthModal('Log in or connect with Dynamic to withdraw balance to your payment method.');
       return;
     }
     if (withdrawAmount <= 0 || withdrawAmount > user.walletBalance) {

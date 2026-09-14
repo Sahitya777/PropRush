@@ -29,7 +29,7 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
   const { user, isLoggedIn, openAuthModal, requireAuth, logoutUser } = useUser();
   const { isDynamicConfigured } = useDynamicConfig();
   const { isLight, toggleTheme } = useTheme();
-  const { isLoaded: isDynamicLoaded, isAuthenticated: isDynamicSignedIn, user: dynamicUser, primaryWallet, handleLogOut, setShowDynamicUserProfile } = useSafeDynamic();
+  const { isLoaded: isDynamicLoaded, isAuthenticated: isDynamicSignedIn, user: dynamicUser, primaryWallet, handleLogOut, setShowDynamicUserProfile, setShowAuthFlow } = useSafeDynamic();
 
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -253,11 +253,14 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
             {!effectiveIsLoggedIn ? (
               <button
                 id="btn-nav-dynamic-signin"
-                onClick={() => openAuthModal('Connect your Web3 crypto wallet or sign in with Dynamic to play matches.')}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-heading font-black text-xs shadow-md shadow-indigo-500/20 transition-all cursor-pointer active:scale-95 shrink-0 whitespace-nowrap"
+                onClick={() => {
+                  sounds.playClick();
+                  setShowAuthFlow(true);
+                }}
+                className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-heading font-black text-xs shadow-md shadow-indigo-500/25 transition-all cursor-pointer active:scale-95 shrink-0 whitespace-nowrap"
               >
-                <span>🦊</span>
-                <span>Connect Wallet</span>
+                <span>✨</span>
+                <span>Log in or sign up</span>
               </button>
             ) : (
               <div className="relative shrink-0" ref={dropdownRef}>
@@ -680,15 +683,16 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
               {!effectiveIsLoggedIn ? (
                 <button
                   type="button"
+                  id="btn-drawer-dynamic-signin"
                   onClick={() => {
                     sounds.playClick();
                     setIsDrawerOpen(false);
-                    openAuthModal('Connect your Web3 crypto wallet or sign in with Dynamic.');
+                    setShowAuthFlow(true);
                   }}
                   className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-heading font-black text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"
                 >
-                  <span>🦊</span>
-                  <span>Connect Web3 Wallet</span>
+                  <span>✨</span>
+                  <span>Log in or sign up</span>
                 </button>
               ) : (
                 <div className="space-y-3">

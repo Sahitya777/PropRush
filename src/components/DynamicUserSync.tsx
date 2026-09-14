@@ -11,23 +11,33 @@ export const DynamicUserSync: React.FC = () => {
     if (!isLoaded) return;
 
     if (isAuthenticated && (dynamicUser || primaryWallet)) {
+      // Find credentials
+      const creds = Array.isArray(dynamicUser?.verifiedCredentials) ? dynamicUser.verifiedCredentials : [];
+      const blockchainCred = creds.find((c: any) => c.format === 'blockchain' || c.walletName);
+      const emailCred = creds.find((c: any) => c.format === 'email');
+      const oauthCred = creds.find((c: any) => c.format === 'oauth' || c.oauthProvider);
+
       // Extract wallet address
-      const walletAddress = primaryWallet?.address || 
-        dynamicUser?.verifiedCredentials?.find((c: any) => c.format === 'blockchain' || c.walletName)?.address;
+      const walletAddress = primaryWallet?.address || blockchainCred?.address || (dynamicUser as any)?.walletAddress;
 
-      // Extract email
+      // Extract email from profile or credentials or oauth
       const email = dynamicUser?.email || 
-        dynamicUser?.verifiedCredentials?.find((c: any) => c.format === 'email')?.email;
+        emailCred?.email ||
+        oauthCred?.oauthEmails?.[0] ||
+        oauthCred?.email;
 
-      // Extract username or format wallet
+      // Extract display name or social username or wallet
       const name = dynamicUser?.username || 
+        oauthCred?.oauthDisplayName ||
+        oauthCred?.oauthUsername ||
         dynamicUser?.firstName || 
         dynamicUser?.ens?.name || 
         (email ? email.split('@')[0] : (walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'Crypto Tycoon'));
 
-      const avatar = dynamicUser?.ens?.avatar || undefined;
+      // Extract social profile picture or ENS avatar if available
+      const avatar = oauthCred?.oauthAccountPhotos?.[0] || dynamicUser?.ens?.avatar || undefined;
       const chain = primaryWallet?.chain || 'ETH';
-      const userId = dynamicUser?.userId || walletAddress || 'usr_dynamic';
+      const userId = dynamicUser?.userId || walletAddress || `usr_dyn_${Date.now()}`;
 
       syncDynamicUser({
         id: userId,

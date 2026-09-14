@@ -12,7 +12,7 @@ export const ProfileView: React.FC = () => {
   const { user, updateUsername, claimDailyReward, lastDailyClaim, equipItem, isLoggedIn, openAuthModal, logoutUser } = useUser();
   const { isLight } = useTheme();
   const { isDynamicConfigured } = useDynamicConfig();
-  const { isLoaded: isDynamicLoaded, isAuthenticated: isDynamicSignedIn, user: dynamicUser, primaryWallet, handleLogOut, setShowDynamicUserProfile } = useSafeDynamic();
+  const { isLoaded: isDynamicLoaded, isAuthenticated: isDynamicSignedIn, user: dynamicUser, primaryWallet, handleLogOut, setShowDynamicUserProfile, setShowAuthFlow } = useSafeDynamic();
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(user.username);
@@ -183,11 +183,14 @@ export const ProfileView: React.FC = () => {
           {/* Account Authentication Control */}
           {!effectiveIsLoggedIn ? (
             <button
-              onClick={() => openAuthModal('Connect your Web3 crypto wallet or sign in to protect your balance and items.')}
+              onClick={() => {
+                sounds.playClick();
+                setShowAuthFlow(true);
+              }}
               className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-heading font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
             >
-              <span>🦊</span>
-              <span>Connect Web3 Wallet</span>
+              <span>✨</span>
+              <span>Log in or sign up</span>
             </button>
           ) : (
             <div className="flex flex-col sm:flex-row md:flex-col gap-2 w-full sm:w-auto">

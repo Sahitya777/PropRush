@@ -9,10 +9,10 @@ dotenv.config();
 const app = express();
 
 // In AI Studio development sandbox, internal nginx reverse proxy directs external traffic to port 3000.
-// In a published Cloud Run service (user GCP project), Cloud Run routes to process.env.PORT (typically 8080).
-const PORT = (process.env.NGINX_PORT || process.env.DEFAULT_APP_PORT)
-  ? 3000
-  : (process.env.PORT ? parseInt(process.env.PORT, 10) : 3000);
+// In a deployed Cloud Run service (Google Cloud), Cloud Run routes to process.env.PORT (typically 8080) and sets K_SERVICE.
+const PORT = (process.env.K_SERVICE || process.env.K_REVISION)
+  ? (process.env.PORT ? parseInt(process.env.PORT, 10) : 8080)
+  : 3000;
 
 // Lazy Stripe initialization to prevent crashes when API key is not yet set
 let stripeClient: Stripe | null = null;
@@ -1091,4 +1091,10 @@ async function startServer() {
   });
 }
 
-startServer();
+// Export app for serverless deployments (Vercel)
+export default app;
+
+// Only bind HTTP listener when not running as a Vercel serverless function
+if (!process.env.VERCEL) {
+  startServer();
+}

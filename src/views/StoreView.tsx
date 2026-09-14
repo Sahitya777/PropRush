@@ -45,7 +45,7 @@ export const StoreView: React.FC = () => {
 
   const handlePurchaseItem = (item: StoreItem) => {
     if (!isLoggedIn) {
-      openAuthModal('Sign in with Google or Clerk to purchase and equip custom cosmetics.');
+      openAuthModal('Log in or connect with Dynamic to purchase and equip custom cosmetics.');
       return;
     }
 
@@ -65,7 +65,7 @@ export const StoreView: React.FC = () => {
 
   const handleBuyCoins = (pack: { id: string; name: string; coins: number; priceUsd: number }) => {
     if (!isLoggedIn) {
-      openAuthModal('Sign in with Google or Clerk to purchase PropRush Coins with real balance.');
+      openAuthModal('Log in or connect with Dynamic to purchase PropRush Coins with real balance.');
       return;
     }
 
@@ -168,15 +168,15 @@ export const StoreView: React.FC = () => {
                 Guest Mode Active
               </div>
               <div className={`text-xs ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
-                Sign in with Google or Clerk to save purchased items, unlock dice skins, and buy coin packs.
+                Log in or sign up with Dynamic to save purchased items, unlock dice skins, and buy coin packs.
               </div>
             </div>
           </div>
           <button
-            onClick={() => openAuthModal('Sign in with Google or Clerk to buy coins and equip cosmetics.')}
-            className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#7059e2] hover:bg-[#6047d8] text-white font-heading font-bold text-xs shadow-md transition-all cursor-pointer whitespace-nowrap transform active:scale-95"
+            onClick={() => openAuthModal('Log in or sign up with Dynamic to buy coins and equip cosmetics.')}
+            className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-heading font-bold text-xs shadow-md transition-all cursor-pointer whitespace-nowrap transform active:scale-95"
           >
-            ⚡ Sign In with Google
+            ✨ Log In or Sign Up
           </button>
         </div>
       )}

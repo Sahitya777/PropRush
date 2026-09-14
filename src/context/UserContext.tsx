@@ -5,6 +5,7 @@ import { sounds } from '../utils/audio';
 import { syncUserProfileToServer } from '../utils/serverUsersSync';
 import { isUserBanned } from '../utils/banManager';
 import { isUserAdmin } from '../utils/adminRegistry';
+import { useSafeDynamic } from './DynamicIntegration';
 
 interface UserContextType {
   user: UserProfile;
@@ -133,6 +134,7 @@ function calculateLeagueTier(lp: number): LeagueTier {
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { setShowAuthFlow, handleLogOut } = useSafeDynamic();
   const [user, setUser] = useState<UserProfile>(() => {
     // Check clean version flag to reset legacy mock profiles
     const cleanFlag = localStorage.getItem('proprush_real_dynamic_v3');
@@ -201,6 +203,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const openAuthModal = (reason?: string) => {
     setAuthModalReason(reason || null);
     setIsAuthModalOpen(true);
+    try {
+      setShowAuthFlow(true);
+    } catch {
+      // ignore
+    }
   };
 
   const closeAuthModal = () => {
@@ -491,6 +498,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('proprush_clerk_auth');
     localStorage.removeItem('proprush_dynamic_auth');
     sounds.playClick();
+    try {
+      handleLogOut();
+    } catch {
+      // ignore
+    }
   };
 
   const [lastDailyClaim, setLastDailyClaim] = useState<string | null>(() => {

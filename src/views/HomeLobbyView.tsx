@@ -135,7 +135,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
     }
     if (bet > 0) {
       if (!isLoggedIn) {
-        openAuthModal('Sign in with Google or Clerk to enter cash stakes matches and win real prize pools.');
+        openAuthModal('Log in or sign up with Dynamic to enter cash stakes matches and win real prize pools.');
         return;
       }
       if (user.walletBalance < bet) {
@@ -212,7 +212,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
 
     if (effectiveBet > 0) {
       if (!isLoggedIn) {
-        openAuthModal('Sign in with Google or Clerk to create real-money wager rooms.');
+        openAuthModal('Log in or sign up with Dynamic to create real-money wager rooms.');
         return;
       }
       if (user.walletBalance < effectiveBet) {
@@ -293,7 +293,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
     setJoinError(null);
     if (foundRoom.bet > 0) {
       if (!isLoggedIn) {
-        openAuthModal(`Sign in with Google or Clerk to enter "${foundRoom.name}" ($${foundRoom.bet} Buy-in).`);
+        openAuthModal(`Log in or sign up with Dynamic to enter "${foundRoom.name}" ($${foundRoom.bet} Buy-in).`);
         return;
       }
       if (user.walletBalance < foundRoom.bet) {
@@ -319,7 +319,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
     setRoomCodeInput(room.code);
     setJoinError(null);
     if (room.bet > 0 && !isLoggedIn) {
-      openAuthModal(`Sign in with Google or Clerk to enter "${room.name}" ($${room.bet} Buy-in).`);
+      openAuthModal(`Log in or sign up with Dynamic to enter "${room.name}" ($${room.bet} Buy-in).`);
       return;
     }
     if (room.bet > 0 && user.walletBalance < room.bet) {
