@@ -1,17 +1,48 @@
 import { ActiveRoomInfo } from './activeRoomsRegistry';
 import { GameRoom, Player } from '../types/game';
 
+async function safeFetchJson(url: string, options?: RequestInit): Promise<any> {
+  try {
+    const res = await fetch(url, options);
+    if (!res.ok) {
+      // If /api/... failed, attempt root path /... fallback
+      if (url.startsWith('/api/')) {
+        const altUrl = url.replace(/^\/api/, '');
+        const altRes = await fetch(altUrl, options);
+        if (altRes.ok) {
+          return await altRes.json();
+        }
+      }
+      return null;
+    }
+    return await res.json();
+  } catch (err) {
+    // If original failed due to network, try alternate
+    if (url.startsWith('/api/')) {
+      try {
+        const altUrl = url.replace(/^\/api/, '');
+        const altRes = await fetch(altUrl, options);
+        if (altRes.ok) {
+          return await altRes.json();
+        }
+      } catch {}
+    }
+    return null;
+  }
+}
+
 /**
  * Fetches all active rooms from the server for the lobby list and search.
  */
 export async function fetchActiveRoomsFromServer(): Promise<ActiveRoomInfo[]> {
   try {
-    const res = await fetch('/api/rooms');
-    if (!res.ok) throw new Error('Failed to fetch rooms');
-    const data = await res.json();
-    return data.rooms || [];
+    const data = await safeFetchJson('/api/rooms');
+    if (data && Array.isArray(data.rooms)) {
+      return data.rooms;
+    }
+    return [];
   } catch (err) {
-    console.warn('Could not fetch active rooms from server, using local fallback:', err);
+    console.warn('Could not fetch active rooms from server:', err);
     return [];
   }
 }
@@ -23,10 +54,8 @@ export async function fetchServerRoom(code: string): Promise<GameRoom | null> {
   if (!code) return null;
   try {
     const clean = code.trim().toLowerCase();
-    const res = await fetch(`/api/rooms/${clean}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.exists && data.room) {
+    const data = await safeFetchJson(`/api/rooms/${clean}`);
+    if (data && data.exists && data.room) {
       return data.room as GameRoom;
     }
     return null;
@@ -41,14 +70,12 @@ export async function fetchServerRoom(code: string): Promise<GameRoom | null> {
  */
 export async function createServerRoom(room: Partial<GameRoom> & { code: string; name: string }): Promise<GameRoom | null> {
   try {
-    const res = await fetch('/api/rooms', {
+    const data = await safeFetchJson('/api/rooms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(room)
     });
-    if (!res.ok) throw new Error('Failed to create server room');
-    const data = await res.json();
-    return data.room || null;
+    return data?.room || null;
   } catch (err) {
     console.error('Error creating server room:', err);
     return null;
@@ -61,14 +88,12 @@ export async function createServerRoom(room: Partial<GameRoom> & { code: string;
 export async function joinServerRoom(code: string, player: Partial<Player>): Promise<GameRoom | null> {
   try {
     const clean = code.trim().toLowerCase();
-    const res = await fetch(`/api/rooms/${clean}/join`, {
+    const data = await safeFetchJson(`/api/rooms/${clean}/join`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ player })
     });
-    if (!res.ok) throw new Error('Failed to join room on server');
-    const data = await res.json();
-    return data.room || null;
+    return data?.room || null;
   } catch (err) {
     console.error(`Error joining server room ${code}:`, err);
     return null;
@@ -81,12 +106,12 @@ export async function joinServerRoom(code: string, player: Partial<Player>): Pro
 export async function syncServerRoomState(code: string, room: GameRoom): Promise<boolean> {
   try {
     const clean = code.trim().toLowerCase();
-    const res = await fetch(`/api/rooms/${clean}/state`, {
+    const data = await safeFetchJson(`/api/rooms/${clean}/state`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ room })
     });
-    return res.ok;
+    return Boolean(data && data.success);
   } catch (err) {
     console.warn(`Failed to sync room state to server for ${code}:`, err);
     return false;
@@ -99,12 +124,12 @@ export async function syncServerRoomState(code: string, room: GameRoom): Promise
 export async function sendServerChatMessage(code: string, message: { id?: string; sender: string; avatar: string; text: string; time?: string }): Promise<boolean> {
   try {
     const clean = code.trim().toLowerCase();
-    const res = await fetch(`/api/rooms/${clean}/chat`, {
+    const data = await safeFetchJson(`/api/rooms/${clean}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message })
     });
-    return res.ok;
+    return Boolean(data && data.success);
   } catch (err) {
     console.warn(`Failed to send chat message for ${code}:`, err);
     return false;

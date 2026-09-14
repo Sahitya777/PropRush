@@ -139,11 +139,12 @@ function AppContent() {
 
     const roomParam = urlParams.get('room');
     if (roomParam) {
+      const cleanCode = roomParam.trim().toLowerCase();
       const activeMatch = getActiveMatch();
-      if (activeMatch && activeMatch.roomConfig.roomCode.toLowerCase() === roomParam.toLowerCase()) {
+      if (activeMatch && activeMatch.roomConfig.roomCode.toLowerCase() === cleanCode) {
         handleJoinRoom(activeMatch.roomConfig);
       } else {
-        findActiveRoomByCodeAsync(roomParam).then(found => {
+        findActiveRoomByCodeAsync(cleanCode).then(found => {
           if (found) {
             handleJoinRoom({
               roomCode: found.code,
@@ -156,11 +157,30 @@ function AppContent() {
               fillWithBots: !found.isCustom
             });
           } else {
-            // If code is not an active room, route to 404 or clean up parameter
-            try {
-              window.history.replaceState({}, '', window.location.pathname);
-            } catch {}
+            // Enter custom room directly from share link
+            handleJoinRoom({
+              roomCode: cleanCode,
+              roomName: `Room ${cleanCode.toUpperCase()}`,
+              maxPlayers: 4,
+              betAmount: 0,
+              initialCash: 1500,
+              turnTimeSeconds: 15,
+              boardTheme: 'classic',
+              fillWithBots: false
+            });
           }
+        }).catch(() => {
+          // Direct fallback to join custom room
+          handleJoinRoom({
+            roomCode: cleanCode,
+            roomName: `Room ${cleanCode.toUpperCase()}`,
+            maxPlayers: 4,
+            betAmount: 0,
+            initialCash: 1500,
+            turnTimeSeconds: 15,
+            boardTheme: 'classic',
+            fillWithBots: false
+          });
         });
       }
     }

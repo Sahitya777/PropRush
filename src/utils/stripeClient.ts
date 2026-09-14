@@ -55,11 +55,25 @@ export async function createStripeCheckoutSession(params: {
       body: JSON.stringify(params),
     });
 
-    const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.error || 'Failed to create checkout session');
+      let errorMsg = `Payment server error (${res.status})`;
+      try {
+        const text = await res.text();
+        try {
+          const json = JSON.parse(text);
+          if (json?.error) errorMsg = json.error;
+        } catch {
+          if (text.includes("FUNCTION_INVOCATION_FAILED") || text.includes("A server error has occurred")) {
+            errorMsg = "Payment gateway is booting up. Please retry in a moment.";
+          }
+        }
+      } catch {
+        // fallback
+      }
+      throw new Error(errorMsg);
     }
-    return data;
+
+    return await res.json();
   } catch (error: any) {
     console.error('Error creating Stripe session:', error);
     return {
@@ -74,11 +88,23 @@ export async function verifyStripeSession(sessionId: string, amount?: number): P
     const query = new URLSearchParams({ sessionId });
     if (amount) query.set('amount', amount.toString());
     const res = await fetch(`/api/stripe/verify-session?${query.toString()}`);
-    const data = await res.json();
+    
     if (!res.ok) {
-      throw new Error(data.error || 'Verification failed');
+      let errorMsg = `Payment verification failed (${res.status})`;
+      try {
+        const text = await res.text();
+        try {
+          const json = JSON.parse(text);
+          if (json?.error) errorMsg = json.error;
+        } catch {
+          // ignore
+        }
+      } catch {
+        // ignore
+      }
+      throw new Error(errorMsg);
     }
-    return data;
+    return await res.json();
   } catch (error: any) {
     console.error('Error verifying Stripe session:', error);
     return {

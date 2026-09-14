@@ -18,10 +18,53 @@ export interface ActiveRoomInfo {
 const STORAGE_KEY = 'proprush_active_rooms_registry_v1';
 const ROOM_TTL_MS = 60 * 60 * 1000; // 1 hour TTL for custom rooms
 
-export const DEFAULT_ACTIVE_ROOMS: ActiveRoomInfo[] = [];
+export const DEFAULT_ACTIVE_ROOMS: ActiveRoomInfo[] = [
+  {
+    code: 'tokyo88',
+    name: 'Tokyo Fast 2x Blitz',
+    host: 'Yuki_Speed',
+    hostAvatar: 'pink',
+    players: 2,
+    max: 4,
+    bet: 0,
+    turnTime: 10,
+    map: 'Cyber Neon',
+    createdAt: Date.now() - 180000,
+    initialCash: 1500,
+    isCustom: false
+  },
+  {
+    code: 'whale50',
+    name: 'Grandmaster Diamond Table',
+    host: 'Elena_Tycoon',
+    hostAvatar: 'red',
+    players: 2,
+    max: 4,
+    bet: 500,
+    turnTime: 20,
+    map: 'Worldwide',
+    createdAt: Date.now() - 120000,
+    initialCash: 2500,
+    isCustom: false
+  },
+  {
+    code: 'inu17',
+    name: 'High Stakes NYC Arena',
+    host: 'Host',
+    hostAvatar: 'orange',
+    players: 2,
+    max: 4,
+    bet: 100,
+    turnTime: 15,
+    map: 'Classic',
+    createdAt: Date.now() - 300000,
+    initialCash: 1500,
+    isCustom: false
+  }
+];
 
 /**
- * Gets all currently active rooms from local cache.
+ * Gets all currently active rooms from local cache, combined with active defaults.
  */
 export function getAllActiveRooms(): ActiveRoomInfo[] {
   try {
@@ -38,9 +81,17 @@ export function getAllActiveRooms(): ActiveRoomInfo[] {
       }
     }
 
-    return customRooms;
+    // Merge default tables so players always have active tables available
+    const combined = [...customRooms];
+    DEFAULT_ACTIVE_ROOMS.forEach(def => {
+      if (!combined.some(r => r.code.toLowerCase() === def.code.toLowerCase())) {
+        combined.push(def);
+      }
+    });
+
+    return combined;
   } catch {
-    return [];
+    return DEFAULT_ACTIVE_ROOMS;
   }
 }
 
@@ -50,9 +101,16 @@ export function getAllActiveRooms(): ActiveRoomInfo[] {
 export async function refreshActiveRoomsFromServer(): Promise<ActiveRoomInfo[]> {
   try {
     const serverRooms = await fetchActiveRoomsFromServer();
-    if (serverRooms && serverRooms.length > 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(serverRooms));
-      return serverRooms;
+    if (Array.isArray(serverRooms) && serverRooms.length > 0) {
+      // Merge with default rooms
+      const merged = [...serverRooms];
+      DEFAULT_ACTIVE_ROOMS.forEach(def => {
+        if (!merged.some(r => r.code.toLowerCase() === def.code.toLowerCase())) {
+          merged.push(def);
+        }
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+      return merged;
     }
   } catch (e) {
     console.warn('Failed to refresh rooms from server:', e);
@@ -88,14 +146,14 @@ export async function findActiveRoomByCodeAsync(code: string): Promise<ActiveRoo
       const s = serverRoom as any;
       const roomInfo: ActiveRoomInfo = {
         code: s.code || cleanCode,
-        name: s.name,
+        name: s.name || `Room ${cleanCode.toUpperCase()}`,
         host: s.players?.[0]?.name || 'Host',
         hostAvatar: s.players?.[0]?.avatar || 'orange',
         players: s.players?.length || 1,
         max: s.maxPlayers || 4,
-        bet: s.betAmount || 0,
+        bet: typeof s.betAmount === 'number' ? s.betAmount : 0,
         turnTime: s.turnTimeSeconds || s.turnTimeLimit || 15,
-        map: s.boardTheme === 'cyber' ? 'Cyber Neon' : s.boardTheme === 'worldwide' ? 'Worldwide' : 'Classic',
+        map: (s.boardTheme || '').toLowerCase().includes('cyber') ? 'Cyber Neon' : (s.boardTheme || '').toLowerCase().includes('world') ? 'Worldwide' : 'Classic',
         createdAt: Date.now(),
         initialCash: s.initialCash || 1500,
         isCustom: true
@@ -106,6 +164,10 @@ export async function findActiveRoomByCodeAsync(code: string): Promise<ActiveRoo
   } catch (err) {
     console.warn('Error querying server for room:', err);
   }
+
+  // 3. Check default rooms
+  const def = DEFAULT_ACTIVE_ROOMS.find(r => r.code.toLowerCase() === cleanCode);
+  if (def) return def;
 
   return null;
 }

@@ -280,38 +280,45 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
 
     // 2. Validate against active rooms (checks local cache + server)
     const foundRoom = await findActiveRoomByCodeAsync(cleanCode);
-    if (!foundRoom) {
-      // Reject random, non-existent or inactive room codes!
-      sounds.playBankrupt();
-      setJoinError(`Room "${cleanCode.toUpperCase()}" is not active or does not exist. Only active rooms can be joined.`);
-      setIsJoinErrorShaking(true);
-      setTimeout(() => setIsJoinErrorShaking(false), 600);
+    if (foundRoom) {
+      setJoinError(null);
+      if (foundRoom.bet > 0) {
+        if (!isLoggedIn) {
+          openAuthModal(`Log in or sign up with Dynamic to enter "${foundRoom.name}" ($${foundRoom.bet} Buy-in).`);
+          return;
+        }
+        if (user.walletBalance < foundRoom.bet) {
+          onOpenWallet();
+          return;
+        }
+      }
+
+      sounds.playCashRegister();
+      onJoinRoom({
+        roomCode: foundRoom.code,
+        roomName: foundRoom.name,
+        maxPlayers: foundRoom.max,
+        betAmount: foundRoom.bet,
+        initialCash: foundRoom.initialCash || 1500,
+        turnTimeSeconds: foundRoom.turnTime,
+        boardTheme: foundRoom.map.toLowerCase(),
+        fillWithBots: !foundRoom.isCustom
+      });
       return;
     }
 
-    // 3. Room is valid & active
+    // 3. If not in active registry, join as dynamic custom room
     setJoinError(null);
-    if (foundRoom.bet > 0) {
-      if (!isLoggedIn) {
-        openAuthModal(`Log in or sign up with Dynamic to enter "${foundRoom.name}" ($${foundRoom.bet} Buy-in).`);
-        return;
-      }
-      if (user.walletBalance < foundRoom.bet) {
-        onOpenWallet();
-        return;
-      }
-    }
-
     sounds.playCashRegister();
     onJoinRoom({
-      roomCode: foundRoom.code,
-      roomName: foundRoom.name,
-      maxPlayers: foundRoom.max,
-      betAmount: foundRoom.bet,
-      initialCash: foundRoom.initialCash || 1500,
-      turnTimeSeconds: foundRoom.turnTime,
-      boardTheme: foundRoom.map.toLowerCase(),
-      fillWithBots: !foundRoom.isCustom
+      roomCode: cleanCode,
+      roomName: `Room ${cleanCode.toUpperCase()}`,
+      maxPlayers: 4,
+      betAmount: 0,
+      initialCash: 1500,
+      turnTimeSeconds: 15,
+      boardTheme: 'classic',
+      fillWithBots: false
     });
   };
 
