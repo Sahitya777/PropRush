@@ -15,7 +15,7 @@ import { DynamicAuthModal } from './components/DynamicAuthModal';
 import { DynamicUserSync } from './components/DynamicUserSync';
 import { useDynamicConfig } from './context/DynamicIntegration';
 import { sounds } from './utils/audio';
-import { getActiveMatch } from './utils/reconnectStorage';
+import { getActiveMatch, RoomConfig } from './utils/reconnectStorage';
 import { findActiveRoomByCode, findActiveRoomByCodeAsync } from './utils/activeRoomsRegistry';
 import { verifyStripeSession } from './utils/stripeClient';
 import { fireConfetti } from './utils/confetti';
@@ -57,16 +57,7 @@ function AppContent() {
   const { isDynamicConfigured } = useDynamicConfig();
   const { isLight } = useTheme();
   const [currentView, setCurrentView] = useState<'home' | 'game' | 'store' | 'profile' | 'rankings' | 'admin' | '404'>(getInitialView);
-  const [activeRoomConfig, setActiveRoomConfig] = useState<{
-    roomCode: string;
-    roomName: string;
-    maxPlayers: number;
-    betAmount: number;
-    initialCash: number;
-    turnTimeSeconds: number;
-    boardTheme: string;
-    fillWithBots: boolean;
-  } | null>(null);
+  const [activeRoomConfig, setActiveRoomConfig] = useState<RoomConfig | null>(null);
 
   const [isWalletOpen, setIsWalletOpen] = useState(false);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
@@ -140,9 +131,13 @@ function AppContent() {
     const roomParam = urlParams.get('room');
     if (roomParam) {
       const cleanCode = roomParam.trim().toLowerCase();
+      const isSessionCreator = typeof window !== 'undefined' && sessionStorage.getItem(`proprush_creator_${cleanCode}`) === 'true';
       const activeMatch = getActiveMatch();
       if (activeMatch && activeMatch.roomConfig.roomCode.toLowerCase() === cleanCode) {
-        handleJoinRoom(activeMatch.roomConfig);
+        handleJoinRoom({
+          ...activeMatch.roomConfig,
+          isCreator: isSessionCreator || activeMatch.roomConfig.isCreator
+        });
       } else {
         findActiveRoomByCodeAsync(cleanCode).then(found => {
           if (found) {
@@ -154,7 +149,8 @@ function AppContent() {
               initialCash: found.initialCash || 1500,
               turnTimeSeconds: found.turnTime,
               boardTheme: found.map.toLowerCase(),
-              fillWithBots: !found.isCustom
+              fillWithBots: !found.isCustom,
+              isCreator: isSessionCreator
             });
           } else {
             // Enter custom room directly from share link
@@ -166,7 +162,8 @@ function AppContent() {
               initialCash: 1500,
               turnTimeSeconds: 15,
               boardTheme: 'classic',
-              fillWithBots: false
+              fillWithBots: false,
+              isCreator: isSessionCreator
             });
           }
         }).catch(() => {
@@ -179,27 +176,29 @@ function AppContent() {
             initialCash: 1500,
             turnTimeSeconds: 15,
             boardTheme: 'classic',
-            fillWithBots: false
+            fillWithBots: false,
+            isCreator: isSessionCreator
           });
         });
       }
     }
   }, []);
 
-  const handleJoinRoom = (config: {
-    roomCode: string;
-    roomName: string;
-    maxPlayers: number;
-    betAmount: number;
-    initialCash: number;
-    turnTimeSeconds: number;
-    boardTheme: string;
-    fillWithBots: boolean;
-  }) => {
+  const handleJoinRoom = (config: RoomConfig) => {
     if (isBanned) {
       sounds.playBankrupt();
       alert('⛔ Account Suspended: Your account has been suspended by PropRush administration. You cannot join game tables.');
       return;
+    }
+
+    // Explicitly persist or clear creator session flag for this room code
+    if (typeof window !== 'undefined') {
+      const creatorKey = `proprush_creator_${config.roomCode.toLowerCase()}`;
+      if (config.isCreator) {
+        sessionStorage.setItem(creatorKey, 'true');
+      } else if (config.isCreator === false) {
+        sessionStorage.removeItem(creatorKey);
+      }
     }
 
     // Check if player is reconnecting to an active unexpired match

@@ -233,7 +233,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                             </div>
                             <div className="flex flex-wrap gap-1.5 justify-center">
                               {room.players.map((p, idx) => {
-                                const isPlayerHost = Boolean(p.isHost || (room.hostId && room.hostId === p.id) || idx === 0);
+                                const authoritativeHost = room.hostId || (room.players[0] ? room.players[0].id : '');
+                                const isPlayerHost = Boolean((authoritativeHost && p.id === authoritativeHost) || p.isHost);
                                 return (
                                   <div
                                     key={p.id}

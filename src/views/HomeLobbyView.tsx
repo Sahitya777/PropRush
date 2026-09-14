@@ -26,6 +26,8 @@ interface HomeLobbyViewProps {
     turnTimeSeconds: number;
     boardTheme: string;
     fillWithBots: boolean;
+    isCreator?: boolean;
+    isPrivate?: boolean;
   }) => void;
   onOpenWallet: () => void;
   onOpenStore: () => void;
@@ -153,6 +155,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       name: quickRoomName,
       host: user.username || 'Player',
       hostAvatar: user.avatar || 'orange',
+      hostId: user.id,
       players: 1,
       max: 4,
       bet,
@@ -171,7 +174,8 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       initialCash: 1500,
       turnTimeSeconds: timer,
       boardTheme: 'classic',
-      fillWithBots: true
+      fillWithBots: true,
+      isCreator: true
     });
   };
 
@@ -230,6 +234,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       name: effectiveName,
       host: user.username || 'Host',
       hostAvatar: user.avatar || 'orange',
+      hostId: user.id,
       players: 1,
       max: maxPlayers,
       bet: effectiveBet,
@@ -248,7 +253,8 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       initialCash,
       turnTimeSeconds: turnTimeSeconds || 15,
       boardTheme,
-      fillWithBots
+      fillWithBots,
+      isCreator: true
     });
     setShowCreateModal(false);
   };
@@ -302,7 +308,8 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
         initialCash: foundRoom.initialCash || 1500,
         turnTimeSeconds: foundRoom.turnTime,
         boardTheme: foundRoom.map.toLowerCase(),
-        fillWithBots: !foundRoom.isCustom
+        fillWithBots: !foundRoom.isCustom,
+        isCreator: false
       });
       return;
     }
@@ -318,7 +325,8 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       initialCash: 1500,
       turnTimeSeconds: 15,
       boardTheme: 'classic',
-      fillWithBots: false
+      fillWithBots: false,
+      isCreator: false
     });
   };
 
@@ -343,7 +351,8 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       initialCash: room.initialCash || 1500,
       turnTimeSeconds: room.turnTime,
       boardTheme: room.map.toLowerCase(),
-      fillWithBots: !room.isCustom
+      fillWithBots: !room.isCustom,
+      isCreator: false
     });
   };
 

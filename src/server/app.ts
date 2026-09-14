@@ -370,44 +370,48 @@ api.post("/stripe/create-checkout-session", async (req: Request, res: Response):
     const stripe = getStripe();
 
     if (stripe) {
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ["card"],
-        line_items: [
-          {
-            price_data: {
-              currency: "usd",
-              product_data: {
-                name: "PropRush Wager & Wallet Deposit ($ USD)",
-                description: `Instant deposit into PropRush account wallet for multiplayer real-estate matches.`,
-                images: [
-                  "https://images.unsplash.com/photo-1579621970563-ebec7560ff3e?auto=format&fit=crop&w=400&q=80"
-                ],
+      try {
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ["card"],
+          line_items: [
+            {
+              price_data: {
+                currency: "usd",
+                product_data: {
+                  name: "PropRush Wager & Wallet Deposit ($ USD)",
+                  description: `Instant deposit into PropRush account wallet for multiplayer real-estate matches.`,
+                  images: [
+                    "https://images.unsplash.com/photo-1579621970563-ebec7560ff3e?auto=format&fit=crop&w=400&q=80"
+                  ],
+                },
+                unit_amount: Math.round(parsedAmount * 100),
               },
-              unit_amount: Math.round(parsedAmount * 100),
+              quantity: 1,
             },
-            quantity: 1,
+          ],
+          mode: "payment",
+          client_reference_id: userId || "guest_player",
+          customer_email: userEmail && userEmail.includes("@") ? userEmail : undefined,
+          metadata: {
+            userId: userId || "guest_player",
+            username: username || "Player",
+            depositAmount: parsedAmount.toString(),
+            app: "PropRush",
           },
-        ],
-        mode: "payment",
-        client_reference_id: userId || "guest_player",
-        customer_email: userEmail && userEmail.includes("@") ? userEmail : undefined,
-        metadata: {
-          userId: userId || "guest_player",
-          username: username || "Player",
-          depositAmount: parsedAmount.toString(),
-          app: "PropRush",
-        },
-        success_url: `${baseUrl}/?session_id={CHECKOUT_SESSION_ID}&deposit_success=true&amount=${parsedAmount}`,
-        cancel_url: `${baseUrl}/?deposit_canceled=true`,
-      });
+          success_url: `${baseUrl}/?session_id={CHECKOUT_SESSION_ID}&deposit_success=true&amount=${parsedAmount}`,
+          cancel_url: `${baseUrl}/?deposit_canceled=true`,
+        });
 
-      res.json({
-        success: true,
-        sessionId: session.id,
-        url: session.url,
-        mode: "stripe",
-      });
-      return;
+        res.json({
+          success: true,
+          sessionId: session.id,
+          url: session.url,
+          mode: "stripe",
+        });
+        return;
+      } catch (stripeErr: any) {
+        console.warn("⚠️ Stripe SDK checkout call failed, falling back to sandbox mode:", stripeErr.message);
+      }
     }
 
     // Sandbox fallback
@@ -564,14 +568,24 @@ api.post("/rooms", (req: Request, res: Response): void => {
     const now = Date.now();
 
     if (existing && existing.status !== 'finished') {
+      // If room already exists, ensure hostId is not wiped
+      if (hostId && (!existing.hostId || existing.hostId.startsWith('host_'))) {
+        existing.hostId = hostId;
+      }
       res.json({ success: true, room: existing });
       return;
     }
 
+    const effectiveHostId = hostId || (raw.players && raw.players[0]?.id) || 'host_' + now;
+    const initialPlayers = Array.isArray(raw.players) ? raw.players.map((p: any, idx: number) => ({
+      ...p,
+      isHost: Boolean((effectiveHostId && p.id === effectiveHostId) || (idx === 0 && !p.isBot))
+    })) : [];
+
     const newRoom: ServerRoom = {
       code,
       name: raw.name || raw.roomName || `Room ${code.toUpperCase()}`,
-      hostId: hostId || (raw.players && raw.players[0]?.id) || 'host_' + now,
+      hostId: effectiveHostId,
       isPrivate: Boolean(raw.isPrivate),
       maxPlayers: raw.maxPlayers || raw.max || 4,
       betAmount: typeof raw.betAmount === 'number' ? raw.betAmount : (typeof raw.bet === 'number' ? raw.bet : 0),
@@ -580,8 +594,8 @@ api.post("/rooms", (req: Request, res: Response): void => {
       boardTheme: raw.boardTheme || raw.map || 'classic',
       fillWithBots: Boolean(raw.fillWithBots),
       status: raw.status || 'waiting',
-      players: Array.isArray(raw.players) ? raw.players : [],
-      currentTurnPlayerId: raw.currentTurnPlayerId || (raw.players && raw.players[0]?.id) || '',
+      players: initialPlayers,
+      currentTurnPlayerId: raw.currentTurnPlayerId || (initialPlayers[0]?.id) || '',
       currentTurnIndex: raw.currentTurnIndex || 0,
       turnPhase: raw.turnPhase || 'roll',
       turnTimer: raw.turnTimer || raw.turnTimeSeconds || 15,
@@ -645,12 +659,13 @@ api.post("/rooms/:code/join", (req: Request, res: Response): void => {
 
     // Auto-create room if joining by code or share link
     const now = Date.now();
+    const isCreatorRequest = Boolean(player.isHost || body.isCreator);
     if (!room) {
       const isDefault = code === 'tokyo88' || code === 'whale50' || code === 'inu17';
       room = {
         code,
         name: `Room ${code.toUpperCase()}`,
-        hostId: player.id,
+        hostId: isCreatorRequest ? player.id : '',
         isPrivate: false,
         maxPlayers: 4,
         betAmount: 0,
@@ -681,7 +696,8 @@ api.post("/rooms/:code/join", (req: Request, res: Response): void => {
       room.players[existingPlayerIndex] = {
         ...room.players[existingPlayerIndex],
         ...player,
-        name: player.name || room.players[existingPlayerIndex].name
+        name: player.name || room.players[existingPlayerIndex].name,
+        isHost: Boolean(room.hostId && room.hostId === player.id)
       };
     } else {
       if (room.players.length >= room.maxPlayers) {
@@ -696,6 +712,14 @@ api.post("/rooms/:code/join", (req: Request, res: Response): void => {
       const sameNameCount = room.players.filter(p => p && (p.name === displayName || String(p.name || '').startsWith(displayName + ' '))).length;
       if (sameNameCount > 0) {
         displayName = `${displayName} (${sameNameCount + 1})`;
+      }
+
+      const isPlayerTheHost = Boolean(
+        (room.hostId && room.hostId === player.id) ||
+        (!room.hostId && isCreatorRequest)
+      );
+      if (isPlayerTheHost && !room.hostId) {
+        room.hostId = player.id;
       }
 
       const newPlayer = {
@@ -716,7 +740,7 @@ api.post("/rooms/:code/join", (req: Request, res: Response): void => {
         houses: {},
         isBankrupt: false,
         isBot: Boolean(player.isBot),
-        isHost: room.players.length === 0 || (room.hostId === player.id)
+        isHost: isPlayerTheHost
       };
 
       room.players.push(newPlayer);
@@ -791,10 +815,33 @@ api.post("/rooms/:code/state", (req: Request, res: Response): void => {
     let existing = serverRooms.get(code);
     const now = Date.now();
 
+    // Preserve the original hostId so non-hosts cannot overwrite it
+    const authoritativeHostId = (existing && existing.hostId) ? existing.hostId : (updatedRoom.hostId || '');
+
+    // Prevent non-hosts from starting the game
+    let targetStatus = updatedRoom.status || (existing ? existing.status : 'waiting');
+    if (existing && existing.status === 'waiting' && targetStatus === 'playing') {
+      const callerId = (body.playerId || body.hostId || updatedRoom.hostId || '').trim();
+      if (authoritativeHostId && callerId && callerId !== authoritativeHostId) {
+        targetStatus = 'waiting';
+      }
+    }
+
+    // Sanitize player isHost flags
+    const sanitizedPlayers = Array.isArray(updatedRoom.players)
+      ? updatedRoom.players.map((p: any) => ({
+          ...p,
+          isHost: Boolean(authoritativeHostId && p.id === authoritativeHostId)
+        }))
+      : (existing?.players || []);
+
     const merged: ServerRoom = {
       ...(existing || {}),
       ...updatedRoom,
       code,
+      hostId: authoritativeHostId,
+      status: targetStatus,
+      players: sanitizedPlayers,
       version: (existing ? (existing.version || 0) : 0) + 1,
       updatedAt: now
     };
@@ -804,6 +851,68 @@ api.post("/rooms/:code/state", (req: Request, res: Response): void => {
     res.json({ success: true, version: merged.version });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to update state' });
+  }
+});
+
+// POST /rooms/:code/start - Only host can start game
+api.post("/rooms/:code/start", (req: Request, res: Response): void => {
+  try {
+    const code = (req.params.code || '').trim().toLowerCase();
+    const { hostId, playerId } = req.body || {};
+    const callerId = (hostId || playerId || '').trim();
+    loadPersistedRooms();
+    const room = serverRooms.get(code);
+    if (!room) {
+      res.status(404).json({ error: 'Room not found' });
+      return;
+    }
+    if (room.hostId && callerId && callerId !== room.hostId) {
+      res.status(403).json({ error: 'Only the room creator / host can start the match.' });
+      return;
+    }
+    if (room.players.length < 2) {
+      res.status(400).json({ error: 'At least 2 players are required to start.' });
+      return;
+    }
+    room.status = 'playing';
+    room.currentTurnPlayerId = room.players[0]?.id || '';
+    room.currentTurnIndex = 0;
+    room.turnPhase = 'roll';
+    room.turnTimer = room.turnTimeSeconds || 15;
+    room.version = (room.version || 0) + 1;
+    room.updatedAt = Date.now();
+    serverRooms.set(code, room);
+    savePersistedRooms();
+    res.json({ success: true, room });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to start match' });
+  }
+});
+
+// POST /rooms/:code/kick - Only host can kick player
+api.post("/rooms/:code/kick", (req: Request, res: Response): void => {
+  try {
+    const code = (req.params.code || '').trim().toLowerCase();
+    const { hostId, playerIdToKick } = req.body || {};
+    const callerId = (hostId || '').trim();
+    loadPersistedRooms();
+    const room = serverRooms.get(code);
+    if (!room) {
+      res.status(404).json({ error: 'Room not found' });
+      return;
+    }
+    if (room.hostId && callerId && callerId !== room.hostId) {
+      res.status(403).json({ error: 'Only the room creator / host can kick players.' });
+      return;
+    }
+    room.players = room.players.filter(p => p.id !== playerIdToKick);
+    room.version = (room.version || 0) + 1;
+    room.updatedAt = Date.now();
+    serverRooms.set(code, room);
+    savePersistedRooms();
+    res.json({ success: true, room });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to kick player' });
   }
 });
 

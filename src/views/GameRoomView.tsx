@@ -30,6 +30,7 @@ interface GameRoomViewProps {
     turnTimeSeconds: number;
     boardTheme: string | BoardMapTheme;
     fillWithBots: boolean;
+    isCreator?: boolean;
     isPrivate?: boolean;
   };
   onLeaveRoom: () => void;
@@ -67,6 +68,12 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   const playerColors = ['#ff7844', '#b066fe', '#10b981', '#06b6d4', '#ec4899', '#eab308'];
 
   const customRoomStorageKey = `proprush_custom_room_${roomConfig.roomCode.toLowerCase()}`;
+
+  // Verify if this browser session was the original creator of this room
+  const isSessionCreator = Boolean(
+    roomConfig.isCreator ||
+    (typeof window !== 'undefined' && sessionStorage.getItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`) === 'true')
+  );
 
   // Master Room State (Restores from saved active match or waiting lobby)
   const [room, setRoom] = useState<GameRoom>(() => {
@@ -183,7 +190,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
             houses: {},
             isBankrupt: false,
             isBot: false,
-            isHost: parsed.players.length === 0
+            isHost: false // Joining player is never host
           };
           parsed.players.push(newPlayer);
           parsed.totalPrizePool = roomConfig.betAmount * parsed.players.length;
@@ -194,7 +201,44 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       }
     } catch {}
 
-    // First player (Host) creates custom room in waiting state:
+    // If NOT session creator, initialize waiting room without setting this user as host
+    if (!isSessionCreator) {
+      return {
+        id: roomConfig.roomCode,
+        name: roomConfig.roomName,
+        code: roomConfig.roomCode,
+        hostId: '', // Authoritative host will be loaded from server
+        isPrivate: roomConfig.isPrivate ?? false,
+        maxPlayers: roomConfig.maxPlayers || 4,
+        players: [],
+        status: 'waiting',
+        currentTurnPlayerId: '',
+        currentTurnIndex: 0,
+        turnPhase: 'roll',
+        turnTimer: roomConfig.turnTimeSeconds || 15,
+        turnTimeLimit: roomConfig.turnTimeSeconds || 15,
+        lastDice: [1, 2],
+        isDouble: false,
+        consecutiveDoubles: 0,
+        doubleCount: 0,
+        freeParkingPool: 100,
+        auction: null,
+        activeTrade: null,
+        pendingCard: null,
+        messages: [],
+        winner: null,
+        logs: [
+          { id: 'l1', timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), text: `Connecting to room ${roomConfig.roomCode.toUpperCase()}...`, type: 'info' }
+        ],
+        betAmount: roomConfig.betAmount,
+        totalPrizePool: 0,
+        platformFeeRate: 0.05,
+        boardTheme: (roomConfig.boardTheme || 'classic') as BoardMapTheme,
+        fastSpeed: true
+      };
+    }
+
+    // Room Creator creates initial custom room in waiting state:
     const hostPlayer: Player = {
       id: user.id,
       name: user.username,
@@ -281,32 +325,26 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     ];
   });
 
-  // Dedicated local room player ID stored in session storage for consistent player identification
-  const roomPidKey = `proprush_my_room_pid_${roomConfig.roomCode.toLowerCase()}`;
-  const [localPlayerId] = useState<string>(() => {
-    if (typeof window === 'undefined') return user.id;
-    let stored = sessionStorage.getItem(roomPidKey);
-    if (!stored) {
-      stored = user.id;
-      sessionStorage.setItem(roomPidKey, stored);
-    }
-    return stored;
-  });
+  // The authoritative current player ID in this session
+  const myPlayerId = user.id;
 
-  // Accurate host determination: current user ID matches room hostId, or is first player, or has isHost flag
+  // The room's authentic host ID
+  const hostId = room.hostId || (isSessionCreator ? myPlayerId : (room.players[0]?.id || ''));
+
+  // Am I the host of this room?
+  // MUST be the session creator OR my ID strictly matches the room's hostId.
+  // Anyone joining via invite link or room code CAN NEVER be host unless room.hostId matches their ID.
   const isCurrentUserHost = Boolean(
-    (room.hostId && (room.hostId === user.id || room.hostId === localPlayerId)) ||
-    (room.players.length > 0 && (room.players[0].id === user.id || room.players[0].id === localPlayerId)) ||
-    (room.players.some(p => (p.id === user.id || p.id === localPlayerId) && p.isHost))
+    (isSessionCreator && (!room.hostId || room.hostId === myPlayerId)) ||
+    (room.hostId && room.hostId === myPlayerId)
   );
 
   // Identify who the local user is in this room
   const myPlayer: Player | undefined = 
-    room.players.find(p => p.id === localPlayerId) ||
-    room.players.find(p => p.id === user.id) ||
+    room.players.find(p => p.id === myPlayerId) ||
     (isCurrentUserHost 
-      ? room.players.find(p => p.id === room.hostId || p.isHost) || room.players[0]
-      : room.players.find(p => !p.isHost && !p.isBot) || room.players[1] || room.players[0]
+      ? room.players.find(p => p.id === hostId || p.isHost) || room.players[0]
+      : room.players.find(p => p.id !== hostId && !p.isHost && !p.isBot) || room.players[1] || room.players[0]
     );
 
   // Active turn player
@@ -318,10 +356,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   // Accurate turn determination:
   const isMyTurn = Boolean(
     currentTurnPlayer && (
-      currentTurnPlayer.id === user.id ||
-      currentTurnPlayer.id === localPlayerId ||
-      (myPlayer && currentTurnPlayer.id === myPlayer.id) ||
-      (!currentTurnPlayer.isBot && !room.players.some(p => p.id === user.id || p.id === localPlayerId) && isCurrentUserHost)
+      currentTurnPlayer.id === myPlayerId ||
+      (myPlayer && currentTurnPlayer.id === myPlayer.id)
     )
   );
 
@@ -389,8 +425,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       avatar: user.avatar || 'orange',
       avatarFrame: user.avatarFrame,
       diceSkin: user.diceSkin || 'dice_golden',
-      color: playerColors[0],
-      isHost: room.hostId === user.id
+      color: playerColors[isSessionCreator ? 0 : 1],
+      isHost: Boolean(isSessionCreator)
     };
 
     // 1. Initial Room Discovery & Join on Server
@@ -398,8 +434,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       if (!isMounted) return;
       if (serverRoom) {
         // Room already exists on server!
-        if (serverRoom.hostId === user.id) {
-          // I am the host
+        if (serverRoom.hostId === user.id && isSessionCreator) {
+          // I am the verified room creator
           setRoom(prev => ({
             ...prev,
             ...serverRoom,
@@ -407,7 +443,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           }));
         } else {
           // I am a joining player
-          joinServerRoom(roomConfig.roomCode, myPlayerPayload).then(joinedRoom => {
+          joinServerRoom(roomConfig.roomCode, { ...myPlayerPayload, isHost: false }).then(joinedRoom => {
             if (!isMounted || !joinedRoom) return;
             setRoom(prev => ({
               ...prev,
@@ -420,8 +456,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
             }
           });
         }
-      } else {
-        // Room does not exist yet on server -> Create it as Host
+      } else if (isSessionCreator) {
+        // Only the actual room creator creates the room on the server
         createServerRoom({
           code: roomConfig.roomCode,
           name: roomConfig.roomName,
@@ -462,6 +498,16 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
             ...prev,
             ...created,
             players: created.players
+          }));
+        });
+      } else {
+        // Joining player but room record not yet in server cache -> join via endpoint
+        joinServerRoom(roomConfig.roomCode, { ...myPlayerPayload, isHost: false }).then(joinedRoom => {
+          if (!isMounted || !joinedRoom) return;
+          setRoom(prev => ({
+            ...prev,
+            ...joinedRoom,
+            players: joinedRoom.players
           }));
         });
       }
@@ -511,12 +557,12 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         } else if (data.type === 'PLAYER_KICKED') {
           if (room.status === 'waiting') {
             const isMeKicked =
-              (data.kickedPlayerId && (data.kickedPlayerId === localPlayerId || data.kickedPlayerId === user.id)) ||
-              (data.room && !data.room.players?.some((p: any) => p.id === localPlayerId || p.id === user.id) && data.room.hostId !== user.id && data.room.hostId !== localPlayerId);
+              (data.kickedPlayerId && data.kickedPlayerId === myPlayerId) ||
+              (data.room && !data.room.players?.some((p: any) => p.id === myPlayerId) && !isCurrentUserHost);
             if (isMeKicked) {
               clearActiveMatch();
               try {
-                sessionStorage.removeItem(roomPidKey);
+                sessionStorage.removeItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`);
                 window.history.replaceState({}, '', window.location.pathname);
               } catch {}
               if (roomConfig.betAmount > 0) {
@@ -553,7 +599,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               ]
             };
 
-            if (prev.hostId === user.id || prev.hostId === localPlayerId) {
+            if (isCurrentUserHost) {
               sounds.playPassGo();
               broadcastAndSync(updatedRoom);
             }
@@ -568,7 +614,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               players: updatedPlayers,
               totalPrizePool: roomConfig.betAmount * updatedPlayers.length
             };
-            if (prev.hostId === user.id || prev.hostId === localPlayerId) {
+            if (isCurrentUserHost) {
               broadcastAndSync(updatedRoom);
             }
             return updatedRoom;
@@ -598,14 +644,14 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
           // Check if current user got kicked by host from lobby
           if (wasWaiting && sRoom.status === 'waiting') {
-            const amIHost = sRoom.hostId === user.id || sRoom.hostId === localPlayerId || (sRoom.players.length > 0 && (sRoom.players[0].id === user.id || sRoom.players[0].id === localPlayerId));
+            const amIHost = isCurrentUserHost || (sRoom.hostId && sRoom.hostId === myPlayerId);
             if (!amIHost) {
-              const wasInRoom = prev.players.some(p => p.id === localPlayerId || p.id === user.id);
-              const isStillInRoom = sRoom.players?.some((p: any) => p.id === localPlayerId || p.id === user.id);
+              const wasInRoom = prev.players.some(p => p.id === myPlayerId);
+              const isStillInRoom = sRoom.players?.some((p: any) => p.id === myPlayerId);
               if (wasInRoom && !isStillInRoom) {
                 clearActiveMatch();
                 try {
-                  sessionStorage.removeItem(roomPidKey);
+                  sessionStorage.removeItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`);
                   window.history.replaceState({}, '', window.location.pathname);
                 } catch {}
                 if (roomConfig.betAmount > 0) {
@@ -725,6 +771,13 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
     setRoom(updatedRoom);
     broadcastAndSync(updatedRoom, 'GAME_STARTED');
+
+    // Notify backend server of match start
+    fetch(`/api/rooms/${encodeURIComponent(roomConfig.roomCode.toLowerCase())}/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hostId: myPlayerId, playerId: myPlayerId })
+    }).catch(() => {});
   };
 
   // Host Action: Add an AI Bot to fill an empty slot (Optional)
@@ -785,6 +838,13 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     setRoom(updatedRoom);
     sounds.playClick();
     broadcastAndSync(updatedRoom, 'PLAYER_KICKED');
+
+    // Notify backend server of kick
+    fetch(`/api/rooms/${encodeURIComponent(roomConfig.roomCode.toLowerCase())}/kick`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hostId: myPlayerId, playerIdToKick: playerId })
+    }).catch(() => {});
 
     try {
       const channel = new BroadcastChannel(`proprush_sync_${roomConfig.roomCode.toLowerCase()}`);
@@ -952,7 +1012,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       clearActiveMatch();
       setShowForfeitConfirmModal(false);
       try {
-        sessionStorage.removeItem(roomPidKey);
+        sessionStorage.removeItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`);
         window.history.replaceState({}, '', window.location.pathname);
       } catch {}
 
@@ -960,8 +1020,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         depositFunds(roomConfig.betAmount, 'room_leave_refund');
       }
 
-      const myId = localPlayerId || user.id;
-      const updatedPlayers = room.players.filter(p => p.id !== myId && p.id !== user.id);
+      const updatedPlayers = room.players.filter(p => p.id !== myPlayerId);
       const updatedRoom: GameRoom = {
         ...room,
         players: updatedPlayers,
@@ -970,7 +1029,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       broadcastAndSync(updatedRoom);
       try {
         const channel = new BroadcastChannel(`proprush_sync_${roomConfig.roomCode.toLowerCase()}`);
-        channel.postMessage({ type: 'PLAYER_LEFT', playerId: myId });
+        channel.postMessage({ type: 'PLAYER_LEFT', playerId: myPlayerId });
         channel.close();
       } catch {}
 
@@ -984,10 +1043,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     setShowForfeitConfirmModal(false);
 
     setRoom(prev => {
-      const myId = localPlayerId || user.id;
       const playerToForfeit =
-        prev.players.find(p => p.id === myId) ||
-        prev.players.find(p => p.id === user.id) ||
+        prev.players.find(p => p.id === myPlayerId) ||
         prev.players[0];
       if (!playerToForfeit) return prev;
 
@@ -1016,7 +1073,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         sounds.playWin();
         addLog(`🏆 ${winner.name} won the match! All opponents went bankrupt.`, 'info');
 
-        const finalPlacement = winner.id === myId ? 1 : 2;
+        const finalPlacement = winner.id === myPlayerId ? 1 : 2;
         const statsResult = recordMatchResult({
           roomName: prev.name,
           placement: finalPlacement,
@@ -2069,11 +2126,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               {room.players.map(p => {
                 const isTurn = p.id === room.currentTurnPlayerId;
                 const delta = cashDeltas[p.id];
-                const isPlayerHost = Boolean(
-                  (room.hostId && (room.hostId === p.id)) ||
-                  (room.players.length > 0 && room.players[0].id === p.id) ||
-                  p.isHost
-                );
+                const authoritativeHost = room.hostId || (isSessionCreator ? myPlayerId : (room.players[0] ? room.players[0].id : ''));
+                const isPlayerHost = Boolean((authoritativeHost && p.id === authoritativeHost) || p.isHost);
 
                 return (
                   <div
@@ -2102,7 +2156,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                           isLight ? 'text-slate-900' : 'text-white'
                         }`}>
                           <span className="truncate">{p.name}</span>
-                          {(p.id === user.id || p.id === localPlayerId || p.id === myPlayer?.id) && (
+                          {p.id === myPlayerId && (
                             <span className="text-[9px] text-[#7059e2] font-mono-code font-bold">(You)</span>
                           )}
                           {isPlayerHost && (

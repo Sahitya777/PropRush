@@ -5,6 +5,7 @@ export interface ActiveRoomInfo {
   name: string;
   host: string;
   hostAvatar: string;
+  hostId?: string;
   players: number;
   max: number;
   bet: number;
@@ -199,15 +200,36 @@ export function registerActiveRoom(room: Omit<ActiveRoomInfo, 'createdAt'>): voi
       ? 'worldwide'
       : 'classic';
 
-    // Also register on Express backend server
+    // Also register on Express backend server with explicit host identity
     createServerRoom({
       code: room.code,
       name: room.name,
+      hostId: room.hostId || '',
       maxPlayers: room.max,
       betAmount: room.bet,
       boardTheme: mapTheme,
       isPrivate: false,
-      fillWithBots: false
+      fillWithBots: false,
+      players: room.hostId ? [
+        {
+          id: room.hostId,
+          name: room.host,
+          avatar: room.hostAvatar || 'orange',
+          isHost: true,
+          cash: room.initialCash || 1500,
+          netWorth: room.initialCash || 1500,
+          position: 0,
+          properties: [],
+          mortgaged: [],
+          houses: {},
+          inJail: false,
+          jailTurns: 0,
+          getOutOfJailCards: 0,
+          isBankrupt: false,
+          isBot: false,
+          color: '#e65c00'
+        }
+      ] : []
     } as any).catch(err => console.warn('Could not post room to server:', err));
   } catch (err) {
     console.error('Failed to register active room:', err);

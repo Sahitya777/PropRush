@@ -2,9 +2,7 @@ import express, { type Request, type Response } from "express";
 import path from "path";
 import app from "./src/server/app";
 
-const PORT = (process.env.K_SERVICE || process.env.K_REVISION)
-  ? (process.env.PORT ? parseInt(process.env.PORT, 10) : 8080)
-  : 3000;
+const PORT = 3000;
 
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

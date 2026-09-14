@@ -9,6 +9,8 @@ export interface RoomConfig {
   turnTimeSeconds: number;
   boardTheme: string;
   fillWithBots: boolean;
+  isCreator?: boolean;
+  isPrivate?: boolean;
 }
 
 export interface ChatMsg {
