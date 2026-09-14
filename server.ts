@@ -1,4 +1,4 @@
-import express, { Request, Response } from "express";
+import express, { type Request, type Response } from "express";
 import path from "path";
 import Stripe from "stripe";
 import dotenv from "dotenv";
@@ -40,6 +40,18 @@ const sandboxSessions = new Map<string, {
 
 // Standard JSON parsing for API routes
 app.use(express.json());
+
+// CORS & Preflight handling for all environments
+app.use((req: Request, res: Response, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  if (req.method === "OPTIONS") {
+    res.status(200).end();
+    return;
+  }
+  next();
+});
 
 // ==========================================
 // BANNED & SUSPENDED USERS REGISTRY
@@ -1063,6 +1075,19 @@ app.post("/api/admin/users/action", (req: Request, res: Response): void => {
   }
 });
 
+// API 404 Fallback - strictly scoped to /api/* requests only
+app.use("/api/*", (_req: Request, res: Response) => {
+  res.status(404).json({ error: "API endpoint not found" });
+});
+
+// Global API error handler
+app.use((err: any, _req: Request, res: Response, _next: any) => {
+  console.error("Unhandled API error:", err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: err?.message || "Internal server error" });
+  }
+});
+
 // ==========================================
 // 6. VITE MIDDLEWARE (Full-Stack Express + Vite)
 // ==========================================
@@ -1094,7 +1119,16 @@ async function startServer() {
 // Export app for serverless deployments (Vercel)
 export default app;
 
-// Only bind HTTP listener when not running as a Vercel serverless function
-if (!process.env.VERCEL) {
+// Detect Serverless environment (Vercel, AWS Lambda, etc.)
+const isServerless = Boolean(
+  process.env.VERCEL ||
+  process.env.VERCEL_ENV ||
+  process.env.NOW_REGION ||
+  process.env.AWS_LAMBDA_FUNCTION_NAME ||
+  process.env.LAMBDA_TASK_ROOT
+);
+
+// Only bind HTTP listener when not running as a serverless function
+if (!isServerless) {
   startServer();
 }
