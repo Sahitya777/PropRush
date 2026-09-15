@@ -9,6 +9,7 @@ import { AuctionModal } from '../components/AuctionModal';
 import { TradeModal } from '../components/TradeModal';
 import { GameOverModal } from '../components/GameOverModal';
 import { AvatarCharacter } from '../components/AvatarCharacter';
+import { PlayerNameWithWallet } from '../components/PlayerNameWithWallet';
 import { sounds } from '../utils/audio';
 import { saveActiveMatch, getActiveMatch, markDisconnected, clearActiveMatch } from '../utils/reconnectStorage';
 import { updateActiveRoomPlayerCount } from '../utils/activeRoomsRegistry';
@@ -87,6 +88,10 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         {
           id: user.id,
           name: user.username,
+          username: user.username,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          walletAddress: user.walletAddress,
           avatar: user.avatar || 'orange',
           avatarFrame: user.avatarFrame,
           diceSkin: user.diceSkin || 'dice_golden',
@@ -242,6 +247,10 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     const hostPlayer: Player = {
       id: user.id,
       name: user.username,
+      username: user.username,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      walletAddress: user.walletAddress,
       avatar: user.avatar || 'orange',
       avatarFrame: user.avatarFrame,
       diceSkin: user.diceSkin || 'dice_golden',
@@ -422,6 +431,10 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     const myPlayerPayload: Partial<Player> = {
       id: user.id,
       name: user.username,
+      username: user.username,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      walletAddress: user.walletAddress,
       avatar: user.avatar || 'orange',
       avatarFrame: user.avatarFrame,
       diceSkin: user.diceSkin || 'dice_golden',
@@ -2152,19 +2165,15 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                         )}
                       </div>
                       <div className="min-w-0">
-                        <div className={`font-heading font-bold text-xs truncate flex items-center gap-1.5 ${
+                        <div className={`font-heading font-bold text-xs flex items-center ${
                           isLight ? 'text-slate-900' : 'text-white'
                         }`}>
-                          <span className="truncate">{p.name}</span>
-                          {p.id === myPlayerId && (
-                            <span className="text-[9px] text-[#7059e2] font-mono-code font-bold">(You)</span>
-                          )}
-                          {isPlayerHost && (
-                            <span className="text-[8px] px-1 py-0.5 bg-amber-500/20 text-amber-400 font-bold rounded border border-amber-500/30 flex items-center gap-0.5 shrink-0" title="Room Creator / Host">
-                              <span>👑</span>
-                              <span>Host</span>
-                            </span>
-                          )}
+                          <PlayerNameWithWallet
+                            player={p}
+                            isYou={p.id === myPlayerId}
+                            isHost={isPlayerHost}
+                            maxNameWidthClass="max-w-[105px]"
+                          />
                         </div>
                         <div className={`text-[10px] font-mono-code ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                           {p.properties.length} props

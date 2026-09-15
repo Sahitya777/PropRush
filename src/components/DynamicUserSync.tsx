@@ -26,13 +26,31 @@ export const DynamicUserSync: React.FC = () => {
         oauthCred?.oauthEmails?.[0] ||
         oauthCred?.email;
 
-      // Extract display name or social username or wallet
-      const name = dynamicUser?.username || 
-        oauthCred?.oauthDisplayName ||
-        oauthCred?.oauthUsername ||
-        dynamicUser?.firstName || 
-        dynamicUser?.ens?.name || 
-        (email ? email.split('@')[0] : (walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'Crypto Tycoon'));
+      // Extract first name, last name, username
+      const rawDynUser = dynamicUser as any;
+      const firstName = rawDynUser?.firstName || '';
+      const lastName = rawDynUser?.lastName || '';
+      const dynamicUsername = rawDynUser?.username || rawDynUser?.alias || rawDynUser?.metadata?.username || '';
+
+      // Extract display name: prioritize unique username, then full name, then oauth, email, or wallet
+      let name = '';
+      if (dynamicUsername && !/^0x[a-fA-F0-9]{10,}/i.test(dynamicUsername)) {
+        name = dynamicUsername;
+      } else if (firstName) {
+        name = `${firstName}${lastName ? ` ${lastName}` : ''}`.trim();
+      } else if (oauthCred?.oauthUsername) {
+        name = oauthCred.oauthUsername;
+      } else if (oauthCred?.oauthDisplayName) {
+        name = oauthCred.oauthDisplayName;
+      } else if (dynamicUser?.ens?.name) {
+        name = dynamicUser.ens.name;
+      } else if (email) {
+        name = email.split('@')[0];
+      } else if (walletAddress) {
+        name = `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
+      } else {
+        name = 'Crypto Tycoon';
+      }
 
       // Extract social profile picture or ENS avatar if available
       const avatar = oauthCred?.oauthAccountPhotos?.[0] || dynamicUser?.ens?.avatar || undefined;
@@ -43,6 +61,8 @@ export const DynamicUserSync: React.FC = () => {
         id: userId,
         email,
         username: name,
+        firstName,
+        lastName,
         walletAddress,
         chain,
         imageUrl: avatar,
@@ -50,7 +70,17 @@ export const DynamicUserSync: React.FC = () => {
 
       closeAuthModal();
     }
-  }, [isLoaded, isAuthenticated, dynamicUser?.userId, dynamicUser?.email, primaryWallet?.address]);
+  }, [
+    isLoaded,
+    isAuthenticated,
+    dynamicUser?.userId,
+    dynamicUser?.email,
+    (dynamicUser as any)?.username,
+    (dynamicUser as any)?.firstName,
+    (dynamicUser as any)?.lastName,
+    (dynamicUser as any)?.alias,
+    primaryWallet?.address
+  ]);
 
   return null;
 };

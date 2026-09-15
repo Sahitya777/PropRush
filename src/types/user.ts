@@ -47,6 +47,8 @@ export interface MatchHistory {
 export interface UserProfile {
   id: string;
   username: string;
+  firstName?: string;
+  lastName?: string;
   email: string;
   avatar: string; // skin id: 'navy' | 'lilac' | 'apple' | 'fire' etc.
   avatarFrame?: string; // frame id: 'pfp_crown' | 'pfp_neon' | 'pfp_fire' | 'pfp_diamond' | 'pfp_cosmic' | etc.

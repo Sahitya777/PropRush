@@ -697,6 +697,10 @@ api.post("/rooms/:code/join", (req: Request, res: Response): void => {
         ...room.players[existingPlayerIndex],
         ...player,
         name: player.name || room.players[existingPlayerIndex].name,
+        username: player.username || room.players[existingPlayerIndex].username,
+        firstName: player.firstName || room.players[existingPlayerIndex].firstName,
+        lastName: player.lastName || room.players[existingPlayerIndex].lastName,
+        walletAddress: player.walletAddress || room.players[existingPlayerIndex].walletAddress,
         isHost: Boolean(room.hostId && room.hostId === player.id)
       };
     } else {
@@ -708,7 +712,7 @@ api.post("/rooms/:code/join", (req: Request, res: Response): void => {
       const playerColors = ['#3b82f6', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4'];
       const assignedColor = player.color || playerColors[room.players.length % playerColors.length];
       
-      let displayName = player.name || 'Player';
+      let displayName = player.username || player.name || 'Player';
       const sameNameCount = room.players.filter(p => p && (p.name === displayName || String(p.name || '').startsWith(displayName + ' '))).length;
       if (sameNameCount > 0) {
         displayName = `${displayName} (${sameNameCount + 1})`;
@@ -725,6 +729,10 @@ api.post("/rooms/:code/join", (req: Request, res: Response): void => {
       const newPlayer = {
         id: player.id,
         name: displayName,
+        username: player.username || displayName,
+        firstName: player.firstName,
+        lastName: player.lastName,
+        walletAddress: player.walletAddress,
         avatar: player.avatar || (room.players.length % 2 === 1 ? 'purple' : 'orange'),
         avatarFrame: player.avatarFrame,
         diceSkin: player.diceSkin || 'dice_golden',

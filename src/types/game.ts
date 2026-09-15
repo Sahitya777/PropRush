@@ -122,6 +122,10 @@ export interface MatchAnalytics {
 export interface Player {
   id: string;
   name: string;
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+  walletAddress?: string;
   avatar: string; // skin id: 'navy' | 'lilac' | 'apple' | 'fire' | etc.
   avatarFrame?: string; // frame id: 'pfp_crown' | 'pfp_neon' | 'pfp_fire' | 'pfp_diamond'
   diceSkin?: string; // dice skin id: 'dice_golden' | 'dice_neon' | 'dice_magma' etc.

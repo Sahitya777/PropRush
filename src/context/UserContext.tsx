@@ -46,6 +46,8 @@ interface UserContextType {
     id: string;
     email?: string;
     username?: string;
+    firstName?: string;
+    lastName?: string;
     walletAddress?: string;
     chain?: string;
     imageUrl?: string;
@@ -314,6 +316,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     id: string;
     email?: string;
     username?: string;
+    firstName?: string;
+    lastName?: string;
     walletAddress?: string;
     chain?: string;
     imageUrl?: string;
@@ -323,8 +327,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(prev => {
       const email = dynamicData.email || prev.email || '';
       const walletAddress = dynamicData.walletAddress || prev.walletAddress || '';
-      const username = dynamicData.username || (walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : (email ? email.split('@')[0] : 'Player'));
-      
+      const firstName = dynamicData.firstName || prev.firstName;
+      const lastName = dynamicData.lastName || prev.lastName;
+
       const storageKey = `proprush_dynamic_${dynamicData.id}`;
       let savedUser: Partial<UserProfile> = {};
       const savedUserStr = localStorage.getItem(storageKey);
@@ -334,6 +339,23 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch (e) {
           console.error('Error parsing stored user data for dynamic user', e);
         }
+      }
+
+      // If dynamicData.username is provided and is a real non-wallet username, prioritize it over a cached 0x address!
+      const isSavedUsernameWallet = Boolean(savedUser.username && /^0x[a-fA-F0-9]{4,}/i.test(savedUser.username));
+      let resolvedUsername = '';
+      if (dynamicData.username && !/^0x[a-fA-F0-9]{10,}/i.test(dynamicData.username)) {
+        resolvedUsername = dynamicData.username;
+      } else if (savedUser.username && !isSavedUsernameWallet) {
+        resolvedUsername = savedUser.username;
+      } else if (firstName) {
+        resolvedUsername = `${firstName}${lastName ? ` ${lastName}` : ''}`.trim();
+      } else if (dynamicData.username) {
+        resolvedUsername = dynamicData.username;
+      } else if (walletAddress) {
+        resolvedUsername = `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
+      } else {
+        resolvedUsername = email ? email.split('@')[0] : 'Player';
       }
 
       const isAdmin = (email && email.toLowerCase() === 'sahityanijhawan@gmail.com') || isUserAdmin(email || walletAddress);
@@ -347,7 +369,9 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         walletAddress,
         chain: dynamicData.chain || 'ETH',
         email,
-        username: savedUser.username || username,
+        username: resolvedUsername,
+        firstName,
+        lastName,
         profilePictureUrl: dynamicData.imageUrl || savedUser.profilePictureUrl || prev.profilePictureUrl,
         title: isAdmin ? 'Platform Administrator' : (savedUser.title || 'Dynamic Player'),
         walletBalance: typeof savedUser.walletBalance === 'number' ? savedUser.walletBalance : 0.00,

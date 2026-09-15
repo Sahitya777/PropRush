@@ -3,6 +3,7 @@ import { BoardTile, GameRoom, Player } from '../types/game';
 import { BoardTileView } from './BoardTileView';
 import { DiceRoller } from './DiceRoller';
 import { AvatarCharacter } from './AvatarCharacter';
+import { PlayerNameWithWallet } from './PlayerNameWithWallet';
 import { useTheme } from '../context/ThemeContext';
 
 interface GameBoardProps {
@@ -245,8 +246,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                                     }`}
                                   >
                                     <AvatarCharacter avatarId={p.avatar} size="xs" />
-                                    <span className="font-bold truncate max-w-[90px]">{p.name}</span>
-                                    {isPlayerHost && <span className="text-[10px]">👑</span>}
+                                    <PlayerNameWithWallet
+                                      player={p}
+                                      isHost={isPlayerHost}
+                                      maxNameWidthClass="max-w-[100px]"
+                                    />
                                     {isHost && !isPlayerHost && onKickPlayer && (
                                       <button
                                         type="button"
@@ -344,7 +348,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                                   : 'bg-[#1e1738]/95 border-[#7059e2]/40 text-purple-200'
                               }`}>
                                 <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                                <span>{currentTurnPlayer.isBot ? '🤖' : '👤'} {currentTurnPlayer.name}'s turn</span>
+                                <span className="flex items-center gap-1">
+                                  <span>{currentTurnPlayer.isBot ? '🤖' : '👤'}</span>
+                                  <PlayerNameWithWallet player={currentTurnPlayer} maxNameWidthClass="max-w-[120px]" />
+                                  <span>'s turn</span>
+                                </span>
                                 <span className="text-[11px] font-mono-code font-bold opacity-80">({room.turnTimer}s)</span>
                               </div>
                             </div>

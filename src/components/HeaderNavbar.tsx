@@ -64,7 +64,12 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
 
   const effectiveIsLoggedIn = isLoggedIn || (isDynamicLoaded && !!isDynamicSignedIn);
   const walletAddress = primaryWallet?.address || user.walletAddress;
-  const effectiveUsername = (isDynamicSignedIn && (dynamicUser?.username || dynamicUser?.firstName || (walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : undefined))) || user.username;
+  const dynUserAny = dynamicUser as any;
+  const effectiveUsername =
+    (user.username && !/^0x[a-fA-F0-9]{10,}/i.test(user.username) ? user.username : null) ||
+    (isDynamicSignedIn && (dynUserAny?.username || (dynUserAny?.firstName ? `${dynUserAny.firstName}${dynUserAny.lastName ? ` ${dynUserAny.lastName}` : ''}`.trim() : null) || dynUserAny?.alias)) ||
+    user.username ||
+    (walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'Player');
   const effectiveProfilePic = (isDynamicSignedIn && (dynamicUser?.ens?.avatar || dynamicUser?.profilePictureUrl)) || user.profilePictureUrl;
   const effectiveEmail = (isDynamicSignedIn && (dynamicUser?.email || dynamicUser?.verifiedCredentials?.find((c: any) => c.format === 'email')?.email)) || user.email;
   const isAdmin = isUserAdmin(effectiveEmail) || (effectiveEmail?.toLowerCase().includes('sahityanijhawan@gmail.com') ?? false);
