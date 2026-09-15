@@ -5,6 +5,7 @@ import { useTheme } from '../context/ThemeContext';
 import { AvatarCharacter } from './AvatarCharacter';
 import { sounds } from '../utils/audio';
 import { isUserAdmin } from '../utils/adminRegistry';
+import { openSettingsModal } from './SettingsOptionsModal';
 
 interface HeaderNavbarProps {
   currentView: 'home' | 'game' | 'store' | 'profile' | 'rankings' | 'admin' | '404';
@@ -344,7 +345,7 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
                       onClick={() => {
                         sounds.playClick();
                         setShowUserDropdown(false);
-                        setShowDynamicUserProfile(true);
+                        openSettingsModal('profile');
                       }}
                       className={`w-full px-3 py-2 rounded-xl text-left text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
                         isLight ? 'hover:bg-indigo-50 text-indigo-700' : 'hover:bg-indigo-950/40 text-indigo-300'
@@ -723,7 +724,7 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
                     onClick={() => {
                       sounds.playClick();
                       setIsDrawerOpen(false);
-                      setShowDynamicUserProfile(true);
+                      openSettingsModal('profile');
                     }}
                     className={`w-full py-2 px-3 rounded-xl border font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
                       isLight

@@ -320,6 +320,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   const [showSettingsDrawer, setShowSettingsDrawer] = useState(false);
   const [matchSummaryStats, setMatchSummaryStats] = useState<any>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [roomNotFound, setRoomNotFound] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(!isSessionCreator && !isResuming);
 
   // Chat message state & smart floating drawer state
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -449,23 +451,33 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         // Room already exists on server!
         if (serverRoom.hostId === user.id && isSessionCreator) {
           // I am the verified room creator
+          setIsConnecting(false);
           setRoom(prev => ({
             ...prev,
             ...serverRoom,
             players: serverRoom.players
           }));
+          serverVersionRef.current = (serverRoom as any).version || 1;
         } else {
           // I am a joining player
           joinServerRoom(roomConfig.roomCode, { ...myPlayerPayload, isHost: false }).then(joinedRoom => {
-            if (!isMounted || !joinedRoom) return;
-            setRoom(prev => ({
-              ...prev,
-              ...joinedRoom,
-              players: joinedRoom.players
-            }));
-            const joinedAny = joinedRoom as any;
-            if (joinedAny.chatMessages && Array.isArray(joinedAny.chatMessages)) {
-              setChatMessages(joinedAny.chatMessages);
+            if (!isMounted) return;
+            if (joinedRoom) {
+              setIsConnecting(false);
+              setRoom(prev => ({
+                ...prev,
+                ...joinedRoom,
+                players: joinedRoom.players
+              }));
+              serverVersionRef.current = (joinedRoom as any).version || 1;
+              const joinedAny = joinedRoom as any;
+              if (joinedAny.chatMessages && Array.isArray(joinedAny.chatMessages)) {
+                setChatMessages(joinedAny.chatMessages);
+              }
+            } else {
+              setIsConnecting(false);
+              setRoomNotFound(true);
+              sounds.playBankrupt();
             }
           });
         }
@@ -507,22 +519,48 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           fillWithBots: false
         } as any).then(created => {
           if (!isMounted || !created) return;
+          setIsConnecting(false);
           setRoom(prev => ({
             ...prev,
             ...created,
             players: created.players
           }));
+          serverVersionRef.current = (created as any).version || 1;
         });
       } else {
-        // Joining player but room record not yet in server cache -> join via endpoint
-        joinServerRoom(roomConfig.roomCode, { ...myPlayerPayload, isHost: false }).then(joinedRoom => {
-          if (!isMounted || !joinedRoom) return;
-          setRoom(prev => ({
-            ...prev,
-            ...joinedRoom,
-            players: joinedRoom.players
-          }));
-        });
+        // Joining player but room record not yet in server cache -> retry once after 350ms
+        setTimeout(() => {
+          if (!isMounted) return;
+          fetchServerRoom(roomConfig.roomCode).then(retryRoom => {
+            if (!isMounted) return;
+            if (retryRoom) {
+              joinServerRoom(roomConfig.roomCode, { ...myPlayerPayload, isHost: false }).then(joinedRoom => {
+                if (!isMounted) return;
+                if (joinedRoom) {
+                  setIsConnecting(false);
+                  setRoom(prev => ({
+                    ...prev,
+                    ...joinedRoom,
+                    players: joinedRoom.players
+                  }));
+                  serverVersionRef.current = (joinedRoom as any).version || 1;
+                  const joinedAny = joinedRoom as any;
+                  if (joinedAny.chatMessages && Array.isArray(joinedAny.chatMessages)) {
+                    setChatMessages(joinedAny.chatMessages);
+                  }
+                } else {
+                  setIsConnecting(false);
+                  setRoomNotFound(true);
+                  sounds.playBankrupt();
+                }
+              });
+            } else {
+              setIsConnecting(false);
+              setRoomNotFound(true);
+              sounds.playBankrupt();
+            }
+          });
+        }, 350);
       }
     });
 
@@ -643,7 +681,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       };
     }
 
-    // 3. Periodic Server Polling Interval (Every 600ms for fast cross-device updates)
+    // 3. Periodic Server Polling Interval (Every 450ms for fast cross-device updates)
     const pollInterval = setInterval(async () => {
       if (!isMounted || isRollingRef.current) return;
 
@@ -687,6 +725,16 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           }
 
           const playersCountDiff = prev.players.length !== (sRoom.players?.length || 0);
+          const waitingPlayersDiff = wasWaiting && (
+            playersCountDiff ||
+            JSON.stringify(prev.players.map(p => ({ id: p.id, name: p.name, wallet: p.walletAddress, ready: (p as any).isReady }))) !==
+            JSON.stringify((sRoom.players || []).map((p: any) => ({ id: p.id, name: p.name, wallet: p.walletAddress, ready: p.isReady })))
+          );
+
+          if (wasWaiting && sRoom.players && sRoom.players.length > prev.players.length) {
+            sounds.playCashRegister();
+          }
+
           const statusDiff = prev.status !== sRoom.status;
           const turnDiff =
             prev.currentTurnPlayerId !== sRoom.currentTurnPlayerId ||
@@ -699,7 +747,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           const logsDiff = sRoom.logs && sRoom.logs.length > prev.logs.length;
           const tradeDiff = JSON.stringify(prev.activeTrade) !== JSON.stringify(sRoom.activeTrade);
 
-          if (playersCountDiff || statusDiff || turnDiff || bankruptDiff || hasNewerVersion || logsDiff || tradeDiff) {
+          if (waitingPlayersDiff || playersCountDiff || statusDiff || turnDiff || bankruptDiff || hasNewerVersion || logsDiff || tradeDiff) {
             if (sRoom.version) serverVersionRef.current = sRoom.version;
             return {
               ...prev,
@@ -1931,7 +1979,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
   const handleCopyLink = () => {
     try {
-      const url = `${window.location.origin}?room=${room.code}`;
+      const url = `${window.location.origin}/?room=${encodeURIComponent(room.code || roomConfig.roomCode)}`;
       if (navigator?.clipboard?.writeText) {
         navigator.clipboard.writeText(url).catch(() => {});
       }
@@ -1941,6 +1989,43 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   };
 
   const myOwnedTiles = tiles.filter(t => myPlayer?.properties.includes(t.id));
+
+  if (roomNotFound) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-slate-900/90 border border-slate-800 rounded-2xl p-8 text-center shadow-2xl backdrop-blur-sm">
+          <div className="w-16 h-16 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto mb-5 text-2xl font-bold">
+            !
+          </div>
+          <h2 className="text-2xl font-black text-slate-100 mb-2">Room Not Found</h2>
+          <p className="text-slate-400 text-sm mb-6 leading-relaxed">
+            Room <span className="font-mono text-amber-400 font-bold tracking-wider">"{roomConfig.roomCode.toUpperCase()}"</span> does not exist or has already closed. Please verify the code with your host.
+          </p>
+          <button
+            onClick={() => {
+              clearActiveMatch();
+              onLeaveRoom();
+            }}
+            className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-sm shadow-lg shadow-amber-500/20 transition-all active:scale-95"
+          >
+            Return to Game Lobby
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isConnecting) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-4">
+        <div className="max-w-sm w-full bg-slate-900/80 border border-slate-800 rounded-2xl p-8 text-center shadow-xl backdrop-blur-sm">
+          <div className="w-12 h-12 border-3 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <h3 className="text-lg font-bold text-slate-100 mb-1">Connecting to Table...</h3>
+          <p className="text-xs text-slate-400 font-mono">Room {roomConfig.roomCode.toUpperCase()}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`w-full h-screen max-h-screen overflow-hidden flex flex-col select-none relative transition-colors duration-200 ${

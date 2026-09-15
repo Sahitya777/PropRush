@@ -532,12 +532,27 @@ api.get("/rooms", (_req: Request, res: Response) => {
   }
 });
 
+function findRoomByCode(code: string): ServerRoom | undefined {
+  if (!code) return undefined;
+  const clean = code.trim().toLowerCase();
+  let r = serverRooms.get(clean);
+  if (r) return r;
+  if (clean.startsWith('custom_')) {
+    r = serverRooms.get(clean.replace('custom_', ''));
+    if (r) return r;
+  } else {
+    r = serverRooms.get('custom_' + clean);
+    if (r) return r;
+  }
+  return undefined;
+}
+
 // GET /rooms/:code - Retrieve live room state
 api.get("/rooms/:code", (req: Request, res: Response): void => {
   try {
     const code = (req.params.code || '').trim().toLowerCase();
     loadPersistedRooms();
-    let room = serverRooms.get(code);
+    let room = findRoomByCode(code);
     if (!room) {
       res.status(404).json({ exists: false, error: `Room ${code} not found` });
       return;
@@ -564,7 +579,7 @@ api.post("/rooms", (req: Request, res: Response): void => {
 
     const code = (raw.code || raw.roomCode || 'room_' + Math.random().toString(36).substring(2, 7)).trim().toLowerCase();
     loadPersistedRooms();
-    const existing = serverRooms.get(code);
+    const existing = findRoomByCode(code);
     const now = Date.now();
 
     if (existing && existing.status !== 'finished') {
@@ -655,13 +670,19 @@ api.post("/rooms/:code/join", (req: Request, res: Response): void => {
     }
 
     loadPersistedRooms();
-    let room = serverRooms.get(code);
+    let room = findRoomByCode(code);
 
-    // Auto-create room if joining by code or share link
     const now = Date.now();
     const isCreatorRequest = Boolean(player.isHost || body.isCreator);
     if (!room) {
       const isDefault = code === 'tokyo88' || code === 'whale50' || code === 'inu17';
+      if (!isDefault && !isCreatorRequest) {
+        res.status(404).json({
+          error: `Room "${code.toUpperCase()}" does not exist or has already finished. Please verify your room code or ask the host to send an active invite link.`
+        });
+        return;
+      }
+
       room = {
         code,
         name: `Room ${code.toUpperCase()}`,
@@ -820,8 +841,9 @@ api.post("/rooms/:code/state", (req: Request, res: Response): void => {
     }
 
     loadPersistedRooms();
-    let existing = serverRooms.get(code);
+    let existing = findRoomByCode(code);
     const now = Date.now();
+    const targetCode = existing?.code || code;
 
     // Preserve the original hostId so non-hosts cannot overwrite it
     const authoritativeHostId = (existing && existing.hostId) ? existing.hostId : (updatedRoom.hostId || '');
@@ -846,7 +868,7 @@ api.post("/rooms/:code/state", (req: Request, res: Response): void => {
     const merged: ServerRoom = {
       ...(existing || {}),
       ...updatedRoom,
-      code,
+      code: targetCode,
       hostId: authoritativeHostId,
       status: targetStatus,
       players: sanitizedPlayers,
@@ -854,7 +876,10 @@ api.post("/rooms/:code/state", (req: Request, res: Response): void => {
       updatedAt: now
     };
 
-    serverRooms.set(code, merged);
+    serverRooms.set(targetCode, merged);
+    if (targetCode !== code) {
+      serverRooms.set(code, merged);
+    }
     savePersistedRooms();
     res.json({ success: true, version: merged.version });
   } catch (err: any) {
@@ -869,7 +894,7 @@ api.post("/rooms/:code/start", (req: Request, res: Response): void => {
     const { hostId, playerId } = req.body || {};
     const callerId = (hostId || playerId || '').trim();
     loadPersistedRooms();
-    const room = serverRooms.get(code);
+    const room = findRoomByCode(code);
     if (!room) {
       res.status(404).json({ error: 'Room not found' });
       return;
@@ -889,7 +914,8 @@ api.post("/rooms/:code/start", (req: Request, res: Response): void => {
     room.turnTimer = room.turnTimeSeconds || 15;
     room.version = (room.version || 0) + 1;
     room.updatedAt = Date.now();
-    serverRooms.set(code, room);
+    serverRooms.set(room.code, room);
+    if (room.code !== code) serverRooms.set(code, room);
     savePersistedRooms();
     res.json({ success: true, room });
   } catch (err: any) {
@@ -904,7 +930,7 @@ api.post("/rooms/:code/kick", (req: Request, res: Response): void => {
     const { hostId, playerIdToKick } = req.body || {};
     const callerId = (hostId || '').trim();
     loadPersistedRooms();
-    const room = serverRooms.get(code);
+    const room = findRoomByCode(code);
     if (!room) {
       res.status(404).json({ error: 'Room not found' });
       return;
@@ -916,7 +942,8 @@ api.post("/rooms/:code/kick", (req: Request, res: Response): void => {
     room.players = room.players.filter(p => p.id !== playerIdToKick);
     room.version = (room.version || 0) + 1;
     room.updatedAt = Date.now();
-    serverRooms.set(code, room);
+    serverRooms.set(room.code, room);
+    if (room.code !== code) serverRooms.set(code, room);
     savePersistedRooms();
     res.json({ success: true, room });
   } catch (err: any) {
@@ -937,7 +964,7 @@ api.post("/rooms/:code/chat", (req: Request, res: Response): void => {
     }
 
     loadPersistedRooms();
-    let room = serverRooms.get(code);
+    let room = findRoomByCode(code);
     if (!room) {
       res.status(404).json({ error: 'Room not found' });
       return;
@@ -955,7 +982,8 @@ api.post("/rooms/:code/chat", (req: Request, res: Response): void => {
     room.version = (room.version || 0) + 1;
     room.updatedAt = Date.now();
 
-    serverRooms.set(code, room);
+    serverRooms.set(room.code, room);
+    if (room.code !== code) serverRooms.set(code, room);
     savePersistedRooms();
     res.json({ success: true, message: chatEntry, chatMessages: room.chatMessages });
   } catch (err: any) {

@@ -15,6 +15,7 @@ import {
   registerActiveRoom,
   ActiveRoomInfo
 } from '../utils/activeRoomsRegistry';
+import { fetchServerRoom } from '../utils/serverRoomSync';
 
 interface HomeLobbyViewProps {
   onJoinRoom: (roomConfig: {
@@ -119,7 +120,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
 
   // Room config state
   const [roomName, setRoomName] = useState('Room ' + Math.random().toString(36).substring(2, 6).toUpperCase());
-  const [roomCode, setRoomCode] = useState('custom_' + Math.random().toString(36).substring(2, 6));
+  const [roomCode, setRoomCode] = useState(() => Math.random().toString(36).substring(2, 6).toLowerCase());
   const [maxPlayers, setMaxPlayers] = useState<number>(4);
   const [wagerPreset, setWagerPreset] = useState<string>('10');
   const [customWagerAmount, setCustomWagerAmount] = useState<string>('75');
@@ -314,20 +315,30 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       return;
     }
 
-    // 3. If not in active registry, join as dynamic custom room
-    setJoinError(null);
-    sounds.playCashRegister();
-    onJoinRoom({
-      roomCode: cleanCode,
-      roomName: `Room ${cleanCode.toUpperCase()}`,
-      maxPlayers: 4,
-      betAmount: 0,
-      initialCash: 1500,
-      turnTimeSeconds: 15,
-      boardTheme: 'classic',
-      fillWithBots: false,
-      isCreator: false
-    });
+    // 3. Fallback check directly with server in case room was created recently
+    const directServerRoom = await fetchServerRoom(cleanCode) || await fetchServerRoom('custom_' + cleanCode);
+    if (directServerRoom) {
+      setJoinError(null);
+      sounds.playCashRegister();
+      onJoinRoom({
+        roomCode: directServerRoom.code || cleanCode,
+        roomName: directServerRoom.name || `Room ${cleanCode.toUpperCase()}`,
+        maxPlayers: directServerRoom.maxPlayers || 4,
+        betAmount: (directServerRoom as any).betAmount || 0,
+        initialCash: (directServerRoom as any).initialCash || 1500,
+        turnTimeSeconds: directServerRoom.turnTimeLimit || (directServerRoom as any).turnTimeSeconds || 15,
+        boardTheme: (directServerRoom.boardTheme || 'classic').toLowerCase(),
+        fillWithBots: false,
+        isCreator: false
+      });
+      return;
+    }
+
+    // Room does not exist - block random room entry!
+    sounds.playBankrupt();
+    setJoinError(`Room "${cleanCode.toUpperCase()}" does not exist. Please check the code or verify the table has been created.`);
+    setIsJoinErrorShaking(true);
+    setTimeout(() => setIsJoinErrorShaking(false), 600);
   };
 
   const handleQuickJoinActiveRoom = (room: ActiveRoomInfo) => {

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState } from 'react';
 import {
   DynamicContextProvider,
   useDynamicContext as useDynamicContextOriginal,
+  DynamicUserProfile,
 } from '@dynamic-labs/sdk-react-core';
 import { EthereumWalletConnectors } from '@dynamic-labs/ethereum';
 
@@ -139,6 +140,7 @@ const DynamicStateBridge: React.FC<{
   return (
     <DynamicStateContext.Provider value={stateValue}>
       {children}
+      <DynamicUserProfile />
     </DynamicStateContext.Provider>
   );
 };

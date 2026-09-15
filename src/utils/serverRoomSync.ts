@@ -4,29 +4,16 @@ import { GameRoom, Player } from '../types/game';
 async function safeFetchJson(url: string, options?: RequestInit): Promise<any> {
   try {
     const res = await fetch(url, options);
-    if (!res.ok) {
-      // If /api/... failed, attempt root path /... fallback
-      if (url.startsWith('/api/')) {
-        const altUrl = url.replace(/^\/api/, '');
-        const altRes = await fetch(altUrl, options);
-        if (altRes.ok) {
-          return await altRes.json();
-        }
-      }
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
       return null;
     }
-    return await res.json();
-  } catch (err) {
-    // If original failed due to network, try alternate
-    if (url.startsWith('/api/')) {
-      try {
-        const altUrl = url.replace(/^\/api/, '');
-        const altRes = await fetch(altUrl, options);
-        if (altRes.ok) {
-          return await altRes.json();
-        }
-      } catch {}
+    const data = await res.json();
+    if (!res.ok) {
+      return { _httpError: true, status: res.status, error: data?.error || 'Request failed' };
     }
+    return data;
+  } catch (err) {
     return null;
   }
 }
@@ -55,7 +42,7 @@ export async function fetchServerRoom(code: string): Promise<GameRoom | null> {
   try {
     const clean = code.trim().toLowerCase();
     const data = await safeFetchJson(`/api/rooms/${clean}`);
-    if (data && data.exists && data.room) {
+    if (data && !data._httpError && data.exists && data.room) {
       return data.room as GameRoom;
     }
     return null;
@@ -75,7 +62,10 @@ export async function createServerRoom(room: Partial<GameRoom> & { code: string;
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(room)
     });
-    return data?.room || null;
+    if (data && !data._httpError && data.room) {
+      return data.room as GameRoom;
+    }
+    return null;
   } catch (err) {
     console.error('Error creating server room:', err);
     return null;
@@ -93,7 +83,10 @@ export async function joinServerRoom(code: string, player: Partial<Player>): Pro
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ player })
     });
-    return data?.room || null;
+    if (data && !data._httpError && data.room) {
+      return data.room as GameRoom;
+    }
+    return null;
   } catch (err) {
     console.error(`Error joining server room ${code}:`, err);
     return null;

@@ -7,6 +7,7 @@ import { AvatarCharacter } from '../components/AvatarCharacter';
 import { DiceFaceMini } from '../components/DiceFaceMini';
 import { LeagueTier } from '../types/user';
 import { sounds } from '../utils/audio';
+import { openSettingsModal } from '../components/SettingsOptionsModal';
 
 export const ProfileView: React.FC = () => {
   const { user, updateUsername, claimDailyReward, lastDailyClaim, equipItem, isLoggedIn, openAuthModal, logoutUser } = useUser();
@@ -17,6 +18,7 @@ export const ProfileView: React.FC = () => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(user.username);
   const [dailyClaimMsg, setDailyClaimMsg] = useState<string | null>(null);
+  const [copiedAddress, setCopiedAddress] = useState(false);
 
   const effectiveIsLoggedIn = isLoggedIn || (isDynamicLoaded && !!isDynamicSignedIn);
   const walletAddress = primaryWallet?.address || user.walletAddress;
@@ -35,6 +37,18 @@ export const ProfileView: React.FC = () => {
       updateUsername(tempName.trim());
       setIsEditingName(false);
     }
+  };
+
+  const handleCopyAddress = () => {
+    try {
+      const addr = walletAddress || user.walletAddress || '';
+      if (navigator?.clipboard?.writeText) {
+        navigator.clipboard.writeText(addr).catch(() => {});
+      }
+    } catch {}
+    setCopiedAddress(true);
+    sounds.playClick();
+    setTimeout(() => setCopiedAddress(false), 2000);
   };
 
   const handleSignOut = async () => {
@@ -197,7 +211,7 @@ export const ProfileView: React.FC = () => {
               <button
                 onClick={() => {
                   sounds.playClick();
-                  setShowDynamicUserProfile(true);
+                  openSettingsModal('profile');
                 }}
                 className={`w-full sm:w-auto px-4 py-1.5 rounded-xl border font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                   isLight
@@ -222,6 +236,188 @@ export const ProfileView: React.FC = () => {
               </button>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Profile & Web3 Account Section (Username, Bio, First Name, Last Name, Non-editable Wallet Address) */}
+      <div className={`p-4 sm:p-6 rounded-3xl border shadow-lg flex flex-col gap-5 ${
+        isLight ? 'bg-white border-slate-200' : 'bg-[#19142b] border-[#2b2447]'
+      }`}>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h2 className={`font-heading font-black text-lg sm:text-xl flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+              <span>🪪</span> Profile & Account Identity
+            </h2>
+            <p className={`text-xs mt-0.5 ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+              Manage your personal information, bio, and connected wallet identifiers
+            </p>
+          </div>
+
+          <button
+            onClick={() => {
+              sounds.playClick();
+              openSettingsModal('profile_settings');
+            }}
+            className="px-3.5 py-1.5 rounded-xl bg-[#7059e2] hover:bg-[#5d44db] text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+          >
+            <span>⚙️</span>
+            <span>Edit Profile Settings</span>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+          {/* Box 1: Web3 Wallet Address (Read-only / Non-editable) & Username */}
+          <div className={`p-4 sm:p-5 rounded-2xl border space-y-4 ${
+            isLight ? 'bg-slate-50/70 border-slate-200' : 'bg-[#140f24] border-[#292049]'
+          }`}>
+            {/* Ethereum Address */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                  <span>Ethereum Wallet Address</span>
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                    🔒 Non-Editable
+                  </span>
+                </span>
+                <button
+                  onClick={handleCopyAddress}
+                  className={`text-xs font-bold px-2.5 py-0.5 rounded-lg border transition-all cursor-pointer ${
+                    copiedAddress
+                      ? 'bg-emerald-600 text-white border-emerald-500'
+                      : isLight
+                      ? 'bg-slate-200 hover:bg-slate-300 text-slate-700 border-slate-300'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                  }`}
+                >
+                  {copiedAddress ? 'Copied ✓' : 'Copy'}
+                </button>
+              </div>
+
+              <div className={`p-2.5 rounded-xl border font-mono text-xs select-all break-all ${
+                isLight ? 'bg-white text-slate-700 border-slate-200' : 'bg-[#0d091b] text-indigo-300 border-[#231b40]'
+              }`}>
+                {walletAddress}
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Connected via Dynamic Web3. The wallet address is permanent and cannot be modified.
+              </p>
+            </div>
+
+            <div className="h-px bg-slate-800/40 w-full" />
+
+            {/* Editable Username (positioned directly below address) */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                  <span>Player Username</span>
+                  <span className="text-[10px] text-emerald-400 font-semibold">• Editable</span>
+                </span>
+                {!isEditingName ? (
+                  <button
+                    onClick={() => {
+                      setTempName(user.username);
+                      setIsEditingName(true);
+                    }}
+                    className="text-xs font-bold text-[#a594fd] hover:text-white cursor-pointer"
+                  >
+                    ✏️ Edit Username
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={handleSaveName}
+                      className="text-xs font-bold px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => setIsEditingName(false)}
+                      className="text-xs font-bold px-2 py-0.5 rounded-md bg-slate-800 text-slate-400 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {isEditingName ? (
+                <form onSubmit={handleSaveName} className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-mono">@</span>
+                    <input
+                      type="text"
+                      value={tempName}
+                      onChange={e => setTempName(e.target.value)}
+                      className={`w-full pl-7 pr-3 py-2 rounded-xl border text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#7059e2] ${
+                        isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0d091b] border-[#372b61] text-white'
+                      }`}
+                      autoFocus
+                    />
+                  </div>
+                </form>
+              ) : (
+                <div className={`p-2.5 rounded-xl border text-sm font-bold flex items-center justify-between ${
+                  isLight ? 'bg-white text-slate-800 border-slate-200' : 'bg-[#0d091b] text-white border-[#231b40]'
+                }`}>
+                  <span className="font-mono text-indigo-300">@{user.username}</span>
+                  <span className="text-[11px] text-slate-500 font-normal">Shown in rooms & leaderboard</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Box 2: Profile Details (First Name, Last Name, Bio) */}
+          <div className={`p-4 sm:p-5 rounded-2xl border space-y-4 flex flex-col justify-between ${
+            isLight ? 'bg-slate-50/70 border-slate-200' : 'bg-[#140f24] border-[#292049]'
+          }`}>
+            <div className="space-y-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                Personal Information
+              </span>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className={`p-3 rounded-xl border ${
+                  isLight ? 'bg-white border-slate-200' : 'bg-[#0d091b] border-[#231b40]'
+                }`}>
+                  <span className="text-[11px] text-slate-400 font-medium block">First Name</span>
+                  <span className="text-sm font-bold text-slate-200 mt-0.5 block truncate">
+                    {user.firstName || 'Not set'}
+                  </span>
+                </div>
+
+                <div className={`p-3 rounded-xl border ${
+                  isLight ? 'bg-white border-slate-200' : 'bg-[#0d091b] border-[#231b40]'
+                }`}>
+                  <span className="text-[11px] text-slate-400 font-medium block">Last Name</span>
+                  <span className="text-sm font-bold text-slate-200 mt-0.5 block truncate">
+                    {user.lastName || 'Not set'}
+                  </span>
+                </div>
+              </div>
+
+              <div className={`p-3 rounded-xl border space-y-1 ${
+                isLight ? 'bg-white border-slate-200' : 'bg-[#0d091b] border-[#231b40]'
+              }`}>
+                <span className="text-[11px] text-slate-400 font-medium block">Bio</span>
+                <p className="text-xs font-medium text-slate-300 leading-relaxed italic line-clamp-3">
+                  {user.bio || 'No bio yet. Click "Edit Profile Settings" to write a personal player bio!'}
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button
+                onClick={() => {
+                  sounds.playClick();
+                  openSettingsModal('private_key');
+                }}
+                className="w-full py-2 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all"
+              >
+                <span>🔑</span>
+                <span>Export Private Key (Dynamic Settings)</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -13,6 +13,7 @@ import { WalletModal } from './components/WalletModal';
 import { RulesModal } from './components/RulesModal';
 import { DynamicAuthModal } from './components/DynamicAuthModal';
 import { DynamicUserSync } from './components/DynamicUserSync';
+import { SettingsOptionsModal, SettingsTabId } from './components/SettingsOptionsModal';
 import { useDynamicConfig } from './context/DynamicIntegration';
 import { sounds } from './utils/audio';
 import { getActiveMatch, RoomConfig } from './utils/reconnectStorage';
@@ -61,8 +62,22 @@ function AppContent() {
 
   const [isWalletOpen, setIsWalletOpen] = useState(false);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTabId>('profile');
   const [isMuted, setIsMuted] = useState(false);
   const [depositNotification, setDepositNotification] = useState<string | null>(null);
+
+  // Global listener for opening settings modal
+  useEffect(() => {
+    const handleOpenSettings = (e: any) => {
+      if (e.detail?.tab) {
+        setSettingsInitialTab(e.detail.tab);
+      }
+      setIsSettingsOpen(true);
+    };
+    window.addEventListener('proprush_open_settings', handleOpenSettings);
+    return () => window.removeEventListener('proprush_open_settings', handleOpenSettings);
+  }, []);
 
   const navigateTo = (view: 'home' | 'store' | 'profile' | 'rankings' | 'admin' | '404') => {
     sounds.playClick();
@@ -460,6 +475,13 @@ function AppContent() {
       {/* Dynamic Web3 Authentication Modal & Sync Listener */}
       <DynamicUserSync />
       <DynamicAuthModal />
+
+      {/* Dynamic & Profile Settings Options Modal */}
+      <SettingsOptionsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        initialTab={settingsInitialTab}
+      />
     </div>
   );
 }
