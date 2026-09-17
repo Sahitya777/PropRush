@@ -9,6 +9,8 @@ import { ProfileView } from './views/ProfileView';
 import { RankingsLeaguesView } from './views/RankingsLeaguesView';
 import { AdminCommandCenterView } from './views/AdminCommandCenterView';
 import { NotFoundView } from './views/NotFoundView';
+import { PrivacyPolicyView } from './views/PrivacyPolicyView';
+import { TermsAndConditionsView } from './views/TermsAndConditionsView';
 import { WalletModal } from './components/WalletModal';
 import { RulesModal } from './components/RulesModal';
 import { DynamicAuthModal } from './components/DynamicAuthModal';
@@ -21,7 +23,9 @@ import { findActiveRoomByCode, findActiveRoomByCodeAsync } from './utils/activeR
 import { verifyStripeSession } from './utils/stripeClient';
 import { fireConfetti } from './utils/confetti';
 
-function getInitialView(): 'home' | 'game' | 'store' | 'profile' | 'rankings' | 'admin' | '404' {
+export type AppViewType = 'home' | 'game' | 'store' | 'profile' | 'rankings' | 'admin' | '404' | 'privacy' | 'terms';
+
+function getInitialView(): AppViewType {
   if (typeof window === 'undefined') return 'home';
   const rawPath = window.location.pathname.toLowerCase();
   // Normalize redundant slashes (e.g. "//" -> "/")
@@ -39,6 +43,8 @@ function getInitialView(): 'home' | 'game' | 'store' | 'profile' | 'rankings' | 
     return 'home';
   }
 
+  if (viewParam === 'privacy' || path === '/privacy') return 'privacy';
+  if (viewParam === 'terms' || viewParam === 'terms-and-conditions' || path === '/terms' || path === '/terms-and-conditions') return 'terms';
   if (viewParam === '404' || path === '/404') return '404';
   if (viewParam === 'admin' || path === '/admin') return 'admin';
   if (viewParam === 'rankings' || viewParam === 'leaderboard' || path === '/rankings' || path === '/leaderboard') return 'rankings';
@@ -57,7 +63,7 @@ function AppContent() {
   const { user, deductBuyIn, depositFunds, isBanned, referralNotification, clearReferralNotification } = useUser();
   const { isDynamicConfigured } = useDynamicConfig();
   const { isLight } = useTheme();
-  const [currentView, setCurrentView] = useState<'home' | 'game' | 'store' | 'profile' | 'rankings' | 'admin' | '404'>(getInitialView);
+  const [currentView, setCurrentView] = useState<AppViewType>(getInitialView);
   const [activeRoomConfig, setActiveRoomConfig] = useState<RoomConfig | null>(null);
 
   const [isWalletOpen, setIsWalletOpen] = useState(false);
@@ -66,6 +72,29 @@ function AppContent() {
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTabId>('profile');
   const [isMuted, setIsMuted] = useState(false);
   const [depositNotification, setDepositNotification] = useState<string | null>(null);
+
+  // Synchronize OpenGraph / Twitter tags with the current domain for social link previews
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && window.location.origin) {
+        const origin = window.location.origin;
+        const currentUrl = window.location.href;
+        const ogImage = `${origin}/og-image.jpg`;
+
+        const metaOgImage = document.querySelector('meta[property="og:image"]');
+        if (metaOgImage) metaOgImage.setAttribute('content', ogImage);
+
+        const metaOgSecureImage = document.querySelector('meta[property="og:image:secure_url"]');
+        if (metaOgSecureImage) metaOgSecureImage.setAttribute('content', ogImage);
+
+        const metaTwitterImage = document.querySelector('meta[name="twitter:image"]');
+        if (metaTwitterImage) metaTwitterImage.setAttribute('content', ogImage);
+
+        const metaOgUrl = document.querySelector('meta[property="og:url"]');
+        if (metaOgUrl) metaOgUrl.setAttribute('content', currentUrl);
+      }
+    } catch {}
+  }, [currentView]);
 
   // Global listener for opening settings modal
   useEffect(() => {
@@ -79,12 +108,13 @@ function AppContent() {
     return () => window.removeEventListener('proprush_open_settings', handleOpenSettings);
   }, []);
 
-  const navigateTo = (view: 'home' | 'store' | 'profile' | 'rankings' | 'admin' | '404') => {
+  const navigateTo = (view: AppViewType) => {
     sounds.playClick();
     setCurrentView(view);
     try {
       const url = view === 'home' ? '/' : `/?view=${view}`;
       window.history.pushState({ view }, '', url);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch {}
   };
 
@@ -357,6 +387,14 @@ function AppContent() {
           />
         )}
 
+        {currentView === 'privacy' && (
+          <PrivacyPolicyView onBack={() => navigateTo('home')} />
+        )}
+
+        {currentView === 'terms' && (
+          <TermsAndConditionsView onBack={() => navigateTo('home')} />
+        )}
+
         {currentView === '404' && (
           <NotFoundView
             onNavigateHome={() => navigateTo('home')}
@@ -428,32 +466,24 @@ function AppContent() {
                 🏆 Leaderboard & Leagues
               </button>
               <button
-                onClick={() => navigateTo('store')}
+                onClick={() => navigateTo('privacy')}
                 className="hover:text-[#7059e2] cursor-pointer transition-colors"
               >
-                Cosmetics Store
+                Privacy Policy
               </button>
               <button
-                onClick={() => navigateTo('profile')}
+                onClick={() => navigateTo('terms')}
                 className="hover:text-[#7059e2] cursor-pointer transition-colors"
               >
-                Player Locker
+                Terms & Conditions
               </button>
               <button
                 onClick={() => navigateTo('admin')}
-                className="hover:text-purple-400 cursor-pointer transition-colors flex items-center gap-1 font-bold"
+                className="hover:text-purple-400 cursor-pointer transition-colors flex items-center gap-1 opacity-70 hover:opacity-100 font-medium"
                 title="Admin Command Center"
               >
                 <span>🛡️</span>
                 <span>Admin Console</span>
-              </button>
-              <button
-                onClick={() => navigateTo('404')}
-                className="hover:text-rose-400 cursor-pointer transition-colors opacity-75 hover:opacity-100 flex items-center gap-1"
-                title="Preview 404 Jail page"
-              >
-                <span>🚨</span>
-                <span>404 Jail</span>
               </button>
             </div>
           </div>

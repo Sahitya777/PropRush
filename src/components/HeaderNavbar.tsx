@@ -8,8 +8,8 @@ import { isUserAdmin } from '../utils/adminRegistry';
 import { openSettingsModal } from './SettingsOptionsModal';
 
 interface HeaderNavbarProps {
-  currentView: 'home' | 'game' | 'store' | 'profile' | 'rankings' | 'admin' | '404';
-  onNavigate: (view: 'home' | 'store' | 'profile' | 'rankings' | 'admin') => void;
+  currentView: 'home' | 'game' | 'store' | 'profile' | 'rankings' | 'admin' | '404' | 'privacy' | 'terms';
+  onNavigate: (view: 'home' | 'store' | 'profile' | 'rankings' | 'admin' | 'privacy' | 'terms') => void;
   onOpenWallet: () => void;
   onOpenRules?: () => void;
   onOpenAuth?: () => void;
