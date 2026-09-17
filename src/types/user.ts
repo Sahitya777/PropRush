@@ -44,6 +44,25 @@ export interface MatchHistory {
   durationMinutes: number;
 }
 
+export interface ReferralRecord {
+  id: string;
+  refereeId: string;
+  refereeUsername: string;
+  refereeWallet?: string;
+  joinedAt: string;
+  pointsEarned: number;
+  status: 'completed' | 'pending';
+}
+
+export interface UserReferrals {
+  code: string;
+  friendsJoined: number;
+  totalPointsEarned: number;
+  earningsUsd: number;
+  referredBy?: string;
+  history: ReferralRecord[];
+}
+
 export interface UserProfile {
   id: string;
   username: string;
@@ -89,4 +108,6 @@ export interface UserProfile {
   };
   badges: Badge[];
   matchHistory: MatchHistory[];
+  referrals?: UserReferrals;
 }
+

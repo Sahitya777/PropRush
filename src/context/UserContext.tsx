@@ -6,6 +6,13 @@ import { syncUserProfileToServer } from '../utils/serverUsersSync';
 import { isUserBanned } from '../utils/banManager';
 import { isUserAdmin } from '../utils/adminRegistry';
 import { useSafeDynamic } from './DynamicIntegration';
+import {
+  trackReferralCodeFromUrl,
+  getPendingReferrer,
+  processReferralOnServer,
+  isReferralAlreadyClaimedLocally,
+  clearPendingReferrer
+} from '../utils/referralService';
 
 interface UserContextType {
   user: UserProfile;
@@ -66,6 +73,9 @@ interface UserContextType {
   openAuthModal: (reason?: string) => void;
   closeAuthModal: () => void;
   requireAuth: (reason: string, onAuthenticated: () => void) => void;
+  claimReferralCode: (code: string) => Promise<{ success: boolean; message: string }>;
+  referralNotification: { message: string; points: number } | null;
+  clearReferralNotification: () => void;
 }
 
 const getTabSessionId = (): string => {
@@ -225,6 +235,127 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       openAuthModal(reason);
     }
   };
+
+  // Referral tracking & rewards state
+  const [referralNotification, setReferralNotification] = useState<{ message: string; points: number } | null>(null);
+
+  const clearReferralNotification = useCallback(() => {
+    setReferralNotification(null);
+  }, []);
+
+  // Check URL query parameters for referral on initial mount
+  useEffect(() => {
+    const code = trackReferralCodeFromUrl();
+    if (code) {
+      console.log('Detected referral invite link from @' + code);
+    }
+  }, []);
+
+  // Function to process pending referral for authenticated users
+  const checkAndApplyPendingReferral = useCallback(async (targetUser: UserProfile) => {
+    const pendingReferrer = getPendingReferrer();
+    if (!pendingReferrer) return;
+    if (targetUser.referrals?.referredBy) {
+      clearPendingReferrer();
+      return;
+    }
+    if (isReferralAlreadyClaimedLocally(targetUser.id, targetUser.walletAddress)) {
+      clearPendingReferrer();
+      return;
+    }
+
+    try {
+      const res = await processReferralOnServer(pendingReferrer, targetUser);
+      if (res.success && res.refereeBonusCoins) {
+        sounds.playCashRegister();
+        setUser(prev => {
+          const updatedCoins = prev.coins + (res.refereeBonusCoins || 100);
+          const updatedLp = prev.leaguePoints + (res.refereeBonusLp || 50);
+          const updatedUser: UserProfile = {
+            ...prev,
+            coins: updatedCoins,
+            leaguePoints: updatedLp,
+            referrals: {
+              code: prev.referrals?.code || prev.username,
+              friendsJoined: prev.referrals?.friendsJoined || 0,
+              totalPointsEarned: prev.referrals?.totalPointsEarned || 0,
+              earningsUsd: prev.referrals?.earningsUsd || 0,
+              referredBy: res.referrerUsername || pendingReferrer,
+              history: prev.referrals?.history || [],
+            }
+          };
+          localStorage.setItem('proprush_user_profile', JSON.stringify(updatedUser));
+          if (updatedUser.dynamicUserId) {
+            localStorage.setItem(`proprush_dynamic_${updatedUser.dynamicUserId}`, JSON.stringify(updatedUser));
+          }
+          syncUserProfileToServer(updatedUser);
+          return updatedUser;
+        });
+
+        setReferralNotification({
+          message: res.message,
+          points: res.refereeBonusCoins || 100
+        });
+      }
+    } catch (err) {
+      console.warn('Could not auto-process referral', err);
+    }
+  }, []);
+
+  // Manual claim of referral code (from Settings modal)
+  const claimReferralCode = useCallback(async (code: string): Promise<{ success: boolean; message: string }> => {
+    const cleanCode = (code || '').trim();
+    if (!cleanCode) {
+      return { success: false, message: 'Please enter a valid referral code or username.' };
+    }
+    if (user.referrals?.referredBy) {
+      return { success: false, message: `You have already claimed a referral bonus from @${user.referrals.referredBy}.` };
+    }
+    if (isReferralAlreadyClaimedLocally(user.id, user.walletAddress)) {
+      return { success: false, message: 'Referral reward has already been claimed for this account.' };
+    }
+
+    try {
+      const res = await processReferralOnServer(cleanCode, user);
+      if (res.success) {
+        sounds.playWin();
+        setUser(prev => {
+          const updatedCoins = prev.coins + (res.refereeBonusCoins || 100);
+          const updatedLp = prev.leaguePoints + (res.refereeBonusLp || 50);
+          const updatedUser: UserProfile = {
+            ...prev,
+            coins: updatedCoins,
+            leaguePoints: updatedLp,
+            referrals: {
+              code: prev.referrals?.code || prev.username,
+              friendsJoined: prev.referrals?.friendsJoined || 0,
+              totalPointsEarned: prev.referrals?.totalPointsEarned || 0,
+              earningsUsd: prev.referrals?.earningsUsd || 0,
+              referredBy: res.referrerUsername || cleanCode,
+              history: prev.referrals?.history || [],
+            }
+          };
+          localStorage.setItem('proprush_user_profile', JSON.stringify(updatedUser));
+          if (updatedUser.dynamicUserId) {
+            localStorage.setItem(`proprush_dynamic_${updatedUser.dynamicUserId}`, JSON.stringify(updatedUser));
+          }
+          syncUserProfileToServer(updatedUser);
+          return updatedUser;
+        });
+
+        setReferralNotification({
+          message: res.message,
+          points: res.refereeBonusCoins || 100
+        });
+
+        return { success: true, message: res.message };
+      } else {
+        return { success: false, message: res.message };
+      }
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Failed to claim referral code.' };
+    }
+  }, [user]);
 
   const loginWithGoogle = (email?: string, name?: string, avatar?: string) => {
     const userEmail = email || 'sahi@gmail.com';
@@ -406,6 +537,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Synchronize real profile to server
       syncUserProfileToServer(realUser);
+
+      // Auto check and claim pending referral bonus if visiting via ?ref= link
+      setTimeout(() => {
+        checkAndApplyPendingReferral(realUser);
+      }, 300);
 
       return realUser;
     });
@@ -857,7 +993,10 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authModalReason,
         openAuthModal,
         closeAuthModal,
-        requireAuth
+        requireAuth,
+        claimReferralCode,
+        referralNotification,
+        clearReferralNotification
       }}
     >
       {children}

@@ -268,9 +268,56 @@ export interface PlatformUser {
   title: string;
   lastActive: number;
   isCurrentUser?: boolean;
+  referralCode?: string;
+  friendsReferred?: number;
+  referralPoints?: number;
+  referralEarningsUsd?: number;
+  referredBy?: string;
 }
 
 const platformUsersMap = new Map<string, PlatformUser>();
+
+export interface ServerReferral {
+  id: string;
+  referrerCode: string;
+  referrerUsername?: string;
+  referrerUserId?: string;
+  refereeId: string;
+  refereeUsername: string;
+  refereeWallet?: string;
+  refereeEmail?: string;
+  pointsAwarded: number;
+  lpAwarded: number;
+  refereeBonusCoins: number;
+  refereeBonusLp: number;
+  timestamp: number;
+  date: string;
+  status: 'completed';
+}
+
+const serverReferralsList: ServerReferral[] = [];
+const TMP_REFERRALS_FILE = path.join(os.tmpdir(), "proprush_server_referrals.json");
+
+function loadPersistedReferrals(): void {
+  try {
+    if (fs.existsSync(TMP_REFERRALS_FILE)) {
+      const content = fs.readFileSync(TMP_REFERRALS_FILE, "utf-8");
+      const list = JSON.parse(content);
+      if (Array.isArray(list)) {
+        serverReferralsList.length = 0;
+        serverReferralsList.push(...list);
+      }
+    }
+  } catch {}
+}
+
+function savePersistedReferrals(): void {
+  try {
+    fs.writeFileSync(TMP_REFERRALS_FILE, JSON.stringify(serverReferralsList), "utf-8");
+  } catch {}
+}
+
+loadPersistedReferrals();
 
 function findPlatformUser(id?: string, email?: string, walletAddress?: string): PlatformUser | undefined {
   if (id && platformUsersMap.has(id)) {
@@ -289,10 +336,182 @@ function findPlatformUser(id?: string, email?: string, walletAddress?: string): 
   return undefined;
 }
 
+function findUserByReferralCode(code: string): PlatformUser | undefined {
+  const cleanCode = (code || '').trim().toLowerCase();
+  if (!cleanCode) return undefined;
+  for (const u of platformUsersMap.values()) {
+    if (String(u.username || '').toLowerCase() === cleanCode) return u;
+    if (String(u.id || '').toLowerCase() === cleanCode) return u;
+    if (u.walletAddress && u.walletAddress.toLowerCase() === cleanCode) return u;
+    if (u.referralCode && u.referralCode.toLowerCase() === cleanCode) return u;
+  }
+  return undefined;
+}
+
 // ==========================================
 // API ROUTER (Dual mounted on /api and /)
 // ==========================================
 const api = express.Router();
+
+// ==========================================
+// REFERRAL PROGRAM API ROUTES
+// ==========================================
+
+// Process referral when a referred user signs in or connects wallet
+api.post("/referrals/process", (req: Request, res: Response): void => {
+  try {
+    const { referrerCode, refereeId, refereeUsername, refereeWallet, refereeEmail } = req.body || {};
+    const code = (referrerCode || '').trim();
+
+    if (!code) {
+      res.status(400).json({ error: "Referral code or username required" });
+      return;
+    }
+
+    const cleanRefId = (refereeId || '').trim();
+    const cleanRefName = (refereeUsername || '').trim();
+    const cleanRefWallet = (refereeWallet || '').trim().toLowerCase();
+    const cleanRefEmail = (refereeEmail || '').trim().toLowerCase();
+
+    // Prevent self-referral
+    const codeLower = code.toLowerCase();
+    if (
+      (cleanRefName && cleanRefName.toLowerCase() === codeLower) ||
+      (cleanRefId && cleanRefId.toLowerCase() === codeLower) ||
+      (cleanRefWallet && cleanRefWallet === codeLower)
+    ) {
+      res.status(400).json({ error: "You cannot use your own referral code." });
+      return;
+    }
+
+    // Check if referee has already claimed a referral bonus
+    loadPersistedReferrals();
+    const existingReferral = serverReferralsList.find(r => 
+      (cleanRefId && r.refereeId === cleanRefId) ||
+      (cleanRefWallet && r.refereeWallet && r.refereeWallet.toLowerCase() === cleanRefWallet) ||
+      (cleanRefEmail && r.refereeEmail && r.refereeEmail.toLowerCase() === cleanRefEmail)
+    );
+
+    if (existingReferral) {
+      res.status(409).json({ 
+        error: "Referral bonus has already been claimed for this account.",
+        alreadyClaimed: true,
+        referrerUsername: existingReferral.referrerUsername || existingReferral.referrerCode
+      });
+      return;
+    }
+
+    // Find referrer in user registry
+    const referrerUser = findUserByReferralCode(code);
+    const resolvedReferrerUsername = referrerUser?.username || code;
+
+    // Award referrer: +250 Coins, +100 LP, +250 Referral Points
+    if (referrerUser) {
+      referrerUser.coins = (referrerUser.coins || 0) + 250;
+      referrerUser.leaguePoints = (referrerUser.leaguePoints || 0) + 100;
+      referrerUser.referralPoints = (referrerUser.referralPoints || 0) + 250;
+      referrerUser.friendsReferred = (referrerUser.friendsReferred || 0) + 1;
+      platformUsersMap.set(referrerUser.id, referrerUser);
+    }
+
+    // Award referee in server cache if exists: +100 Coins, +50 LP
+    const refereeUser = findPlatformUser(cleanRefId, cleanRefEmail, cleanRefWallet);
+    if (refereeUser) {
+      refereeUser.coins = (refereeUser.coins || 0) + 100;
+      refereeUser.leaguePoints = (refereeUser.leaguePoints || 0) + 50;
+      refereeUser.referredBy = resolvedReferrerUsername;
+      platformUsersMap.set(refereeUser.id, refereeUser);
+    }
+
+    // Record completed referral
+    const newRecord: ServerReferral = {
+      id: 'ref_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      referrerCode: code,
+      referrerUsername: resolvedReferrerUsername,
+      referrerUserId: referrerUser?.id,
+      refereeId: cleanRefId || ('usr_' + Date.now()),
+      refereeUsername: cleanRefName || 'PropRush Friend',
+      refereeWallet: cleanRefWallet,
+      refereeEmail: cleanRefEmail,
+      pointsAwarded: 250,
+      lpAwarded: 100,
+      refereeBonusCoins: 100,
+      refereeBonusLp: 50,
+      timestamp: Date.now(),
+      date: new Date().toISOString().split('T')[0],
+      status: 'completed'
+    };
+
+    serverReferralsList.unshift(newRecord);
+    savePersistedReferrals();
+
+    res.json({
+      success: true,
+      message: `🎉 Referral bonus successfully applied! You joined via @${resolvedReferrerUsername}.`,
+      referrerUsername: resolvedReferrerUsername,
+      referrerPointsAwarded: 250,
+      refereeBonusCoins: 100,
+      refereeBonusLp: 50,
+      referral: newRecord
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to process referral" });
+  }
+});
+
+// Get referral statistics for a specific user
+api.get("/referrals/stats/:codeOrUsername", (req: Request, res: Response): void => {
+  try {
+    const rawCode = (req.params.codeOrUsername || '').trim();
+    if (!rawCode) {
+      res.status(400).json({ error: "Code or username parameter required" });
+      return;
+    }
+
+    loadPersistedReferrals();
+    const targetUser = findUserByReferralCode(rawCode);
+    const codeLower = rawCode.toLowerCase();
+    const userIdLower = targetUser?.id?.toLowerCase();
+    const usernameLower = targetUser?.username?.toLowerCase();
+    const walletLower = targetUser?.walletAddress?.toLowerCase();
+
+    // Match all referrals where this user is the referrer
+    const userReferrals = serverReferralsList.filter(r => {
+      const rCode = r.referrerCode.toLowerCase();
+      const rUser = r.referrerUsername?.toLowerCase();
+      const rId = r.referrerUserId?.toLowerCase();
+      return (
+        rCode === codeLower ||
+        (usernameLower && (rCode === usernameLower || rUser === usernameLower)) ||
+        (userIdLower && rId === userIdLower) ||
+        (walletLower && rCode === walletLower)
+      );
+    });
+
+    const friendsJoined = Math.max(userReferrals.length, targetUser?.friendsReferred || 0);
+    const totalPointsEarned = userReferrals.reduce((sum, r) => sum + (r.pointsAwarded || 250), 0) || (targetUser?.referralPoints || (friendsJoined * 250));
+    const earningsUsd = targetUser?.referralEarningsUsd || 0.00;
+
+    res.json({
+      code: rawCode,
+      username: targetUser?.username || rawCode,
+      friendsJoined,
+      totalPointsEarned,
+      earningsUsd,
+      referrals: userReferrals.map(r => ({
+        id: r.id,
+        refereeUsername: r.refereeUsername,
+        refereeWallet: r.refereeWallet ? `${r.refereeWallet.slice(0, 6)}...${r.refereeWallet.slice(-4)}` : undefined,
+        pointsEarned: r.pointsAwarded,
+        date: r.date,
+        status: r.status
+      }))
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to fetch referral stats" });
+  }
+});
+
 
 // Banned users
 api.get("/banned-users", (_req: Request, res: Response) => {

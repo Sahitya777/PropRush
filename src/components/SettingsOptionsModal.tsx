@@ -4,6 +4,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useSafeDynamic } from '../context/DynamicIntegration';
 import { AvatarCharacter } from './AvatarCharacter';
 import { sounds } from '../utils/audio';
+import { fetchUserReferralStats, ReferralStatsResponse } from '../utils/referralService';
 
 export type SettingsTabId = 'profile' | 'profile_settings' | 'notifications' | 'private_key' | 'referrals';
 
@@ -24,7 +25,7 @@ export const SettingsOptionsModal: React.FC<SettingsOptionsModalProps> = ({
   onClose,
   initialTab = 'profile',
 }) => {
-  const { user, updateUser, updateUsername } = useUser();
+  const { user, updateUser, updateUsername, claimReferralCode } = useUser();
   const { isLight } = useTheme();
   const { primaryWallet, user: dynamicUser, setShowDynamicUserProfile, isAuthenticated: isDynamicSignedIn } = useSafeDynamic();
 
@@ -47,6 +48,14 @@ export const SettingsOptionsModal: React.FC<SettingsOptionsModalProps> = ({
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [privateKeyExportActive, setPrivateKeyExportActive] = useState(false);
 
+  // Referral states
+  const [referralStats, setReferralStats] = useState<ReferralStatsResponse | null>(null);
+  const [loadingReferrals, setLoadingReferrals] = useState(false);
+  const [manualReferralCode, setManualReferralCode] = useState('');
+  const [manualClaimError, setManualClaimError] = useState<string | null>(null);
+  const [manualClaimSuccess, setManualClaimSuccess] = useState<string | null>(null);
+  const [isSubmittingReferralCode, setIsSubmittingReferralCode] = useState(false);
+
   // Notifications toggles
   const [soundFxEnabled, setSoundFxEnabled] = useState(true);
   const [turnTimerAlerts, setTurnTimerAlerts] = useState(true);
@@ -64,8 +73,24 @@ export const SettingsOptionsModal: React.FC<SettingsOptionsModalProps> = ({
       setSelectedAvatar(user.avatar || 'orange');
       setSaveSuccessMsg(null);
       setPrivateKeyExportActive(false);
+      setManualClaimError(null);
+      setManualClaimSuccess(null);
     }
   }, [isOpen, initialTab, user]);
+
+  // Load referral stats when referral tab is active
+  useEffect(() => {
+    if (isOpen && activeTab === 'referrals') {
+      const codeOrName = user.username || user.walletAddress || user.id;
+      if (codeOrName) {
+        setLoadingReferrals(true);
+        fetchUserReferralStats(codeOrName).then(stats => {
+          if (stats) setReferralStats(stats);
+          setLoadingReferrals(false);
+        });
+      }
+    }
+  }, [isOpen, activeTab, user.username, user.walletAddress, user.id]);
 
   if (!isOpen) return null;
 
@@ -135,6 +160,45 @@ export const SettingsOptionsModal: React.FC<SettingsOptionsModalProps> = ({
       setShowDynamicUserProfile(true);
     } catch (e) {
       console.warn('Dynamic user profile trigger error:', e);
+    }
+  };
+
+  const referralLink = `${typeof window !== 'undefined' ? window.location.origin : ''}/?ref=${encodeURIComponent(user.username)}`;
+
+  const handleShareTwitter = () => {
+    sounds.playClick();
+    const text = encodeURIComponent(`🎲 Join me on PropRush! The ultimate Web3 multiplayer board game. Use my invite link to claim 100 Bonus Coins & 50 League Points: ${referralLink}`);
+    window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
+  };
+
+  const handleShareTelegram = () => {
+    sounds.playClick();
+    const text = encodeURIComponent(`🎲 Join me on PropRush! The ultimate Web3 multiplayer board game. Use my invite link to claim 100 Bonus Coins & 50 LP!`);
+    window.open(`https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${text}`, '_blank');
+  };
+
+  const handleClaimManualReferral = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = manualReferralCode.trim();
+    if (!clean) return;
+    setIsSubmittingReferralCode(true);
+    setManualClaimError(null);
+    setManualClaimSuccess(null);
+
+    const res = await claimReferralCode(clean);
+    setIsSubmittingReferralCode(false);
+    if (res.success) {
+      setManualClaimSuccess(res.message);
+      setManualReferralCode('');
+      // Reload stats
+      const codeOrName = user.username || user.walletAddress || user.id;
+      if (codeOrName) {
+        fetchUserReferralStats(codeOrName).then(stats => {
+          if (stats) setReferralStats(stats);
+        });
+      }
+    } else {
+      setManualClaimError(res.message);
     }
   };
 
@@ -280,14 +344,11 @@ export const SettingsOptionsModal: React.FC<SettingsOptionsModalProps> = ({
                     Account Information
                   </h4>
 
-                  {/* 1. ETHEREUM WALLET ADDRESS (CANNOT BE EDITED) */}
+                  {/* 1. ETHEREUM WALLET ADDRESS */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold flex items-center gap-1.5 text-slate-300">
-                        <span>Ethereum Wallet Address</span>
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
-                          🔒 Cannot be edited
-                        </span>
+                      <label className="text-xs font-bold text-slate-300">
+                        Ethereum Wallet Address
                       </label>
                       <button
                         onClick={handleCopyAddress}
@@ -308,9 +369,6 @@ export const SettingsOptionsModal: React.FC<SettingsOptionsModalProps> = ({
                     }`}>
                       {walletAddress}
                     </div>
-                    <p className="text-[11px] text-slate-500 leading-normal">
-                      Your cryptographic wallet address is tied to your Dynamic Web3 account and cannot be modified.
-                    </p>
                   </div>
 
                   <div className="h-px bg-slate-800/40 w-full" />
@@ -318,9 +376,8 @@ export const SettingsOptionsModal: React.FC<SettingsOptionsModalProps> = ({
                   {/* 2. USERNAME (EDITABLE RIGHT BELOW ADDRESS) */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                        <span>Player Username</span>
-                        <span className="text-[10px] text-emerald-400 font-semibold">• Editable</span>
+                      <label className="text-xs font-bold text-slate-300">
+                        Player Username
                       </label>
                       {!isInlineEditingUsername ? (
                         <button
@@ -702,44 +759,224 @@ export const SettingsOptionsModal: React.FC<SettingsOptionsModalProps> = ({
             {/* TAB 5: REFERRAL PROGRAM */}
             {activeTab === 'referrals' && (
               <div className="space-y-5 animate-fade-in">
-                <div>
-                  <h3 className="font-heading font-black text-xl sm:text-2xl tracking-tight">Referral Program</h3>
-                  <p className={`text-xs mt-1 ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                    Invite friends to PropRush and earn 10% lifetime house rake rewards!
-                  </p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-heading font-black text-xl sm:text-2xl tracking-tight flex items-center gap-2">
+                      <span>Referral Program</span>
+                      <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 text-amber-300 text-[10px] font-bold">
+                        🎁 Earn Points
+                      </span>
+                    </h3>
+                    <p className={`text-xs mt-1 ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                      Invite friends to PropRush and earn points, bonus coins, and 10% lifetime house rake rewards!
+                    </p>
+                  </div>
                 </div>
 
+                {/* PRIMARY SHARE CARD */}
                 <div className={`p-5 rounded-2xl border space-y-4 ${
                   isLight ? 'bg-white border-slate-200' : 'bg-[#171230] border-[#29204a]'
                 }`}>
-                  <label className="text-xs font-bold text-slate-300">Your Shareable Referral Link</label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-300">Your Shareable Referral Link</label>
+                    <span className="text-[11px] text-indigo-400 font-medium">100 Coins + 50 LP per friend</span>
+                  </div>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                     <input
                       type="text"
                       readOnly
-                      value={`${typeof window !== 'undefined' ? window.location.origin : ''}/?ref=${encodeURIComponent(user.username)}`}
+                      value={referralLink}
                       className={`flex-1 px-3 py-2.5 rounded-xl border text-xs font-mono select-all ${
                         isLight ? 'bg-slate-50 border-slate-300 text-slate-800' : 'bg-[#0f0b20] border-[#2c2350] text-indigo-300'
                       }`}
                     />
-                    <button
-                      onClick={handleCopyRef}
-                      className="px-4 py-2.5 rounded-xl bg-[#7059e2] hover:bg-[#5d44db] text-white font-bold text-xs cursor-pointer shrink-0"
-                    >
-                      {copiedRefLink ? 'Copied ✓' : 'Copy Link'}
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={handleCopyRef}
+                        className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-[#7059e2] hover:bg-[#5d44db] text-white font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 shadow-md shadow-[#7059e2]/30"
+                      >
+                        <span>{copiedRefLink ? '✓' : '📋'}</span>
+                        <span>{copiedRefLink ? 'Copied!' : 'Copy Link'}</span>
+                      </button>
+                      <button
+                        onClick={handleShareTwitter}
+                        title="Share to X / Twitter"
+                        className="px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-all cursor-pointer"
+                      >
+                        𝕏
+                      </button>
+                      <button
+                        onClick={handleShareTelegram}
+                        title="Share to Telegram"
+                        className="px-3 py-2.5 rounded-xl bg-[#229ED9]/20 hover:bg-[#229ED9]/30 text-[#229ED9] border border-[#229ED9]/40 font-bold text-xs transition-all cursor-pointer"
+                      >
+                        ✈️
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 pt-2">
-                    <div className="p-3 rounded-xl bg-slate-900/40 border border-slate-800 text-center">
-                      <span className="text-[11px] text-slate-400">Friends Joined</span>
-                      <p className="font-heading font-black text-lg text-white mt-0.5">0</p>
+                  {/* STATS TILES */}
+                  <div className="grid grid-cols-3 gap-3 pt-2">
+                    <div className="p-3.5 rounded-xl bg-slate-900/50 border border-slate-800/80 text-center">
+                      <span className="text-[11px] text-slate-400 font-medium">Friends Joined</span>
+                      <p className="font-heading font-black text-xl text-white mt-0.5">
+                        {loadingReferrals ? '...' : (referralStats?.friendsJoined ?? user.referrals?.friendsJoined ?? 0)}
+                      </p>
                     </div>
-                    <div className="p-3 rounded-xl bg-slate-900/40 border border-slate-800 text-center">
-                      <span className="text-[11px] text-slate-400">Earnings Collected</span>
-                      <p className="font-heading font-black text-lg text-amber-400 mt-0.5">$0.00</p>
+                    <div className="p-3.5 rounded-xl bg-slate-900/50 border border-slate-800/80 text-center">
+                      <span className="text-[11px] text-slate-400 font-medium">Points Earned</span>
+                      <p className="font-heading font-black text-xl text-amber-400 mt-0.5 flex items-center justify-center gap-1">
+                        <span>🪙</span>
+                        <span>{loadingReferrals ? '...' : (referralStats?.totalPointsEarned ?? user.referrals?.totalPointsEarned ?? 0)}</span>
+                      </p>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-slate-900/50 border border-slate-800/80 text-center">
+                      <span className="text-[11px] text-slate-400 font-medium">Rake Collected</span>
+                      <p className="font-heading font-black text-xl text-emerald-400 mt-0.5">
+                        ${(referralStats?.earningsUsd ?? user.referrals?.earningsUsd ?? 0).toFixed(2)}
+                      </p>
                     </div>
                   </div>
+                </div>
+
+                {/* HOW REFERRAL REWARDS WORK */}
+                <div className={`p-4 sm:p-5 rounded-2xl border space-y-3 ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#120d24] border-[#29204a]'
+                }`}>
+                  <h4 className="font-heading font-bold text-xs uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                    <span>⚡</span>
+                    <span>How Referral Rewards Work</span>
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div className="p-3 rounded-xl bg-[#171230] border border-[#2e2354] space-y-1">
+                      <div className="font-bold text-amber-300 flex items-center gap-1.5">
+                        <span>1. Share Link</span>
+                      </div>
+                      <p className="text-slate-400 text-[11px] leading-relaxed">
+                        Send your custom invite link to friends via chat, Discord, Telegram, or social media.
+                      </p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-[#171230] border border-[#2e2354] space-y-1">
+                      <div className="font-bold text-indigo-300 flex items-center gap-1.5">
+                        <span>2. Friend Signs In</span>
+                      </div>
+                      <p className="text-slate-400 text-[11px] leading-relaxed">
+                        They connect their Web3 wallet or sign in. They instantly get <strong>+100 Coins & 50 LP</strong>!
+                      </p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-[#171230] border border-[#2e2354] space-y-1">
+                      <div className="font-bold text-emerald-300 flex items-center gap-1.5">
+                        <span>3. You Get Points</span>
+                      </div>
+                      <p className="text-slate-400 text-[11px] leading-relaxed">
+                        You automatically receive <strong>+250 Coins & 100 LP</strong> + 10% lifetime house rake!
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* CLAIM A REFERRAL CODE SECTION */}
+                <div className={`p-4 sm:p-5 rounded-2xl border space-y-3 ${
+                  isLight ? 'bg-white border-slate-200' : 'bg-[#171230] border-[#29204a]'
+                }`}>
+                  <h4 className="font-heading font-bold text-xs uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                    <span>🎁</span>
+                    <span>Were You Referred By a Friend?</span>
+                  </h4>
+
+                  {user.referrals?.referredBy ? (
+                    <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">✓</span>
+                        <span>Referred by <strong>@{user.referrals.referredBy}</strong></span>
+                      </div>
+                      <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-md">
+                        +100 Coins Claimed
+                      </span>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleClaimManualReferral} className="space-y-2">
+                      <p className="text-xs text-slate-400">
+                        Enter your friend's PropRush username or code to claim your <strong>+100 Coins & 50 League Points</strong> welcome bonus:
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={manualReferralCode}
+                          onChange={e => setManualReferralCode(e.target.value)}
+                          placeholder="e.g. Sahi"
+                          className={`flex-1 px-3.5 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#7059e2] ${
+                            isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0f0b20] border-[#2c2350] text-white'
+                          }`}
+                        />
+                        <button
+                          type="submit"
+                          disabled={isSubmittingReferralCode || !manualReferralCode.trim()}
+                          className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-heading font-black text-xs transition-all disabled:opacity-50 cursor-pointer shrink-0"
+                        >
+                          {isSubmittingReferralCode ? 'Claiming...' : 'Claim Bonus'}
+                        </button>
+                      </div>
+                      {manualClaimSuccess && (
+                        <div className="text-xs text-emerald-400 font-medium flex items-center gap-1 mt-1">
+                          <span>✓</span>
+                          <span>{manualClaimSuccess}</span>
+                        </div>
+                      )}
+                      {manualClaimError && (
+                        <div className="text-xs text-red-400 font-medium flex items-center gap-1 mt-1">
+                          <span>⚠️</span>
+                          <span>{manualClaimError}</span>
+                        </div>
+                      )}
+                    </form>
+                  )}
+                </div>
+
+                {/* REFERRALS HISTORY */}
+                <div className={`p-4 sm:p-5 rounded-2xl border space-y-3 ${
+                  isLight ? 'bg-white border-slate-200' : 'bg-[#171230] border-[#29204a]'
+                }`}>
+                  <h4 className="font-heading font-bold text-xs uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                    <span>Recent Referrals</span>
+                    <span className="text-[11px] lowercase tracking-normal text-slate-500">
+                      {referralStats?.referrals?.length || 0} total
+                    </span>
+                  </h4>
+
+                  {referralStats?.referrals && referralStats.referrals.length > 0 ? (
+                    <div className="divide-y divide-slate-800/60 max-h-48 overflow-y-auto">
+                      {referralStats.referrals.map((r, i) => (
+                        <div key={r.id || i} className="py-2.5 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-full bg-indigo-500/20 text-indigo-300 font-bold flex items-center justify-center text-xs">
+                              {r.refereeUsername.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-bold text-white">@{r.refereeUsername}</p>
+                              <p className="text-[10px] text-slate-400">{r.date} {r.refereeWallet && `• ${r.refereeWallet}`}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold text-[11px]">
+                              +{r.pointsEarned} pts
+                            </span>
+                            <span className="text-[10px] font-medium text-emerald-400">
+                              Completed ✓
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="py-6 text-center text-slate-400 space-y-1">
+                      <p className="text-2xl">🤝</p>
+                      <p className="text-xs font-semibold">No referrals yet</p>
+                      <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+                        Share your invite link with other players. When they sign in, your referral points will appear here immediately!
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

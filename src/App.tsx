@@ -54,7 +54,7 @@ function getInitialView(): 'home' | 'game' | 'store' | 'profile' | 'rankings' | 
 }
 
 function AppContent() {
-  const { user, deductBuyIn, depositFunds, isBanned } = useUser();
+  const { user, deductBuyIn, depositFunds, isBanned, referralNotification, clearReferralNotification } = useUser();
   const { isDynamicConfigured } = useDynamicConfig();
   const { isLight } = useTheme();
   const [currentView, setCurrentView] = useState<'home' | 'game' | 'store' | 'profile' | 'rankings' | 'admin' | '404'>(getInitialView);
@@ -482,6 +482,29 @@ function AppContent() {
         onClose={() => setIsSettingsOpen(false)}
         initialTab={settingsInitialTab}
       />
+
+      {/* Referral Claim Reward Toast */}
+      {referralNotification && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-md p-4 rounded-2xl bg-gradient-to-r from-purple-900/95 to-indigo-950/95 border border-purple-500/50 shadow-2xl backdrop-blur-md animate-bounce flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-xl shrink-0">
+            🎁
+          </div>
+          <div className="flex-1 min-w-0">
+            <h4 className="text-xs font-heading font-black text-amber-300 uppercase tracking-wide">
+              Referral Reward Claimed!
+            </h4>
+            <p className="text-xs text-white mt-0.5 leading-snug">
+              {referralNotification.message}
+            </p>
+          </div>
+          <button
+            onClick={clearReferralNotification}
+            className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs font-bold cursor-pointer transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }
