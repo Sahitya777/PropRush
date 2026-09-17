@@ -25,7 +25,7 @@ export const SettingsOptionsModal: React.FC<SettingsOptionsModalProps> = ({
   onClose,
   initialTab = 'profile',
 }) => {
-  const { user, updateUser, updateUsername, claimReferralCode } = useUser();
+  const { user, updateUser, updateUsername } = useUser();
   const { isLight } = useTheme();
   const { primaryWallet, user: dynamicUser, setShowDynamicUserProfile, isAuthenticated: isDynamicSignedIn } = useSafeDynamic();
 
@@ -51,10 +51,6 @@ export const SettingsOptionsModal: React.FC<SettingsOptionsModalProps> = ({
   // Referral states
   const [referralStats, setReferralStats] = useState<ReferralStatsResponse | null>(null);
   const [loadingReferrals, setLoadingReferrals] = useState(false);
-  const [manualReferralCode, setManualReferralCode] = useState('');
-  const [manualClaimError, setManualClaimError] = useState<string | null>(null);
-  const [manualClaimSuccess, setManualClaimSuccess] = useState<string | null>(null);
-  const [isSubmittingReferralCode, setIsSubmittingReferralCode] = useState(false);
 
   // Notifications toggles
   const [soundFxEnabled, setSoundFxEnabled] = useState(true);
@@ -73,8 +69,6 @@ export const SettingsOptionsModal: React.FC<SettingsOptionsModalProps> = ({
       setSelectedAvatar(user.avatar || 'orange');
       setSaveSuccessMsg(null);
       setPrivateKeyExportActive(false);
-      setManualClaimError(null);
-      setManualClaimSuccess(null);
     }
   }, [isOpen, initialTab, user]);
 
@@ -175,31 +169,6 @@ export const SettingsOptionsModal: React.FC<SettingsOptionsModalProps> = ({
     sounds.playClick();
     const text = encodeURIComponent(`🎲 Join me on PropRush! The ultimate Web3 multiplayer board game. Use my invite link to claim 100 Bonus Coins & 50 LP!`);
     window.open(`https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${text}`, '_blank');
-  };
-
-  const handleClaimManualReferral = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const clean = manualReferralCode.trim();
-    if (!clean) return;
-    setIsSubmittingReferralCode(true);
-    setManualClaimError(null);
-    setManualClaimSuccess(null);
-
-    const res = await claimReferralCode(clean);
-    setIsSubmittingReferralCode(false);
-    if (res.success) {
-      setManualClaimSuccess(res.message);
-      setManualReferralCode('');
-      // Reload stats
-      const codeOrName = user.username || user.walletAddress || user.id;
-      if (codeOrName) {
-        fetchUserReferralStats(codeOrName).then(stats => {
-          if (stats) setReferralStats(stats);
-        });
-      }
-    } else {
-      setManualClaimError(res.message);
-    }
   };
 
   const navItems = [
@@ -768,7 +737,7 @@ export const SettingsOptionsModal: React.FC<SettingsOptionsModalProps> = ({
                       </span>
                     </h3>
                     <p className={`text-xs mt-1 ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                      Invite friends to PropRush and earn points, bonus coins, and 10% lifetime house rake rewards!
+                      Invite friends with your unique link to automatically earn bonus coins and league points!
                     </p>
                   </div>
                 </div>
@@ -816,7 +785,7 @@ export const SettingsOptionsModal: React.FC<SettingsOptionsModalProps> = ({
                   </div>
 
                   {/* STATS TILES */}
-                  <div className="grid grid-cols-3 gap-3 pt-2">
+                  <div className="grid grid-cols-2 gap-3 pt-2">
                     <div className="p-3.5 rounded-xl bg-slate-900/50 border border-slate-800/80 text-center">
                       <span className="text-[11px] text-slate-400 font-medium">Friends Joined</span>
                       <p className="font-heading font-black text-xl text-white mt-0.5">
@@ -828,12 +797,6 @@ export const SettingsOptionsModal: React.FC<SettingsOptionsModalProps> = ({
                       <p className="font-heading font-black text-xl text-amber-400 mt-0.5 flex items-center justify-center gap-1">
                         <span>🪙</span>
                         <span>{loadingReferrals ? '...' : (referralStats?.totalPointsEarned ?? user.referrals?.totalPointsEarned ?? 0)}</span>
-                      </p>
-                    </div>
-                    <div className="p-3.5 rounded-xl bg-slate-900/50 border border-slate-800/80 text-center">
-                      <span className="text-[11px] text-slate-400 font-medium">Rake Collected</span>
-                      <p className="font-heading font-black text-xl text-emerald-400 mt-0.5">
-                        ${(referralStats?.earningsUsd ?? user.referrals?.earningsUsd ?? 0).toFixed(2)}
                       </p>
                     </div>
                   </div>
@@ -850,18 +813,18 @@ export const SettingsOptionsModal: React.FC<SettingsOptionsModalProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div className="p-3 rounded-xl bg-[#171230] border border-[#2e2354] space-y-1">
                       <div className="font-bold text-amber-300 flex items-center gap-1.5">
-                        <span>1. Share Link</span>
+                        <span>1. Share Unique Link</span>
                       </div>
                       <p className="text-slate-400 text-[11px] leading-relaxed">
-                        Send your custom invite link to friends via chat, Discord, Telegram, or social media.
+                        Send your unique invite link to friends via chat, Discord, Telegram, or social media.
                       </p>
                     </div>
                     <div className="p-3 rounded-xl bg-[#171230] border border-[#2e2354] space-y-1">
                       <div className="font-bold text-indigo-300 flex items-center gap-1.5">
-                        <span>2. Friend Signs In</span>
+                        <span>2. Automatic Tracking</span>
                       </div>
                       <p className="text-slate-400 text-[11px] leading-relaxed">
-                        They connect their Web3 wallet or sign in. They instantly get <strong>+100 Coins & 50 LP</strong>!
+                        When they join through your link, they automatically receive <strong>+100 Coins & 50 LP</strong>!
                       </p>
                     </div>
                     <div className="p-3 rounded-xl bg-[#171230] border border-[#2e2354] space-y-1">
@@ -869,68 +832,10 @@ export const SettingsOptionsModal: React.FC<SettingsOptionsModalProps> = ({
                         <span>3. You Get Points</span>
                       </div>
                       <p className="text-slate-400 text-[11px] leading-relaxed">
-                        You automatically receive <strong>+250 Coins & 100 LP</strong> + 10% lifetime house rake!
+                        You automatically receive <strong>+250 Coins & 100 LP</strong> instantly in your account!
                       </p>
                     </div>
                   </div>
-                </div>
-
-                {/* CLAIM A REFERRAL CODE SECTION */}
-                <div className={`p-4 sm:p-5 rounded-2xl border space-y-3 ${
-                  isLight ? 'bg-white border-slate-200' : 'bg-[#171230] border-[#29204a]'
-                }`}>
-                  <h4 className="font-heading font-bold text-xs uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                    <span>🎁</span>
-                    <span>Were You Referred By a Friend?</span>
-                  </h4>
-
-                  {user.referrals?.referredBy ? (
-                    <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-base">✓</span>
-                        <span>Referred by <strong>@{user.referrals.referredBy}</strong></span>
-                      </div>
-                      <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-md">
-                        +100 Coins Claimed
-                      </span>
-                    </div>
-                  ) : (
-                    <form onSubmit={handleClaimManualReferral} className="space-y-2">
-                      <p className="text-xs text-slate-400">
-                        Enter your friend's PropRush username or code to claim your <strong>+100 Coins & 50 League Points</strong> welcome bonus:
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={manualReferralCode}
-                          onChange={e => setManualReferralCode(e.target.value)}
-                          placeholder="e.g. Sahi"
-                          className={`flex-1 px-3.5 py-2.5 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#7059e2] ${
-                            isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0f0b20] border-[#2c2350] text-white'
-                          }`}
-                        />
-                        <button
-                          type="submit"
-                          disabled={isSubmittingReferralCode || !manualReferralCode.trim()}
-                          className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-heading font-black text-xs transition-all disabled:opacity-50 cursor-pointer shrink-0"
-                        >
-                          {isSubmittingReferralCode ? 'Claiming...' : 'Claim Bonus'}
-                        </button>
-                      </div>
-                      {manualClaimSuccess && (
-                        <div className="text-xs text-emerald-400 font-medium flex items-center gap-1 mt-1">
-                          <span>✓</span>
-                          <span>{manualClaimSuccess}</span>
-                        </div>
-                      )}
-                      {manualClaimError && (
-                        <div className="text-xs text-red-400 font-medium flex items-center gap-1 mt-1">
-                          <span>⚠️</span>
-                          <span>{manualClaimError}</span>
-                        </div>
-                      )}
-                    </form>
-                  )}
                 </div>
 
                 {/* REFERRALS HISTORY */}
