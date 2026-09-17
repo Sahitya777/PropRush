@@ -107,6 +107,7 @@ export interface ServerRoom {
   createdAt: number;
   updatedAt: number;
   isCustom?: boolean;
+  kickedPlayerIds?: string[];
   properties?: any[];
   dice?: [number, number];
   turnStartedAt?: number;
@@ -803,9 +804,31 @@ api.post("/rooms", (req: Request, res: Response): void => {
 
     if (existing && existing.status !== 'finished') {
       // If room already exists, ensure hostId is not wiped
-      if (hostId && (!existing.hostId || existing.hostId.startsWith('host_'))) {
+      if (hostId && (!existing.hostId || existing.hostId.startsWith('host_') || existing.hostId === hostId)) {
         existing.hostId = hostId;
       }
+      // Ensure host is present in existing.players array
+      if (Array.isArray(raw.players) && raw.players.length > 0) {
+        const hostPlayer = raw.players[0];
+        if (hostPlayer && hostPlayer.id) {
+          if (!Array.isArray(existing.players)) existing.players = [];
+          const hostIdx = existing.players.findIndex((p: any) => p && (p.id === hostPlayer.id || p.id === existing.hostId || p.isHost));
+          if (hostIdx >= 0) {
+            existing.players[hostIdx] = {
+              ...existing.players[hostIdx],
+              ...hostPlayer,
+              id: existing.players[hostIdx].id || hostPlayer.id,
+              isHost: true
+            };
+          } else {
+            existing.players.unshift({ ...hostPlayer, isHost: true });
+          }
+        }
+      }
+      existing.updatedAt = now;
+      existing.version = (existing.version || 0) + 1;
+      serverRooms.set(code, existing);
+      savePersistedRooms();
       res.json({ success: true, room: existing });
       return;
     }
@@ -928,11 +951,37 @@ api.post("/rooms/:code/join", (req: Request, res: Response): void => {
     if (!Array.isArray(room.players)) room.players = [];
     if (!Array.isArray(room.logs)) room.logs = [];
     if (!Array.isArray(room.chatMessages)) room.chatMessages = [];
+    if (!Array.isArray(room.kickedPlayerIds)) room.kickedPlayerIds = [];
+
+    // Check if player was explicitly kicked by host
+    if (room.kickedPlayerIds.includes(player.id)) {
+      res.status(403).json({ error: 'You have been removed from this room by the host.' });
+      return;
+    }
 
     // Check if player already in room
     let existingPlayerIndex = room.players.findIndex(p => p && p.id === player.id);
 
+    // If existing player is the host, but the incoming joiner is NOT the creator/host,
+    // prevent guest from overwriting the host! Assign new unique ID to the guest.
     if (existingPlayerIndex >= 0) {
+      const existingP = room.players[existingPlayerIndex];
+      const isExistingHost = Boolean(existingP?.isHost || (room.hostId && room.hostId === existingP?.id));
+      if (isExistingHost && !isCreatorRequest && !player.isHost) {
+        player.id = 'usr_' + Math.random().toString(36).substring(2, 8) + '_' + Date.now().toString(36).slice(-4);
+        existingPlayerIndex = -1;
+      }
+    }
+
+    if (existingPlayerIndex >= 0) {
+      const isPlayerTheHost = Boolean(
+        (room.hostId && room.hostId === player.id) ||
+        isCreatorRequest ||
+        room.players[existingPlayerIndex].isHost
+      );
+      if (isPlayerTheHost && !room.hostId) {
+        room.hostId = player.id;
+      }
       room.players[existingPlayerIndex] = {
         ...room.players[existingPlayerIndex],
         ...player,
@@ -941,7 +990,7 @@ api.post("/rooms/:code/join", (req: Request, res: Response): void => {
         firstName: player.firstName || room.players[existingPlayerIndex].firstName,
         lastName: player.lastName || room.players[existingPlayerIndex].lastName,
         walletAddress: player.walletAddress || room.players[existingPlayerIndex].walletAddress,
-        isHost: Boolean(room.hostId && room.hostId === player.id)
+        isHost: isPlayerTheHost
       };
     } else {
       if (room.players.length >= room.maxPlayers) {
@@ -1076,13 +1125,41 @@ api.post("/rooms/:code/state", (req: Request, res: Response): void => {
       }
     }
 
-    // Sanitize player isHost flags
-    const sanitizedPlayers = Array.isArray(updatedRoom.players)
-      ? updatedRoom.players.map((p: any) => ({
-          ...p,
-          isHost: Boolean(authoritativeHostId && p.id === authoritativeHostId)
-        }))
-      : (existing?.players || []);
+    // Sanitize player isHost flags and MERGE players safely during waiting lobby
+    let sanitizedPlayers: any[] = [];
+    if (targetStatus === 'waiting' && existing && Array.isArray(existing.players) && existing.players.length > 0) {
+      const playerMap = new Map<string, any>();
+      const kickedSet = new Set<string>(existing.kickedPlayerIds || []);
+      
+      // Keep existing non-kicked players
+      existing.players.forEach((p: any) => {
+        if (p && p.id && !kickedSet.has(p.id)) {
+          playerMap.set(p.id, p);
+        }
+      });
+
+      // Overlay incoming players
+      if (Array.isArray(updatedRoom.players)) {
+        updatedRoom.players.forEach((p: any) => {
+          if (p && p.id && !kickedSet.has(p.id)) {
+            const existingP = playerMap.get(p.id);
+            playerMap.set(p.id, { ...(existingP || {}), ...p });
+          }
+        });
+      }
+
+      sanitizedPlayers = Array.from(playerMap.values()).map((p: any, idx: number) => ({
+        ...p,
+        isHost: Boolean(authoritativeHostId ? p.id === authoritativeHostId : idx === 0)
+      }));
+    } else {
+      sanitizedPlayers = Array.isArray(updatedRoom.players)
+        ? updatedRoom.players.map((p: any, idx: number) => ({
+            ...p,
+            isHost: Boolean(authoritativeHostId ? p.id === authoritativeHostId : idx === 0)
+          }))
+        : (existing?.players || []);
+    }
 
     const merged: ServerRoom = {
       ...(existing || {}),
@@ -1091,6 +1168,7 @@ api.post("/rooms/:code/state", (req: Request, res: Response): void => {
       hostId: authoritativeHostId,
       status: targetStatus,
       players: sanitizedPlayers,
+      kickedPlayerIds: existing?.kickedPlayerIds || updatedRoom.kickedPlayerIds || [],
       version: (existing ? (existing.version || 0) : 0) + 1,
       updatedAt: now
     };
@@ -1157,6 +1235,12 @@ api.post("/rooms/:code/kick", (req: Request, res: Response): void => {
     if (room.hostId && callerId && callerId !== room.hostId) {
       res.status(403).json({ error: 'Only the room creator / host can kick players.' });
       return;
+    }
+    if (!Array.isArray(room.kickedPlayerIds)) {
+      room.kickedPlayerIds = [];
+    }
+    if (playerIdToKick && !room.kickedPlayerIds.includes(playerIdToKick)) {
+      room.kickedPlayerIds.push(playerIdToKick);
     }
     room.players = room.players.filter(p => p.id !== playerIdToKick);
     room.version = (room.version || 0) + 1;

@@ -229,6 +229,12 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
     const effectiveCode = (roomCode || 'room_' + Math.random().toString(36).substring(2, 7)).trim().toLowerCase();
     const effectiveName = roomName || 'Custom Room';
 
+    // Persist creator role for this browser session & local storage
+    try {
+      sessionStorage.setItem(`proprush_creator_${effectiveCode}`, 'true');
+      localStorage.setItem(`proprush_creator_${effectiveCode}`, 'true');
+    } catch {}
+
     // Register into active rooms registry
     registerActiveRoom({
       code: effectiveCode,

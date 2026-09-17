@@ -176,7 +176,10 @@ function AppContent() {
     const roomParam = urlParams.get('room');
     if (roomParam) {
       const cleanCode = roomParam.trim().toLowerCase();
-      const isSessionCreator = typeof window !== 'undefined' && sessionStorage.getItem(`proprush_creator_${cleanCode}`) === 'true';
+      const isSessionCreator = typeof window !== 'undefined' && (
+        sessionStorage.getItem(`proprush_creator_${cleanCode}`) === 'true' ||
+        localStorage.getItem(`proprush_creator_${cleanCode}`) === 'true'
+      );
       const activeMatch = getActiveMatch();
       if (activeMatch && activeMatch.roomConfig.roomCode.toLowerCase() === cleanCode) {
         handleJoinRoom({
@@ -185,6 +188,11 @@ function AppContent() {
         });
       } else {
         findActiveRoomByCodeAsync(cleanCode).then(found => {
+          const amIHost = Boolean(
+            isSessionCreator ||
+            (found && found.hostId && user.id && found.hostId === user.id) ||
+            (found && found.host && user.username && found.host === user.username)
+          );
           if (found) {
             handleJoinRoom({
               roomCode: found.code,
@@ -195,7 +203,7 @@ function AppContent() {
               turnTimeSeconds: found.turnTime,
               boardTheme: found.map.toLowerCase(),
               fillWithBots: !found.isCustom,
-              isCreator: isSessionCreator
+              isCreator: amIHost
             });
           } else {
             // Enter custom room directly from share link
@@ -208,7 +216,7 @@ function AppContent() {
               turnTimeSeconds: 15,
               boardTheme: 'classic',
               fillWithBots: false,
-              isCreator: isSessionCreator
+              isCreator: amIHost
             });
           }
         }).catch(() => {
@@ -241,6 +249,7 @@ function AppContent() {
       const creatorKey = `proprush_creator_${config.roomCode.toLowerCase()}`;
       if (config.isCreator) {
         sessionStorage.setItem(creatorKey, 'true');
+        localStorage.setItem(creatorKey, 'true');
       } else if (config.isCreator === false) {
         sessionStorage.removeItem(creatorKey);
       }

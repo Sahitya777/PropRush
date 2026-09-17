@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { GameRoom, Player, BoardTile, BoardMapTheme, TradeOffer } from '../types/game';
 import { BASE_BOARD_TILES, CHANCE_CARDS, CHEST_CARDS, GROUP_PROPERTY_COUNTS } from '../data/boardTiles';
 import { useUser } from '../context/UserContext';
@@ -73,7 +73,10 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   // Verify if this browser session was the original creator of this room
   const isSessionCreator = Boolean(
     roomConfig.isCreator ||
-    (typeof window !== 'undefined' && sessionStorage.getItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`) === 'true')
+    (typeof window !== 'undefined' && (
+      sessionStorage.getItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`) === 'true' ||
+      localStorage.getItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`) === 'true'
+    ))
   );
 
   // Master Room State (Restores from saved active match or waiting lobby)
@@ -337,25 +340,41 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   });
 
   // The authoritative current player ID in this session
-  const myPlayerId = user.id;
+  // Use session storage per room to guarantee two tabs on the same machine never collide
+  const myPlayerId = useMemo(() => {
+    try {
+      const roomKey = `proprush_room_pid_${roomConfig.roomCode.toLowerCase()}`;
+      let pid = sessionStorage.getItem(roomKey);
+      if (!pid) {
+        if (isSessionCreator) {
+          pid = user.id || ('host_' + Math.random().toString(36).substring(2, 8));
+        } else {
+          pid = (user.id ? `${user.id}_` : 'usr_') + Math.random().toString(36).substring(2, 6);
+        }
+        sessionStorage.setItem(roomKey, pid);
+      }
+      return pid;
+    } catch {
+      return user.id || ('usr_' + Math.random().toString(36).substring(2, 8));
+    }
+  }, [roomConfig.roomCode, isSessionCreator, user.id]);
 
   // The room's authentic host ID
   const hostId = room.hostId || (isSessionCreator ? myPlayerId : (room.players[0]?.id || ''));
 
   // Am I the host of this room?
-  // MUST be the session creator OR my ID strictly matches the room's hostId.
-  // Anyone joining via invite link or room code CAN NEVER be host unless room.hostId matches their ID.
+  // Room creator is ALWAYS host; otherwise room.hostId must match user or session player ID
   const isCurrentUserHost = Boolean(
-    (isSessionCreator && (!room.hostId || room.hostId === myPlayerId)) ||
-    (room.hostId && room.hostId === myPlayerId)
+    isSessionCreator ||
+    (room.hostId && (room.hostId === myPlayerId || (user.id && room.hostId === user.id)))
   );
 
   // Identify who the local user is in this room
   const myPlayer: Player | undefined = 
-    room.players.find(p => p.id === myPlayerId) ||
+    room.players.find(p => p.id === myPlayerId || (user.id && p.id === user.id)) ||
     (isCurrentUserHost 
-      ? room.players.find(p => p.id === hostId || p.isHost) || room.players[0]
-      : room.players.find(p => p.id !== hostId && !p.isHost && !p.isBot) || room.players[1] || room.players[0]
+      ? room.players.find(p => p.isHost || p.id === hostId) || room.players[0]
+      : room.players.find(p => !p.isHost && p.id !== hostId && !p.isBot) || room.players[1] || room.players[0]
     );
 
   // Active turn player
@@ -431,8 +450,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     } catch {}
 
     const myPlayerPayload: Partial<Player> = {
-      id: user.id,
-      name: user.username,
+      id: myPlayerId,
+      name: user.username || 'Player',
       username: user.username,
       firstName: user.firstName,
       lastName: user.lastName,
@@ -447,27 +466,88 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     // 1. Initial Room Discovery & Join on Server
     fetchServerRoom(roomConfig.roomCode).then(serverRoom => {
       if (!isMounted) return;
+
+      const amICreator = Boolean(
+        isSessionCreator || 
+        (serverRoom && serverRoom.hostId && (serverRoom.hostId === myPlayerId || serverRoom.hostId === user.id))
+      );
+
       if (serverRoom) {
         // Room already exists on server!
-        if (serverRoom.hostId === user.id && isSessionCreator) {
-          // I am the verified room creator
+        if (amICreator) {
+          // I am the verified room creator / host
           setIsConnecting(false);
+
+          const hostPlayerObj: Player = {
+            id: myPlayerId,
+            name: user.username || 'Host',
+            username: user.username,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            walletAddress: user.walletAddress,
+            avatar: user.avatar || 'orange',
+            avatarFrame: user.avatarFrame,
+            diceSkin: user.diceSkin || 'dice_golden',
+            color: playerColors[0],
+            cash: roomConfig.initialCash,
+            netWorth: roomConfig.initialCash,
+            position: 0,
+            inJail: false,
+            jailTurns: 0,
+            getOutOfJailCards: 0,
+            properties: [],
+            mortgaged: [],
+            houses: {},
+            isBankrupt: false,
+            isBot: false,
+            isHost: true
+          };
+
+          const sPlayers = Array.isArray(serverRoom.players) ? serverRoom.players : [];
+          const hostIdx = sPlayers.findIndex(
+            (p: any) => p && (p.id === myPlayerId || p.id === user.id || p.isHost || p.id === serverRoom.hostId)
+          );
+
+          let resolvedPlayers: Player[];
+          if (hostIdx >= 0) {
+            resolvedPlayers = sPlayers.map((p: any, idx: number) =>
+              idx === hostIdx ? { ...p, ...hostPlayerObj, isHost: true } : { ...p, isHost: false }
+            );
+          } else {
+            resolvedPlayers = [hostPlayerObj, ...sPlayers];
+          }
+
           setRoom(prev => ({
             ...prev,
             ...serverRoom,
-            players: serverRoom.players
+            hostId: myPlayerId,
+            players: resolvedPlayers
           }));
+
           serverVersionRef.current = (serverRoom as any).version || 1;
+
+          // Re-sync authoritative host player to server
+          syncServerRoomState(roomConfig.roomCode, {
+            ...serverRoom,
+            hostId: myPlayerId,
+            players: resolvedPlayers
+          } as any).catch(() => {});
         } else {
           // I am a joining player
-          joinServerRoom(roomConfig.roomCode, { ...myPlayerPayload, isHost: false }).then(joinedRoom => {
+          joinServerRoom(roomConfig.roomCode, { ...myPlayerPayload, id: myPlayerId, isHost: false }).then(joinedRoom => {
             if (!isMounted) return;
             if (joinedRoom) {
               setIsConnecting(false);
+              const jPlayers = Array.isArray(joinedRoom.players) ? joinedRoom.players : [];
+              const hasMe = jPlayers.some((p: any) => p && (p.id === myPlayerId || p.id === user.id));
+              const finalJoinPlayers = hasMe
+                ? jPlayers
+                : [...jPlayers, { ...myPlayerPayload, id: myPlayerId, isHost: false } as Player];
+
               setRoom(prev => ({
                 ...prev,
                 ...joinedRoom,
-                players: joinedRoom.players
+                players: finalJoinPlayers
               }));
               serverVersionRef.current = (joinedRoom as any).version || 1;
               const joinedAny = joinedRoom as any;
@@ -486,7 +566,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         createServerRoom({
           code: roomConfig.roomCode,
           name: roomConfig.roomName,
-          hostId: user.id,
+          hostId: myPlayerId,
           maxPlayers: roomConfig.maxPlayers,
           betAmount: roomConfig.betAmount,
           initialCash: roomConfig.initialCash,
@@ -495,8 +575,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           status: 'waiting',
           players: [
             {
-              id: user.id,
-              name: user.username,
+              id: myPlayerId,
+              name: user.username || 'Host',
               avatar: user.avatar || 'orange',
               avatarFrame: user.avatarFrame,
               diceSkin: user.diceSkin || 'dice_golden',
@@ -607,13 +687,14 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           addLog(`🚀 Match launched by room creator! Game in progress.`, 'info');
         } else if (data.type === 'PLAYER_KICKED') {
           if (room.status === 'waiting') {
-            const isMeKicked =
-              (data.kickedPlayerId && data.kickedPlayerId === myPlayerId) ||
-              (data.room && !data.room.players?.some((p: any) => p.id === myPlayerId) && !isCurrentUserHost);
+            const isMeKicked = Boolean(
+              data.kickedPlayerId && data.kickedPlayerId === myPlayerId && !isCurrentUserHost
+            );
             if (isMeKicked) {
               clearActiveMatch();
               try {
                 sessionStorage.removeItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`);
+                localStorage.removeItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`);
                 window.history.replaceState({}, '', window.location.pathname);
               } catch {}
               if (roomConfig.betAmount > 0) {
@@ -625,7 +706,18 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
             }
           }
           if (data.room) {
-            setRoom(data.room);
+            setRoom(prev => {
+              let safePlayers = data.room.players || prev.players;
+              if (isCurrentUserHost && !safePlayers.some((p: any) => p.id === myPlayerId || p.id === user.id || p.isHost)) {
+                const hostP = myPlayer || prev.players.find(p => p.isHost) || prev.players[0];
+                if (hostP) safePlayers = [{ ...hostP, isHost: true }, ...safePlayers];
+              }
+              return {
+                ...prev,
+                ...data.room,
+                players: safePlayers
+              };
+            });
           }
         } else if (data.type === 'PLAYER_JOINED' && data.player) {
           setRoom(prev => {
@@ -681,7 +773,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       };
     }
 
-    // 3. Periodic Server Polling Interval (Every 450ms for fast cross-device updates)
+    // 3. Periodic Server Polling Interval (Every 800ms for cross-device updates)
     const pollInterval = setInterval(async () => {
       if (!isMounted || isRollingRef.current) return;
 
@@ -693,16 +785,16 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           const wasWaiting = prev.status === 'waiting';
           const isNowPlaying = sRoom.status === 'playing';
 
-          // Check if current user got kicked by host from lobby
+          // Check if current user got explicitly kicked by host from lobby
           if (wasWaiting && sRoom.status === 'waiting') {
-            const amIHost = isCurrentUserHost || (sRoom.hostId && sRoom.hostId === myPlayerId);
+            const amIHost = isCurrentUserHost || (sRoom.hostId && (sRoom.hostId === myPlayerId || sRoom.hostId === user.id));
             if (!amIHost) {
-              const wasInRoom = prev.players.some(p => p.id === myPlayerId);
-              const isStillInRoom = sRoom.players?.some((p: any) => p.id === myPlayerId);
-              if (wasInRoom && !isStillInRoom) {
+              const isExplicitlyKicked = Array.isArray(sRoom.kickedPlayerIds) && sRoom.kickedPlayerIds.includes(myPlayerId);
+              if (isExplicitlyKicked) {
                 clearActiveMatch();
                 try {
                   sessionStorage.removeItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`);
+                  localStorage.removeItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`);
                   window.history.replaceState({}, '', window.location.pathname);
                 } catch {}
                 if (roomConfig.betAmount > 0) {
@@ -711,6 +803,13 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                 sounds.playPayRent();
                 onLeaveRoom();
                 return prev;
+              }
+
+              // If I was in room locally but server temporarily didn't return me (and NOT kicked), re-assert presence!
+              const wasInRoom = prev.players.some(p => p.id === myPlayerId || p.id === user.id);
+              const isStillInRoom = sRoom.players?.some((p: any) => p.id === myPlayerId || p.id === user.id);
+              if (wasInRoom && !isStillInRoom && !isExplicitlyKicked) {
+                joinServerRoom(roomConfig.roomCode, { ...myPlayerPayload, id: myPlayerId, isHost: false }).catch(() => {});
               }
             }
           }
@@ -749,10 +848,27 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
           if (waitingPlayersDiff || playersCountDiff || statusDiff || turnDiff || bankruptDiff || hasNewerVersion || logsDiff || tradeDiff) {
             if (sRoom.version) serverVersionRef.current = sRoom.version;
+
+            let safePlayers = sRoom.players && sRoom.players.length > 0 ? sRoom.players : prev.players;
+            if (wasWaiting) {
+              if (isCurrentUserHost) {
+                const hasHost = safePlayers.some((p: any) => p.id === myPlayerId || p.id === user.id || p.isHost);
+                if (!hasHost) {
+                  const hostP = myPlayer || prev.players.find(p => p.isHost) || prev.players[0];
+                  if (hostP) safePlayers = [{ ...hostP, isHost: true }, ...safePlayers];
+                }
+              } else {
+                const hasMe = safePlayers.some((p: any) => p.id === myPlayerId || p.id === user.id);
+                if (!hasMe && myPlayer) {
+                  safePlayers = [...safePlayers, myPlayer];
+                }
+              }
+            }
+
             return {
               ...prev,
               ...sRoom,
-              players: sRoom.players && sRoom.players.length > 0 ? sRoom.players : prev.players,
+              players: safePlayers,
               logs: sRoom.logs && sRoom.logs.length > 0 ? sRoom.logs : prev.logs
             };
           }
@@ -792,7 +908,6 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       clearInterval(pollInterval);
       window.removeEventListener('storage', handleStorageChange);
       if (channel) {
-        channel.postMessage({ type: 'PLAYER_LEFT', playerId: user.id });
         channel.close();
       }
     };
