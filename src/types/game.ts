@@ -242,6 +242,8 @@ export interface GameRoom {
   roundHistory?: MatchRoundSnapshot[];
   analytics?: MatchAnalytics;
   kickedPlayerIds?: string[];
+  version?: number;
+  updatedAt?: number;
   pendingCard?: {
     type: 'chance' | 'chest';
     title: string;

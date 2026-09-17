@@ -18,7 +18,9 @@ import {
   createServerRoom,
   joinServerRoom,
   syncServerRoomState,
-  sendServerChatMessage
+  sendServerChatMessage,
+  kickPlayerFromServer,
+  leaveServerRoom
 } from '../utils/serverRoomSync';
 
 interface GameRoomViewProps {
@@ -432,6 +434,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   const isRollingRef = useRef<boolean>(false);
   const lastLogRef = useRef<{ text: string; time: number }>({ text: '', time: 0 });
   const serverVersionRef = useRef<number>(0);
+  const kickedPlayerIdsRef = useRef<Set<string>>(new Set());
 
   // Auto-save active match whenever room or chat state updates
   useEffect(() => {
@@ -686,39 +689,47 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           setRoom(data.room);
           addLog(`🚀 Match launched by room creator! Game in progress.`, 'info');
         } else if (data.type === 'PLAYER_KICKED') {
-          if (room.status === 'waiting') {
-            const isMeKicked = Boolean(
-              data.kickedPlayerId && data.kickedPlayerId === myPlayerId && !isCurrentUserHost
-            );
-            if (isMeKicked) {
-              clearActiveMatch();
-              try {
-                sessionStorage.removeItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`);
-                localStorage.removeItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`);
-                window.history.replaceState({}, '', window.location.pathname);
-              } catch {}
-              if (roomConfig.betAmount > 0) {
-                depositFunds(roomConfig.betAmount, 'room_kick_refund');
-              }
-              sounds.playPayRent();
-              onLeaveRoom();
-              return;
+          const isMeKicked = Boolean(
+            !isCurrentUserHost && (
+              (data.kickedPlayerId && (data.kickedPlayerId === myPlayerId || data.kickedPlayerId === user.id || (myPlayer && data.kickedPlayerId === myPlayer.id))) ||
+              (data.kickedPlayerName && (data.kickedPlayerName === user.username || (myPlayer && data.kickedPlayerName === myPlayer.name)))
+            )
+          );
+          if (isMeKicked) {
+            clearActiveMatch();
+            try {
+              sessionStorage.setItem(`proprush_kicked_${roomConfig.roomCode.toLowerCase()}`, 'true');
+              sessionStorage.removeItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`);
+              localStorage.removeItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`);
+              window.history.replaceState({}, '', window.location.pathname);
+            } catch {}
+            if (roomConfig.betAmount > 0) {
+              depositFunds(roomConfig.betAmount, 'room_kick_refund');
             }
+            sounds.playPayRent();
+            alert('You have been removed from the room by the host.');
+            onLeaveRoom();
+            return;
           }
-          if (data.room) {
-            setRoom(prev => {
-              let safePlayers = data.room.players || prev.players;
-              if (isCurrentUserHost && !safePlayers.some((p: any) => p.id === myPlayerId || p.id === user.id || p.isHost)) {
-                const hostP = myPlayer || prev.players.find(p => p.isHost) || prev.players[0];
-                if (hostP) safePlayers = [{ ...hostP, isHost: true }, ...safePlayers];
-              }
-              return {
-                ...prev,
-                ...data.room,
-                players: safePlayers
-              };
-            });
+
+          // If another player was kicked, record and update immediately
+          if (data.kickedPlayerId) {
+            kickedPlayerIdsRef.current.add(data.kickedPlayerId);
           }
+          if (data.kickedPlayerName) {
+            kickedPlayerIdsRef.current.add(data.kickedPlayerName);
+          }
+          setRoom(prev => {
+            const updatedPlayers = (data.room?.players || prev.players).filter((p: any) =>
+              p.id !== data.kickedPlayerId && p.name !== data.kickedPlayerName
+            );
+            return {
+              ...prev,
+              ...(data.room || {}),
+              players: updatedPlayers,
+              totalPrizePool: roomConfig.betAmount * updatedPlayers.length
+            };
+          });
         } else if (data.type === 'PLAYER_JOINED' && data.player) {
           setRoom(prev => {
             if (prev.status !== 'waiting') return prev;
@@ -749,19 +760,46 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
             return updatedRoom;
           });
         } else if (data.type === 'PLAYER_LEFT') {
-          setRoom(prev => {
-            if (prev.status !== 'waiting') return prev;
-            const updatedPlayers = prev.players.filter(p => p.id !== data.playerId);
-            const updatedRoom: GameRoom = {
-              ...prev,
-              players: updatedPlayers,
-              totalPrizePool: roomConfig.betAmount * updatedPlayers.length
-            };
-            if (isCurrentUserHost) {
-              broadcastAndSync(updatedRoom);
-            }
-            return updatedRoom;
-          });
+          if (data.playerId && data.playerId !== myPlayerId) {
+            setRoom(prev => {
+              const leavingName = data.username || prev.players.find(p => p.id === data.playerId)?.name || 'A player';
+              if (prev.status === 'waiting') {
+                const updatedPlayers = prev.players.filter(p => p.id !== data.playerId && p.name !== data.username);
+                return {
+                  ...prev,
+                  players: updatedPlayers,
+                  totalPrizePool: roomConfig.betAmount * updatedPlayers.length,
+                  logs: [
+                    {
+                      id: 'log_left_' + Date.now(),
+                      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                      text: `🚪 ${leavingName} left the lobby.`,
+                      type: 'info'
+                    },
+                    ...prev.logs
+                  ]
+                };
+              } else if (prev.status === 'playing') {
+                const updatedPlayers = prev.players.map(p =>
+                  (p.id === data.playerId || p.name === data.username) ? { ...p, isBankrupt: true, cash: 0 } : p
+                );
+                return {
+                  ...prev,
+                  players: updatedPlayers,
+                  logs: [
+                    {
+                      id: 'log_surr_' + Date.now(),
+                      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                      text: `🚩 ${leavingName} surrendered and left the match.`,
+                      type: 'info'
+                    },
+                    ...prev.logs
+                  ]
+                };
+              }
+              return prev;
+            });
+          }
         } else if (data.type === 'CHAT_MESSAGE') {
           if (data.message && data.message.sender !== user.username) {
             setChatMessages(prev => [...prev.slice(-30), data.message]);
@@ -785,32 +823,37 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           const wasWaiting = prev.status === 'waiting';
           const isNowPlaying = sRoom.status === 'playing';
 
-          // Check if current user got explicitly kicked by host from lobby
-          if (wasWaiting && sRoom.status === 'waiting') {
-            const amIHost = isCurrentUserHost || (sRoom.hostId && (sRoom.hostId === myPlayerId || sRoom.hostId === user.id));
-            if (!amIHost) {
-              const isExplicitlyKicked = Array.isArray(sRoom.kickedPlayerIds) && sRoom.kickedPlayerIds.includes(myPlayerId);
-              if (isExplicitlyKicked) {
-                clearActiveMatch();
-                try {
-                  sessionStorage.removeItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`);
-                  localStorage.removeItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`);
-                  window.history.replaceState({}, '', window.location.pathname);
-                } catch {}
-                if (roomConfig.betAmount > 0) {
-                  depositFunds(roomConfig.betAmount, 'room_kick_refund');
-                }
-                sounds.playPayRent();
-                onLeaveRoom();
-                return prev;
-              }
+          // Check if current user got explicitly kicked by host from lobby or match
+          const amIHost = isCurrentUserHost || (sRoom.hostId && (sRoom.hostId === myPlayerId || sRoom.hostId === user.id));
+          if (!amIHost) {
+            const kickedList = Array.isArray(sRoom.kickedPlayerIds) ? sRoom.kickedPlayerIds : [];
+            const isExplicitlyKicked = (
+              kickedList.includes(myPlayerId) ||
+              (user.id && kickedList.includes(user.id)) ||
+              (myPlayer && kickedList.includes(myPlayer.id)) ||
+              (user.username && kickedList.includes(user.username)) ||
+              (myPlayer?.name && kickedList.includes(myPlayer.name)) ||
+              sessionStorage.getItem(`proprush_kicked_${roomConfig.roomCode.toLowerCase()}`) === 'true'
+            );
 
-              // If I was in room locally but server temporarily didn't return me (and NOT kicked), re-assert presence!
-              const wasInRoom = prev.players.some(p => p.id === myPlayerId || p.id === user.id);
-              const isStillInRoom = sRoom.players?.some((p: any) => p.id === myPlayerId || p.id === user.id);
-              if (wasInRoom && !isStillInRoom && !isExplicitlyKicked) {
-                joinServerRoom(roomConfig.roomCode, { ...myPlayerPayload, id: myPlayerId, isHost: false }).catch(() => {});
+            const wasInRoom = prev.players.some(p => p.id === myPlayerId || p.id === user.id);
+            const isStillInRoom = sRoom.players?.some((p: any) => p.id === myPlayerId || p.id === user.id);
+
+            if (isExplicitlyKicked || (wasWaiting && wasInRoom && !isStillInRoom)) {
+              clearActiveMatch();
+              try {
+                sessionStorage.setItem(`proprush_kicked_${roomConfig.roomCode.toLowerCase()}`, 'true');
+                sessionStorage.removeItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`);
+                localStorage.removeItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`);
+                window.history.replaceState({}, '', window.location.pathname);
+              } catch {}
+              if (roomConfig.betAmount > 0) {
+                depositFunds(roomConfig.betAmount, 'room_kick_refund');
               }
+              sounds.playPayRent();
+              alert('You have been removed from the room by the host.');
+              onLeaveRoom();
+              return prev;
             }
           }
 
@@ -823,14 +866,31 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
             sounds.playWin();
           }
 
-          const playersCountDiff = prev.players.length !== (sRoom.players?.length || 0);
+          // Merge players safely using both local exclusion and server kicked list
+          const activeKickedSet = new Set<string>([
+            ...Array.from(kickedPlayerIdsRef.current),
+            ...(Array.isArray(sRoom.kickedPlayerIds) ? sRoom.kickedPlayerIds : [])
+          ]);
+
+          let safePlayers = (sRoom.players && sRoom.players.length > 0 ? sRoom.players : prev.players)
+            .filter((p: any) => p && p.id && !activeKickedSet.has(p.id) && (!p.name || !activeKickedSet.has(p.name)));
+
+          if (wasWaiting && isCurrentUserHost) {
+            const hasHost = safePlayers.some((p: any) => p.id === myPlayerId || p.id === user.id || p.isHost);
+            if (!hasHost) {
+              const hostP = myPlayer || prev.players.find(p => p.isHost) || prev.players[0];
+              if (hostP) safePlayers = [{ ...hostP, isHost: true }, ...safePlayers];
+            }
+          }
+
+          const playersCountDiff = prev.players.length !== safePlayers.length;
           const waitingPlayersDiff = wasWaiting && (
             playersCountDiff ||
             JSON.stringify(prev.players.map(p => ({ id: p.id, name: p.name, wallet: p.walletAddress, ready: (p as any).isReady }))) !==
-            JSON.stringify((sRoom.players || []).map((p: any) => ({ id: p.id, name: p.name, wallet: p.walletAddress, ready: p.isReady })))
+            JSON.stringify(safePlayers.map((p: any) => ({ id: p.id, name: p.name, wallet: p.walletAddress, ready: p.isReady })))
           );
 
-          if (wasWaiting && sRoom.players && sRoom.players.length > prev.players.length) {
+          if (wasWaiting && safePlayers.length > prev.players.length) {
             sounds.playCashRegister();
           }
 
@@ -849,26 +909,11 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           if (waitingPlayersDiff || playersCountDiff || statusDiff || turnDiff || bankruptDiff || hasNewerVersion || logsDiff || tradeDiff) {
             if (sRoom.version) serverVersionRef.current = sRoom.version;
 
-            let safePlayers = sRoom.players && sRoom.players.length > 0 ? sRoom.players : prev.players;
-            if (wasWaiting) {
-              if (isCurrentUserHost) {
-                const hasHost = safePlayers.some((p: any) => p.id === myPlayerId || p.id === user.id || p.isHost);
-                if (!hasHost) {
-                  const hostP = myPlayer || prev.players.find(p => p.isHost) || prev.players[0];
-                  if (hostP) safePlayers = [{ ...hostP, isHost: true }, ...safePlayers];
-                }
-              } else {
-                const hasMe = safePlayers.some((p: any) => p.id === myPlayerId || p.id === user.id);
-                if (!hasMe && myPlayer) {
-                  safePlayers = [...safePlayers, myPlayer];
-                }
-              }
-            }
-
             return {
               ...prev,
               ...sRoom,
               players: safePlayers,
+              totalPrizePool: roomConfig.betAmount * safePlayers.length,
               logs: sRoom.logs && sRoom.logs.length > 0 ? sRoom.logs : prev.logs
             };
           }
@@ -903,10 +948,39 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     };
     window.addEventListener('storage', handleStorageChange);
 
+    // Leave beacon on page unload / tab close
+    const handleBeforeUnload = () => {
+      try {
+        const payload = JSON.stringify({ playerId: myPlayerId, username: user.username });
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon(`/api/rooms/${encodeURIComponent(roomConfig.roomCode.toLowerCase())}/leave`, payload);
+        } else {
+          fetch(`/api/rooms/${encodeURIComponent(roomConfig.roomCode.toLowerCase())}/leave`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+            keepalive: true
+          }).catch(() => {});
+        }
+        const ch = new BroadcastChannel(`proprush_sync_${roomConfig.roomCode.toLowerCase()}`);
+        ch.postMessage({
+          type: 'PLAYER_LEFT',
+          playerId: myPlayerId,
+          username: user.username,
+          roomStatus: room.status
+        });
+        ch.close();
+      } catch {}
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handleBeforeUnload);
+
     return () => {
       isMounted = false;
       clearInterval(pollInterval);
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handleBeforeUnload);
       if (channel) {
         channel.close();
       }
@@ -919,7 +993,15 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       alert('Only the room creator / host can start the match.');
       return;
     }
-    if (room.players.length < 2) {
+    const activeKickedSet = new Set<string>([
+      ...Array.from(kickedPlayerIdsRef.current),
+      ...(Array.isArray(room.kickedPlayerIds) ? room.kickedPlayerIds : [])
+    ]);
+    const validPlayers = room.players.filter(
+      p => p && p.id && !activeKickedSet.has(p.id) && (!p.name || !activeKickedSet.has(p.name))
+    );
+
+    if (validPlayers.length < 2) {
       sounds.playBankrupt();
       alert('A minimum of 2 players is required to start the match. Please invite another player with your room code/link, or add an AI bot.');
       return;
@@ -929,16 +1011,17 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     const updatedRoom: GameRoom = {
       ...room,
       status: 'playing',
-      currentTurnPlayerId: room.players[0].id,
+      players: validPlayers,
+      currentTurnPlayerId: validPlayers[0].id,
       currentTurnIndex: 0,
       turnPhase: 'roll',
       turnTimer: roomConfig.turnTimeSeconds || 15,
-      totalPrizePool: room.betAmount * room.players.length,
+      totalPrizePool: room.betAmount * validPlayers.length,
       logs: [
         {
           id: 'log_start_' + Date.now(),
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          text: `🚀 Match started by room creator ${user.username}! All ${room.players.length} players ready to roll.`,
+          text: `🚀 Match started by room creator ${user.username}! All ${validPlayers.length} players ready to roll.`,
           type: 'info'
         },
         ...room.logs
@@ -994,9 +1077,19 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   };
 
   // Host Action: Remove player or bot from waiting room
-  const handleRemovePlayerFromLobby = (playerId: string) => {
+  const handleRemovePlayerFromLobby = async (playerId: string) => {
     if (!isCurrentUserHost) return;
-    const updatedPlayers = room.players.filter(p => p.id !== playerId);
+
+    // Record in local exclusion ref immediately
+    kickedPlayerIdsRef.current.add(playerId);
+    const targetPlayer = room.players.find(p => p.id === playerId);
+    const targetName = targetPlayer?.name || 'A player';
+    if (targetPlayer?.name) {
+      kickedPlayerIdsRef.current.add(targetPlayer.name);
+    }
+
+    // 1. INSTANT zero-lag optimistic local update
+    const updatedPlayers = room.players.filter(p => p.id !== playerId && p.name !== targetName);
     const updatedRoom: GameRoom = {
       ...room,
       players: updatedPlayers,
@@ -1005,7 +1098,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         {
           id: 'log_kick_' + Date.now(),
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          text: `👢 A player was removed from the lobby by the host.`,
+          text: `👢 ${targetName} was removed from the lobby by the host.`,
           type: 'info'
         },
         ...room.logs
@@ -1013,24 +1106,47 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     };
     setRoom(updatedRoom);
     sounds.playClick();
-    broadcastAndSync(updatedRoom, 'PLAYER_KICKED');
+    try {
+      localStorage.setItem(customRoomStorageKey, JSON.stringify(updatedRoom));
+      updateActiveRoomPlayerCount(roomConfig.roomCode, updatedPlayers.length);
+    } catch {}
 
-    // Notify backend server of kick
-    fetch(`/api/rooms/${encodeURIComponent(roomConfig.roomCode.toLowerCase())}/kick`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hostId: myPlayerId, playerIdToKick: playerId })
-    }).catch(() => {});
-
+    // 2. Instant multi-tab BroadcastChannel dispatch
     try {
       const channel = new BroadcastChannel(`proprush_sync_${roomConfig.roomCode.toLowerCase()}`);
       channel.postMessage({
         type: 'PLAYER_KICKED',
         kickedPlayerId: playerId,
+        kickedPlayerName: targetName,
         room: updatedRoom
       });
       channel.close();
     } catch {}
+
+    // 3. Authoritative server kick call
+    try {
+      const serverRoom = await kickPlayerFromServer(
+        roomConfig.roomCode,
+        myPlayerId,
+        playerId,
+        targetPlayer?.username || targetName,
+        user.id
+      );
+      if (serverRoom && serverRoom.players) {
+        const cleanedPlayers = serverRoom.players.filter(
+          (p: any) => p && p.id !== playerId && p.name !== targetName && !kickedPlayerIdsRef.current.has(p.id)
+        );
+        setRoom(prev => ({
+          ...prev,
+          ...serverRoom,
+          players: cleanedPlayers,
+          totalPrizePool: roomConfig.betAmount * cleanedPlayers.length
+        }));
+        if (serverRoom.version) serverVersionRef.current = serverRoom.version;
+      }
+    } catch (err) {
+      console.warn('Server kick call failed:', err);
+    }
   };
 
   // Log on resumption
@@ -2086,9 +2202,31 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   };
 
   const handleGracefulLeave = () => {
-    if (room.status === 'playing' || room.status === 'waiting') {
-      markDisconnected(room, roomConfig, chatMessages);
-    }
+    sounds.playClick();
+    // 1. Notify server immediately so host & other players see departure
+    leaveServerRoom(roomConfig.roomCode, myPlayerId, user.username).catch(() => {});
+
+    // 2. Broadcast PLAYER_LEFT event to cross-tab channel
+    try {
+      const channel = new BroadcastChannel(`proprush_sync_${roomConfig.roomCode.toLowerCase()}`);
+      channel.postMessage({
+        type: 'PLAYER_LEFT',
+        playerId: myPlayerId,
+        username: user.username,
+        roomStatus: room.status
+      });
+      channel.close();
+    } catch {}
+
+    // 3. Clear active match state and local storage
+    clearActiveMatch();
+    try {
+      sessionStorage.removeItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`);
+      localStorage.removeItem(`proprush_creator_${roomConfig.roomCode.toLowerCase()}`);
+      window.history.replaceState({}, '', window.location.pathname);
+    } catch {}
+
+    // 4. Return to main lobby
     onLeaveRoom();
   };
 

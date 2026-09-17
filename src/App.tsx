@@ -79,7 +79,7 @@ function AppContent() {
       if (typeof window !== 'undefined' && window.location.origin) {
         const origin = window.location.origin;
         const currentUrl = window.location.href;
-        const ogImage = `${origin}/og-image.jpg`;
+        const ogImage = `${origin}/og-image.png`;
 
         const metaOgImage = document.querySelector('meta[property="og:image"]');
         if (metaOgImage) metaOgImage.setAttribute('content', ogImage);

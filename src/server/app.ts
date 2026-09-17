@@ -954,7 +954,11 @@ api.post("/rooms/:code/join", (req: Request, res: Response): void => {
     if (!Array.isArray(room.kickedPlayerIds)) room.kickedPlayerIds = [];
 
     // Check if player was explicitly kicked by host
-    if (room.kickedPlayerIds.includes(player.id)) {
+    const playerName = (player.name || player.username || '').trim();
+    if (
+      room.kickedPlayerIds.includes(player.id) ||
+      (playerName && room.kickedPlayerIds.includes(playerName))
+    ) {
       res.status(403).json({ error: 'You have been removed from this room by the host.' });
       return;
     }
@@ -1125,40 +1129,65 @@ api.post("/rooms/:code/state", (req: Request, res: Response): void => {
       }
     }
 
-    // Sanitize player isHost flags and MERGE players safely during waiting lobby
-    let sanitizedPlayers: any[] = [];
-    if (targetStatus === 'waiting' && existing && Array.isArray(existing.players) && existing.players.length > 0) {
-      const playerMap = new Map<string, any>();
-      const kickedSet = new Set<string>(existing.kickedPlayerIds || []);
-      
-      // Keep existing non-kicked players
-      existing.players.forEach((p: any) => {
-        if (p && p.id && !kickedSet.has(p.id)) {
-          playerMap.set(p.id, p);
-        }
-      });
+    // Collect all kicked IDs from existing room and incoming state
+    const kickedSet = new Set<string>(existing?.kickedPlayerIds || []);
+    if (Array.isArray(updatedRoom.kickedPlayerIds)) {
+      updatedRoom.kickedPlayerIds.forEach((id: string) => { if (id) kickedSet.add(id); });
+    }
 
-      // Overlay incoming players
-      if (Array.isArray(updatedRoom.players)) {
-        updatedRoom.players.forEach((p: any) => {
-          if (p && p.id && !kickedSet.has(p.id)) {
-            const existingP = playerMap.get(p.id);
-            playerMap.set(p.id, { ...(existingP || {}), ...p });
+    const callerId = (body.playerId || body.hostId || updatedRoom.hostId || '').trim();
+    const callerUserId = (body.userId || '').trim();
+    const incomingList = Array.isArray(updatedRoom.players) ? updatedRoom.players : [];
+
+    const isHostCaller = Boolean(
+      (authoritativeHostId && (callerId === authoritativeHostId || callerUserId === authoritativeHostId)) ||
+      incomingList.some((p: any) => p && p.isHost && (p.id === callerId || p.id === callerUserId))
+    );
+
+    let sanitizedPlayers: any[] = [];
+    if (targetStatus === 'waiting') {
+      // Filter out any kicked player from incoming list
+      const filteredIncoming = incomingList.filter((p: any) =>
+        p && p.id && !kickedSet.has(p.id) && (!p.name || !kickedSet.has(p.name))
+      );
+
+      if (isHostCaller) {
+        // Host is authoritative: host's player list is the source of truth!
+        // We do NOT resurrect players the host kicked or removed.
+        // We only preserve genuine new human players who joined via /join on the server
+        // after host's local snapshot was taken.
+        const hostPlayerIds = new Set(filteredIncoming.map((p: any) => p.id));
+        const newlyJoinedOnServer = (existing?.players || []).filter((ep: any) =>
+          ep && ep.id && !hostPlayerIds.has(ep.id) && !kickedSet.has(ep.id) && (!ep.name || !kickedSet.has(ep.name)) && !ep.isBot
+        );
+        sanitizedPlayers = [...filteredIncoming, ...newlyJoinedOnServer];
+      } else {
+        // Non-host caller cannot remove or kick other players; overlay their own player info
+        const basePlayers = (existing?.players || filteredIncoming).filter((p: any) =>
+          p && p.id && !kickedSet.has(p.id) && (!p.name || !kickedSet.has(p.name))
+        );
+        const myUpdate = filteredIncoming.find((p: any) => p && (p.id === callerId || p.id === callerUserId));
+        if (myUpdate) {
+          sanitizedPlayers = basePlayers.map((p: any) => (p.id === callerId || p.id === callerUserId) ? { ...p, ...myUpdate } : p);
+          if (!sanitizedPlayers.some((p: any) => p.id === callerId || p.id === callerUserId) && !kickedSet.has(callerId)) {
+            sanitizedPlayers.push(myUpdate);
           }
-        });
+        } else {
+          sanitizedPlayers = basePlayers;
+        }
       }
 
-      sanitizedPlayers = Array.from(playerMap.values()).map((p: any, idx: number) => ({
+      sanitizedPlayers = sanitizedPlayers.map((p: any, idx: number) => ({
         ...p,
         isHost: Boolean(authoritativeHostId ? p.id === authoritativeHostId : idx === 0)
       }));
     } else {
-      sanitizedPlayers = Array.isArray(updatedRoom.players)
-        ? updatedRoom.players.map((p: any, idx: number) => ({
-            ...p,
-            isHost: Boolean(authoritativeHostId ? p.id === authoritativeHostId : idx === 0)
-          }))
-        : (existing?.players || []);
+      sanitizedPlayers = (Array.isArray(updatedRoom.players) ? updatedRoom.players : (existing?.players || []))
+        .filter((p: any) => p && p.id && !kickedSet.has(p.id) && (!p.name || !kickedSet.has(p.name)))
+        .map((p: any, idx: number) => ({
+          ...p,
+          isHost: Boolean(authoritativeHostId ? p.id === authoritativeHostId : idx === 0)
+        }));
     }
 
     const merged: ServerRoom = {
@@ -1168,7 +1197,7 @@ api.post("/rooms/:code/state", (req: Request, res: Response): void => {
       hostId: authoritativeHostId,
       status: targetStatus,
       players: sanitizedPlayers,
-      kickedPlayerIds: existing?.kickedPlayerIds || updatedRoom.kickedPlayerIds || [],
+      kickedPlayerIds: Array.from(kickedSet),
       version: (existing ? (existing.version || 0) : 0) + 1,
       updatedAt: now
     };
@@ -1224,25 +1253,44 @@ api.post("/rooms/:code/start", (req: Request, res: Response): void => {
 api.post("/rooms/:code/kick", (req: Request, res: Response): void => {
   try {
     const code = (req.params.code || '').trim().toLowerCase();
-    const { hostId, playerIdToKick } = req.body || {};
+    const { hostId, userId, playerIdToKick, username } = req.body || {};
     const callerId = (hostId || '').trim();
+    const callerUserId = (userId || '').trim();
     loadPersistedRooms();
     const room = findRoomByCode(code);
     if (!room) {
       res.status(404).json({ error: 'Room not found' });
       return;
     }
-    if (room.hostId && callerId && callerId !== room.hostId) {
+    const isCallerHost = Boolean(
+      (room.hostId && (callerId === room.hostId || callerUserId === room.hostId)) ||
+      room.players.some(p => (p.id === callerId || p.id === callerUserId) && p.isHost)
+    );
+    if (!isCallerHost && room.hostId && callerId && callerId !== room.hostId) {
       res.status(403).json({ error: 'Only the room creator / host can kick players.' });
       return;
     }
     if (!Array.isArray(room.kickedPlayerIds)) {
       room.kickedPlayerIds = [];
     }
-    if (playerIdToKick && !room.kickedPlayerIds.includes(playerIdToKick)) {
-      room.kickedPlayerIds.push(playerIdToKick);
+    const kickedPlayer = room.players.find(p => p.id === playerIdToKick || (username && p.name === username));
+    const targetId = kickedPlayer ? kickedPlayer.id : playerIdToKick;
+    const targetName = kickedPlayer?.name || username || 'A player';
+
+    if (targetId && !room.kickedPlayerIds.includes(targetId)) {
+      room.kickedPlayerIds.push(targetId);
     }
-    room.players = room.players.filter(p => p.id !== playerIdToKick);
+    if (targetName && !room.kickedPlayerIds.includes(targetName)) {
+      room.kickedPlayerIds.push(targetName);
+    }
+    room.players = room.players.filter(p => p.id !== targetId && p.id !== playerIdToKick && p.name !== targetName);
+    if (!Array.isArray(room.logs)) room.logs = [];
+    room.logs.unshift({
+      id: 'l_kick_' + Date.now(),
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      text: `👢 ${targetName} was removed from the room by the host.`,
+      type: 'info'
+    });
     room.version = (room.version || 0) + 1;
     room.updatedAt = Date.now();
     serverRooms.set(room.code, room);
@@ -1251,6 +1299,82 @@ api.post("/rooms/:code/kick", (req: Request, res: Response): void => {
     res.json({ success: true, room });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to kick player' });
+  }
+});
+
+// POST /rooms/:code/leave - Player leaves the room voluntarily
+api.post("/rooms/:code/leave", (req: Request, res: Response): void => {
+  try {
+    const code = (req.params.code || '').trim().toLowerCase();
+    const { playerId, username } = req.body || {};
+    loadPersistedRooms();
+    const room = findRoomByCode(code);
+    if (!room) {
+      res.json({ success: true, message: 'Room not found' });
+      return;
+    }
+
+    const leavingPlayerIndex = room.players.findIndex(p =>
+      p && (p.id === playerId || (username && p.name === username))
+    );
+
+    if (leavingPlayerIndex >= 0) {
+      const leavingPlayer = room.players[leavingPlayerIndex];
+      const displayName = leavingPlayer?.name || username || 'A player';
+
+      if (room.status === 'waiting') {
+        room.players.splice(leavingPlayerIndex, 1);
+        if (leavingPlayer.isHost || room.hostId === leavingPlayer.id) {
+          if (room.players.length > 0) {
+            const nextHost = room.players.find(p => !p.isBot) || room.players[0];
+            nextHost.isHost = true;
+            room.hostId = nextHost.id;
+          } else {
+            room.hostId = '';
+          }
+        }
+        if (!Array.isArray(room.logs)) room.logs = [];
+        room.logs.unshift({
+          id: 'l_leave_' + Date.now(),
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          text: `🚪 ${displayName} left the lobby.`,
+          type: 'info'
+        });
+      } else if (room.status === 'playing') {
+        leavingPlayer.isBankrupt = true;
+        leavingPlayer.cash = 0;
+        if (!Array.isArray(room.logs)) room.logs = [];
+        room.logs.unshift({
+          id: 'l_leave_' + Date.now(),
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          text: `🚩 ${displayName} surrendered and left the match.`,
+          type: 'info'
+        });
+
+        const activePlayers = room.players.filter(p => !p.isBankrupt);
+        if (activePlayers.length <= 1) {
+          room.status = 'finished';
+          room.winner = activePlayers[0] || room.players[0];
+        } else if (room.currentTurnPlayerId === leavingPlayer.id) {
+          const nextIdx = (room.currentTurnIndex + 1) % room.players.length;
+          const nextPlayer = room.players[nextIdx];
+          room.currentTurnIndex = nextIdx;
+          room.currentTurnPlayerId = nextPlayer?.id || activePlayers[0]?.id || '';
+          room.turnPhase = 'roll';
+          room.turnTimer = room.turnTimeSeconds || 15;
+        }
+      }
+
+      room.version = (room.version || 0) + 1;
+      room.updatedAt = Date.now();
+      serverRooms.set(room.code, room);
+      if (room.code !== code) serverRooms.set(code, room);
+      savePersistedRooms();
+    }
+
+    res.json({ success: true, room });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to leave room' });
   }
 });
 
