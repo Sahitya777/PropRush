@@ -426,7 +426,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       channel.postMessage({ type: eventType, room: updatedRoom });
       channel.close();
     } catch {}
-    syncServerRoomState(roomConfig.roomCode, updatedRoom).catch(() => {});
+    syncServerRoomState(roomConfig.roomCode, updatedRoom, myPlayerId).catch(() => {});
   };
 
   // Turn timer ref
@@ -519,7 +519,18 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           let resolvedPlayers: Player[];
           if (hostIdx >= 0) {
             resolvedPlayers = sPlayers.map((p: any, idx: number) =>
-              idx === hostIdx ? { ...p, ...hostPlayerObj, isHost: true } : { ...p, isHost: false }
+              idx === hostIdx
+                ? {
+                    ...hostPlayerObj,
+                    ...p, // preserve existing properties, cash, position, houses, mortgaged
+                    properties: Array.isArray(p.properties) ? p.properties.map(Number) : [],
+                    isHost: true
+                  }
+                : {
+                    ...p,
+                    properties: Array.isArray(p.properties) ? p.properties.map(Number) : [],
+                    isHost: false
+                  }
             );
           } else {
             resolvedPlayers = [hostPlayerObj, ...sPlayers];
@@ -534,12 +545,14 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
           serverVersionRef.current = (serverRoom as any).version || 1;
 
-          // Re-sync authoritative host player to server
-          syncServerRoomState(roomConfig.roomCode, {
-            ...serverRoom,
-            hostId: myPlayerId,
-            players: resolvedPlayers
-          } as any).catch(() => {});
+          // Only re-sync host info if room is still in waiting lobby
+          if (serverRoom.status === 'waiting') {
+            syncServerRoomState(roomConfig.roomCode, {
+              ...serverRoom,
+              hostId: myPlayerId,
+              players: resolvedPlayers
+            } as any, myPlayerId).catch(() => {});
+          }
         } else {
           // I am a joining player
           joinServerRoom(roomConfig.roomCode, { ...myPlayerPayload, id: myPlayerId, isHost: false }).then(joinedRoom => {
@@ -874,6 +887,21 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           let safePlayers = (sRoom.players && sRoom.players.length > 0 ? sRoom.players : prev.players)
             .filter((p: any) => p && p.id && !activeKickedSet.has(p.id));
 
+          // In active playing game, ensure no locally confirmed properties or houses are dropped by an out-of-order poll
+          if (!wasWaiting) {
+            safePlayers = safePlayers.map((sp: any) => {
+              const localP = prev.players.find(lp => lp.id === sp.id);
+              if (!localP) return sp;
+              const spProps = Array.isArray(sp.properties) ? sp.properties.map(Number) : [];
+              const lpProps = Array.isArray(localP.properties) ? localP.properties.map(Number) : [];
+              const mergedProps = Array.from(new Set([...spProps, ...lpProps]));
+              return {
+                ...sp,
+                properties: mergedProps
+              };
+            });
+          }
+
           // If current non-host player is waiting in room, protect against momentary polling lag
           if (wasWaiting && !amIHost) {
             const hasMe = safePlayers.some((p: any) => p && (p.id === myPlayerId || (user.id && p.id === user.id)));
@@ -918,7 +946,30 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           const logsDiff = sRoom.logs && sRoom.logs.length > prev.logs.length;
           const tradeDiff = JSON.stringify(prev.activeTrade) !== JSON.stringify(sRoom.activeTrade);
 
-          if (waitingPlayersDiff || playersCountDiff || statusDiff || turnDiff || bankruptDiff || hasNewerVersion || logsDiff || tradeDiff) {
+          // Deep player state diff: immediately triggers UI update whenever any property is bought/sold, houses change, or cash changes
+          const playersStateDiff = JSON.stringify(
+            prev.players.map(p => ({
+              id: p.id,
+              cash: p.cash,
+              position: p.position,
+              props: (p.properties || []).map(Number).sort((a, b) => a - b),
+              houses: p.houses || {},
+              mortgaged: (p.mortgaged || []).map(Number).sort((a, b) => a - b),
+              isBankrupt: p.isBankrupt
+            }))
+          ) !== JSON.stringify(
+            safePlayers.map((p: any) => ({
+              id: p.id,
+              cash: p.cash,
+              position: p.position,
+              props: (p.properties || []).map(Number).sort((a, b) => a - b),
+              houses: p.houses || {},
+              mortgaged: (p.mortgaged || []).map(Number).sort((a, b) => a - b),
+              isBankrupt: p.isBankrupt
+            }))
+          );
+
+          if (waitingPlayersDiff || playersCountDiff || statusDiff || turnDiff || bankruptDiff || hasNewerVersion || logsDiff || tradeDiff || playersStateDiff) {
             if (sRoom.version) serverVersionRef.current = sRoom.version;
 
             return {
@@ -2249,7 +2300,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
-  const myOwnedTiles = tiles.filter(t => myPlayer?.properties.includes(t.id));
+  const myOwnedTiles = tiles.filter(t => Array.isArray(myPlayer?.properties) && myPlayer.properties.some(id => Number(id) === Number(t.id)));
 
   if (roomNotFound) {
     return (
@@ -2522,7 +2573,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                           />
                         </div>
                         <div className={`text-[10px] font-mono-code ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                          {p.properties.length} props
+                          {(p.properties || []).length} props
                         </div>
                       </div>
                     </div>

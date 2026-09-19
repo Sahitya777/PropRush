@@ -96,13 +96,13 @@ export async function joinServerRoom(code: string, player: Partial<Player>): Pro
 /**
  * Synchronizes the full game room state to the server for all other cross-device players.
  */
-export async function syncServerRoomState(code: string, room: GameRoom): Promise<boolean> {
+export async function syncServerRoomState(code: string, room: GameRoom, playerId?: string): Promise<boolean> {
   try {
     const clean = code.trim().toLowerCase();
     const data = await safeFetchJson(`/api/rooms/${clean}/state`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ room })
+      body: JSON.stringify({ room, playerId: playerId || room.currentTurnPlayerId })
     });
     return Boolean(data && data.success);
   } catch (err) {

@@ -346,6 +346,32 @@ export async function deleteDbRoom(code: string): Promise<boolean> {
 }
 
 /**
+ * Prunes stale, abandoned, or finished rooms from Neon PostgreSQL.
+ * Frees up database storage and keeps active rooms query blazing fast.
+ */
+export async function pruneStaleDbRooms(): Promise<number> {
+  const p = getDbPool();
+  if (!p) return 0;
+
+  try {
+    const res = await p.query(`
+      DELETE FROM rooms
+      WHERE updated_at < NOW() - INTERVAL '20 minutes'
+         OR (status IN ('finished', 'gameover') AND updated_at < NOW() - INTERVAL '5 minutes')
+         OR players_count <= 0
+    `);
+    const count = res.rowCount || 0;
+    if (count > 0) {
+      console.log(`[Neon DB] Pruned ${count} stale/expired room(s) from database.`);
+    }
+    return count;
+  } catch (err: any) {
+    console.error('[Neon DB pruneStaleDbRooms Error]:', err.message);
+    return 0;
+  }
+}
+
+/**
  * Fetches all active rooms from Neon PostgreSQL.
  */
 export async function getDbRooms(): Promise<any[] | null> {

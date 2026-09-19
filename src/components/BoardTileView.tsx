@@ -149,14 +149,16 @@ export const BoardTileView: React.FC<BoardTileViewProps> = ({
     groupStyle?.badge ||
     (isAirport ? '#0284c7' : isUtility ? '#0d9488' : isTax ? '#e11d48' : isChest ? '#d97706' : '#9333ea');
 
+  const ownerColor = owner ? (owner.color || '#ff7844') : undefined;
+
   return (
     <div
       id={`tile-${tile.id}`}
       onClick={onClick}
       style={{
-        borderColor: owner ? owner.color : undefined,
-        boxShadow: owner
-          ? `0 0 10px ${owner.color}90, inset 0 0 8px ${owner.color}25`
+        borderColor: ownerColor,
+        boxShadow: ownerColor
+          ? `0 0 10px ${ownerColor}90, inset 0 0 8px ${ownerColor}25`
           : undefined,
       }}
       className={`relative w-full h-full select-none cursor-pointer transition-all duration-150 rounded-xl flex flex-col justify-between p-1 ${
@@ -176,10 +178,10 @@ export const BoardTileView: React.FC<BoardTileViewProps> = ({
           style={{ backgroundColor: groupBadgeColor }}
         />
         {/* If owned, show small owner color indicator tag at top corner */}
-        {owner && (
+        {owner && ownerColor && (
           <div
             className="w-2 h-2 rounded-full flex-shrink-0 shadow-sm ring-1 ring-white/60 animate-pulse"
-            style={{ backgroundColor: owner.color }}
+            style={{ backgroundColor: ownerColor }}
             title={`Owned by ${owner.name}`}
           />
         )}
@@ -210,13 +212,13 @@ export const BoardTileView: React.FC<BoardTileViewProps> = ({
 
       {/* 3. BOTTOM PRICE / OWNER BANNER */}
       <div className="w-full flex items-center justify-center flex-shrink-0">
-        {owner ? (
+        {owner && ownerColor ? (
           // UNMISTAKABLE OWNER BADGE MATCHING PLAYER OUTLINE & COLOR
           <div
             className="w-full flex items-center justify-center gap-1 px-1 py-0.5 rounded-md text-[8px] sm:text-[9.5px] font-bold text-white leading-none shadow-sm truncate"
             style={{
-              backgroundColor: owner.color,
-              boxShadow: `0 0 8px ${owner.color}90`,
+              backgroundColor: ownerColor,
+              boxShadow: `0 0 8px ${ownerColor}90`,
               textShadow: '0 1px 2px rgba(0,0,0,0.9)',
             }}
             title={`Owned by ${owner.name} (Rent active)`}

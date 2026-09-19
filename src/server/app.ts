@@ -1336,12 +1336,93 @@ api.post("/rooms/:code/state", (req: Request, res: Response): void => {
         isHost: Boolean(authoritativeHostId ? p.id === authoritativeHostId : idx === 0)
       }));
     } else {
-      sanitizedPlayers = (Array.isArray(updatedRoom.players) ? updatedRoom.players : (existing?.players || []))
-        .filter((p: any) => p && p.id && !kickedSet.has(p.id))
-        .map((p: any, idx: number) => ({
-          ...p,
-          isHost: Boolean(authoritativeHostId ? p.id === authoritativeHostId : idx === 0)
-        }));
+      // Active match state merging:
+      // Merge players carefully so that one player's state sync does NOT overwrite or wipe out
+      // the properties, houses, cash, or position of other players!
+      const existingPlayersMap = new Map<string, any>();
+      (existing?.players || []).forEach((ep: any) => {
+        if (ep && ep.id) existingPlayersMap.set(ep.id, ep);
+      });
+
+      const incomingPlayersMap = new Map<string, any>();
+      incomingList.forEach((ip: any) => {
+        if (ip && ip.id) incomingPlayersMap.set(ip.id, ip);
+      });
+
+      // All known player IDs across existing and incoming
+      const allPlayerIds = Array.from(new Set([...existingPlayersMap.keys(), ...incomingPlayersMap.keys()]))
+        .filter(id => id && !kickedSet.has(id));
+
+      sanitizedPlayers = allPlayerIds.map((id, idx) => {
+        const ep = existingPlayersMap.get(id);
+        const ip = incomingPlayersMap.get(id);
+
+        if (!ep) {
+          return {
+            ...ip,
+            properties: Array.isArray(ip.properties) ? ip.properties.map(Number) : [],
+            isHost: Boolean(authoritativeHostId ? id === authoritativeHostId : idx === 0)
+          };
+        }
+        if (!ip) {
+          return {
+            ...ep,
+            properties: Array.isArray(ep.properties) ? ep.properties.map(Number) : [],
+            isHost: Boolean(authoritativeHostId ? id === authoritativeHostId : idx === 0)
+          };
+        }
+
+        const isThisCaller = Boolean(
+          (callerId && id === callerId) ||
+          (callerUserId && id === callerUserId)
+        );
+
+        // Properties: ensure no purchased properties are lost due to out-of-order or asynchronous updates
+        let mergedProps: number[] = [];
+        if (ip.isBankrupt || ep.isBankrupt) {
+          mergedProps = [];
+        } else {
+          const epProps = Array.isArray(ep.properties) ? ep.properties.map(Number) : [];
+          const ipProps = Array.isArray(ip.properties) ? ip.properties.map(Number) : [];
+          // Preserve properties: take the union so neither player's purchased properties are ever erased
+          mergedProps = Array.from(new Set([...epProps, ...ipProps]));
+        }
+
+        // Mortgaged status: union of mortgaged properties that are still owned
+        const epMort = Array.isArray(ep.mortgaged) ? ep.mortgaged.map(Number) : [];
+        const ipMort = Array.isArray(ip.mortgaged) ? ip.mortgaged.map(Number) : [];
+        const mergedMort = Array.from(new Set([...epMort, ...ipMort])).filter(pid => mergedProps.includes(pid));
+
+        // Houses: combine house counts, preferring newer house counts if defined
+        const epHouses = ep.houses || {};
+        const ipHouses = ip.houses || {};
+        const mergedHouses = { ...epHouses, ...ipHouses };
+
+        // For the player making this turn (caller), take their latest position, cash, and net worth
+        // For other players, keep their existing authoritative position and cash unless incoming is clearly updated
+        const base = isThisCaller ? { ...ep, ...ip } : { ...ip, ...ep, isBankrupt: Boolean(ep.isBankrupt || ip.isBankrupt) };
+
+        return {
+          ...base,
+          id,
+          properties: mergedProps,
+          mortgaged: mergedMort,
+          houses: mergedHouses,
+          isHost: Boolean(authoritativeHostId ? id === authoritativeHostId : idx === 0)
+        };
+      });
+
+      // Ensure no property is simultaneously assigned to multiple players
+      const claimedTiles = new Set<number>();
+      for (const p of sanitizedPlayers) {
+        if (Array.isArray(p.properties)) {
+          p.properties = p.properties.filter((tileId: number) => {
+            if (claimedTiles.has(tileId)) return false;
+            claimedTiles.add(tileId);
+            return true;
+          });
+        }
+      }
     }
 
 

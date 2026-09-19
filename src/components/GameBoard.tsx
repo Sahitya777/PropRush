@@ -52,17 +52,22 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
   // Find owner for tile
   const getTileOwner = (tileId: number): Player | undefined => {
-    return room.players.find(p => p.properties.includes(tileId));
+    return room.players.find(
+      p => !p.isBankrupt && Array.isArray(p.properties) && p.properties.some(id => Number(id) === Number(tileId))
+    );
   };
 
   const isTileMortgaged = (tileId: number): boolean => {
     const owner = getTileOwner(tileId);
-    return owner ? owner.mortgaged.includes(tileId) : false;
+    return Boolean(
+      owner && Array.isArray(owner.mortgaged) && owner.mortgaged.some(id => Number(id) === Number(tileId))
+    );
   };
 
   const getTileHouses = (tileId: number): number => {
     const owner = getTileOwner(tileId);
-    return owner ? (owner.houses[tileId] || 0) : 0;
+    if (!owner || !owner.houses) return 0;
+    return owner.houses[tileId] ?? owner.houses[String(tileId)] ?? 0;
   };
 
   const getPlayersOnTile = (tileId: number): Player[] => {
