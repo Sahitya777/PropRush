@@ -4,11 +4,23 @@ import fs from "fs";
 import os from "os";
 import Stripe from "stripe";
 import dotenv from "dotenv";
+import {
+  initDatabase,
+  getDbPool,
+  upsertDbUser,
+  getDbRankings,
+  upsertDbRoom,
+  deleteDbRoom,
+  getDbRooms,
+  recordDbMatch,
+  recordDbTransaction,
+} from "../db/index";
 
 // Load environment variables from .env if present
 dotenv.config();
 
 const app = express();
+
 
 const PORT = (process.env.K_SERVICE || process.env.K_REVISION)
   ? (process.env.PORT ? parseInt(process.env.PORT, 10) : 8080)
@@ -236,6 +248,34 @@ function savePersistedRooms(): void {
 
 // Initial load
 loadPersistedRooms();
+
+// Bootstrap Neon PostgreSQL schema and sync data when DATABASE_URL is configured
+initDatabase()
+  .then(async (connected) => {
+    if (connected) {
+      console.log("[DB] Neon PostgreSQL is connected and ready.");
+      // Merge any rooms stored in Neon DB
+      try {
+        const dbRooms = await getDbRooms();
+        if (Array.isArray(dbRooms) && dbRooms.length > 0) {
+          dbRooms.forEach((r: any) => {
+            if (r && r.code) {
+              serverRooms.set(r.code.toLowerCase(), r);
+            }
+          });
+          console.log(`[DB] Restored ${dbRooms.length} room(s) from Neon PostgreSQL.`);
+        }
+      } catch (err: any) {
+        console.warn("[DB] Non-fatal: unable to read rooms from DB:", err.message);
+      }
+    } else {
+      console.log("[DB] PropRush is running with local/memory store. Set DATABASE_URL to enable Neon PostgreSQL.");
+    }
+  })
+  .catch((err: any) => {
+    console.warn("[DB] Database initialization error (non-fatal):", err.message);
+  });
+
 
 // ==========================================
 // USER TYPES & HELPERS
@@ -531,6 +571,39 @@ api.get("/health", (_req: Request, res: Response) => {
   res.json({ status: "ok", timestamp: Date.now() });
 });
 
+// Neon Database health check & status
+api.get("/health/db", async (_req: Request, res: Response) => {
+  const pool = getDbPool();
+  if (!pool) {
+    res.json({
+      connected: false,
+      status: "unconfigured",
+      provider: "Neon PostgreSQL",
+      message: "DATABASE_URL is not configured yet. PropRush is currently using in-memory and local fallback.",
+    });
+    return;
+  }
+  try {
+    const result = await pool.query("SELECT NOW() as current_time, current_database() as database_name, version();");
+    res.json({
+      connected: true,
+      status: "connected",
+      provider: "Neon PostgreSQL",
+      database: result.rows[0]?.database_name,
+      serverTime: result.rows[0]?.current_time,
+      version: result.rows[0]?.version,
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      connected: false,
+      status: "error",
+      provider: "Neon PostgreSQL",
+      error: err.message,
+    });
+  }
+});
+
+
 // Stripe status
 api.get("/stripe/status", (_req: Request, res: Response) => {
   try {
@@ -723,10 +796,24 @@ api.get("/stripe/verify-session", async (req: Request, res: Response): Promise<v
 // ==========================================
 
 // GET /rooms - List active rooms
-api.get("/rooms", (_req: Request, res: Response) => {
+api.get("/rooms", async (_req: Request, res: Response) => {
   try {
     loadPersistedRooms();
+    try {
+      const dbRooms = await getDbRooms();
+      if (Array.isArray(dbRooms) && dbRooms.length > 0) {
+        dbRooms.forEach(r => {
+          if (r && r.code && !serverRooms.has(r.code.toLowerCase())) {
+            serverRooms.set(r.code.toLowerCase(), r);
+          }
+        });
+      }
+    } catch {
+      // Non-fatal DB read fallback
+    }
+
     const list = Array.from(serverRooms.values()).map(r => {
+
       const players = Array.isArray(r.players) ? r.players : [];
       const hostPlayer = players.find(p => p && p.id === r.hostId) || players[0];
       return {
@@ -807,7 +894,10 @@ api.post("/rooms/:code/disband", (req: Request, res: Response): void => {
     serverRooms.delete('custom_' + realCode);
     serverRooms.delete('custom_' + code);
     savePersistedRooms();
+    deleteDbRoom(realCode).catch(() => {});
+    deleteDbRoom(code).catch(() => {});
     res.json({ success: true, message: `Room ${code} disbanded successfully` });
+
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to disband room' });
   }
@@ -859,9 +949,11 @@ api.post("/rooms", (req: Request, res: Response): void => {
       existing.version = (existing.version || 0) + 1;
       serverRooms.set(code, existing);
       savePersistedRooms();
+      upsertDbRoom(existing).catch(() => {});
       res.json({ success: true, room: existing });
       return;
     }
+
 
     const effectiveHostId = hostId || (raw.players && raw.players[0]?.id) || 'host_' + now;
     const initialPlayers = Array.isArray(raw.players) ? raw.players.map((p: any, idx: number) => ({
@@ -909,7 +1001,9 @@ api.post("/rooms", (req: Request, res: Response): void => {
 
     serverRooms.set(code, newRoom);
     savePersistedRooms();
+    upsertDbRoom(newRoom).catch(() => {});
     res.json({ success: true, room: newRoom });
+
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to create room' });
   }
@@ -1237,7 +1331,24 @@ api.post("/rooms/:code/state", (req: Request, res: Response): void => {
       serverRooms.set(code, merged);
     }
     savePersistedRooms();
+    upsertDbRoom(merged).catch(() => {});
+
+    if ((merged.status === 'gameover' || merged.status === 'finished') && merged.winner) {
+      recordDbMatch({
+        id: 'm_' + (merged.code || '') + '_' + now,
+        roomCode: merged.code,
+        roomName: merged.name,
+        winnerId: merged.winner?.id,
+        winnerName: merged.winner?.name,
+        prizePool: (merged.betAmount || 0) * (merged.players?.length || 1),
+        betAmount: merged.betAmount || 0,
+        playersSummary: merged.players?.map((p: any) => ({ id: p.id, name: p.name, netWorth: p.netWorth, cash: p.cash })),
+        finalStats: { winner: merged.winner, duration: now - (merged.createdAt || now) },
+      }).catch(() => {});
+    }
+
     res.json({ success: true, version: merged.version });
+
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to update state' });
   }
@@ -1573,19 +1684,55 @@ api.post("/users/sync", (req: Request, res: Response): void => {
     }
 
     platformUsersMap.set(resolvedId, updatedUser);
+    upsertDbUser(updatedUser).catch(() => {});
     res.json({ success: true, user: updatedUser });
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Failed to sync user" });
   }
 });
 
-api.get("/rankings", (req: Request, res: Response) => {
+api.get("/rankings", async (req: Request, res: Response) => {
   try {
     const timeframe = (req.query.timeframe as string || 'season').toLowerCase();
     const search = (req.query.search as string || '').toLowerCase().trim();
     const currentEmail = (req.query.currentEmail as string || '').toLowerCase().trim();
 
+    // Check if Neon DB is connected and has ranking data
+    const pool = getDbPool();
+    if (pool) {
+      try {
+        const dbRanked = await getDbRankings(timeframe, search, 100);
+        if (Array.isArray(dbRanked) && dbRanked.length > 0) {
+          const rankedList = dbRanked.map((item, index) => {
+            const rank = index + 1;
+            let prize = '+10 🪙';
+            if (rank === 1) prize = '🥇 +60 🪙 & Diamond Badge';
+            else if (rank === 2) prize = '🥈 +40 🪙';
+            else if (rank === 3) prize = '🥉 +25 🪙';
+
+            return {
+              ...item,
+              rank,
+              isCurrentUser: Boolean(currentEmail && item.email && item.email.toLowerCase() === currentEmail),
+              weeklyProjectedPrize: prize,
+            };
+          });
+
+          res.json({
+            timeframe,
+            rankings: rankedList,
+            total: rankedList.length,
+            source: 'neon_postgres'
+          });
+          return;
+        }
+      } catch (dbErr: any) {
+        console.warn("[DB Rankings Fallback]:", dbErr.message);
+      }
+    }
+
     const seenEmails = new Set<string>();
+
     const seenIds = new Set<string>();
     const seenNames = new Set<string>();
     const uniqueUsers: PlatformUser[] = [];
