@@ -584,14 +584,39 @@ api.get("/health/db", async (_req: Request, res: Response) => {
     return;
   }
   try {
-    const result = await pool.query("SELECT NOW() as current_time, current_database() as database_name, version();");
+    // Ensure all tables are created
+    await initDatabase();
+
+    const [dbInfo, tablesRes] = await Promise.all([
+      pool.query("SELECT NOW() as current_time, current_database() as database_name, version();"),
+      pool.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name;"),
+    ]);
+
+    const existingTables = tablesRes.rows.map((r: any) => r.table_name);
+    const counts: Record<string, number> = {};
+
+    for (const table of existingTables) {
+      if (['users', 'rooms', 'matches', 'transactions'].includes(table)) {
+        try {
+          const countRes = await pool.query(`SELECT COUNT(*)::int as c FROM "${table}"`);
+          counts[table] = countRes.rows[0]?.c ?? 0;
+        } catch {
+          counts[table] = 0;
+        }
+      }
+    }
+
     res.json({
       connected: true,
       status: "connected",
       provider: "Neon PostgreSQL",
-      database: result.rows[0]?.database_name,
-      serverTime: result.rows[0]?.current_time,
-      version: result.rows[0]?.version,
+      database: dbInfo.rows[0]?.database_name,
+      serverTime: dbInfo.rows[0]?.current_time,
+      tables: existingTables,
+      expectedTables: ["users", "rooms", "matches", "transactions"],
+      allTablesPresent: ["users", "rooms", "matches", "transactions"].every(t => existingTables.includes(t)),
+      tableCounts: counts,
+      version: dbInfo.rows[0]?.version,
     });
   } catch (err: any) {
     res.status(500).json({
@@ -602,6 +627,7 @@ api.get("/health/db", async (_req: Request, res: Response) => {
     });
   }
 });
+
 
 
 // Stripe status
@@ -1077,15 +1103,17 @@ api.post("/rooms/:code/join", (req: Request, res: Response): void => {
     if (!Array.isArray(room.chatMessages)) room.chatMessages = [];
     if (!Array.isArray(room.kickedPlayerIds)) room.kickedPlayerIds = [];
 
-    // Check if player was explicitly kicked by host
-    const playerName = (player.name || player.username || '').trim();
-    if (
-      room.kickedPlayerIds.includes(player.id) ||
-      (playerName && room.kickedPlayerIds.includes(playerName))
-    ) {
+    // Sanitize kickedPlayerIds: strip any legacy generic names like "Guest Player"
+    room.kickedPlayerIds = room.kickedPlayerIds.filter(
+      id => typeof id === 'string' && id.trim() !== '' && id !== 'Guest Player' && id !== 'Player'
+    );
+
+    // Check if player was explicitly kicked by host (strictly by unique player ID)
+    if (player.id && room.kickedPlayerIds.includes(player.id)) {
       res.status(403).json({ error: 'You have been removed from this room by the host.' });
       return;
     }
+
 
     // Check if player already in room
     let existingPlayerIndex = room.players.findIndex(p => p && p.id === player.id);
@@ -1253,10 +1281,14 @@ api.post("/rooms/:code/state", (req: Request, res: Response): void => {
       }
     }
 
-    // Collect all kicked IDs from existing room and incoming state
-    const kickedSet = new Set<string>(existing?.kickedPlayerIds || []);
+    // Collect all kicked IDs from existing room and incoming state (strictly IDs)
+    const kickedSet = new Set<string>(
+      (existing?.kickedPlayerIds || []).filter(id => id && id !== 'Guest Player' && id !== 'Player')
+    );
     if (Array.isArray(updatedRoom.kickedPlayerIds)) {
-      updatedRoom.kickedPlayerIds.forEach((id: string) => { if (id) kickedSet.add(id); });
+      updatedRoom.kickedPlayerIds.forEach((id: string) => {
+        if (id && id !== 'Guest Player' && id !== 'Player') kickedSet.add(id);
+      });
     }
 
     const callerId = (body.playerId || body.hostId || updatedRoom.hostId || '').trim();
@@ -1270,25 +1302,23 @@ api.post("/rooms/:code/state", (req: Request, res: Response): void => {
 
     let sanitizedPlayers: any[] = [];
     if (targetStatus === 'waiting') {
-      // Filter out any kicked player from incoming list
+      // Filter out any kicked player strictly by ID
       const filteredIncoming = incomingList.filter((p: any) =>
-        p && p.id && !kickedSet.has(p.id) && (!p.name || !kickedSet.has(p.name))
+        p && p.id && !kickedSet.has(p.id)
       );
 
       if (isHostCaller) {
         // Host is authoritative: host's player list is the source of truth!
-        // We do NOT resurrect players the host kicked or removed.
-        // We only preserve genuine new human players who joined via /join on the server
-        // after host's local snapshot was taken.
+        // Preserve genuine new human players who joined via /join on the server
         const hostPlayerIds = new Set(filteredIncoming.map((p: any) => p.id));
         const newlyJoinedOnServer = (existing?.players || []).filter((ep: any) =>
-          ep && ep.id && !hostPlayerIds.has(ep.id) && !kickedSet.has(ep.id) && (!ep.name || !kickedSet.has(ep.name)) && !ep.isBot
+          ep && ep.id && !hostPlayerIds.has(ep.id) && !kickedSet.has(ep.id) && !ep.isBot
         );
         sanitizedPlayers = [...filteredIncoming, ...newlyJoinedOnServer];
       } else {
         // Non-host caller cannot remove or kick other players; overlay their own player info
         const basePlayers = (existing?.players || filteredIncoming).filter((p: any) =>
-          p && p.id && !kickedSet.has(p.id) && (!p.name || !kickedSet.has(p.name))
+          p && p.id && !kickedSet.has(p.id)
         );
         const myUpdate = filteredIncoming.find((p: any) => p && (p.id === callerId || p.id === callerUserId));
         if (myUpdate) {
@@ -1307,12 +1337,13 @@ api.post("/rooms/:code/state", (req: Request, res: Response): void => {
       }));
     } else {
       sanitizedPlayers = (Array.isArray(updatedRoom.players) ? updatedRoom.players : (existing?.players || []))
-        .filter((p: any) => p && p.id && !kickedSet.has(p.id) && (!p.name || !kickedSet.has(p.name)))
+        .filter((p: any) => p && p.id && !kickedSet.has(p.id))
         .map((p: any, idx: number) => ({
           ...p,
           isHost: Boolean(authoritativeHostId ? p.id === authoritativeHostId : idx === 0)
         }));
     }
+
 
     const merged: ServerRoom = {
       ...(existing || {}),
@@ -1414,17 +1445,19 @@ api.post("/rooms/:code/kick", (req: Request, res: Response): void => {
     if (!Array.isArray(room.kickedPlayerIds)) {
       room.kickedPlayerIds = [];
     }
-    const kickedPlayer = room.players.find(p => p.id === playerIdToKick || (username && p.name === username));
-    const targetId = kickedPlayer ? kickedPlayer.id : playerIdToKick;
+    const kickedPlayer = room.players.find(p => p.id === playerIdToKick);
+    const targetId = (kickedPlayer ? kickedPlayer.id : playerIdToKick || '').trim();
     const targetName = kickedPlayer?.name || username || 'A player';
 
     if (targetId && !room.kickedPlayerIds.includes(targetId)) {
       room.kickedPlayerIds.push(targetId);
     }
-    if (targetName && !room.kickedPlayerIds.includes(targetName)) {
-      room.kickedPlayerIds.push(targetName);
-    }
-    room.players = room.players.filter(p => p.id !== targetId && p.id !== playerIdToKick && p.name !== targetName);
+    // Clean any legacy generic names out of kickedPlayerIds
+    room.kickedPlayerIds = room.kickedPlayerIds.filter(
+      id => typeof id === 'string' && id.trim() !== '' && id !== 'Guest Player' && id !== 'Player'
+    );
+    room.players = room.players.filter(p => p && p.id !== targetId && p.id !== playerIdToKick);
+
     if (!Array.isArray(room.logs)) room.logs = [];
     room.logs.unshift({
       id: 'l_kick_' + Date.now(),

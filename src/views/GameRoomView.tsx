@@ -446,6 +446,11 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   // Real-Time Cross-Device Server Sync + Multi-Tab BroadcastChannel
   useEffect(() => {
     let isMounted = true;
+    // Clear any stale kick flags from previous bug or test sessions for this room code
+    try {
+      sessionStorage.removeItem(`proprush_kicked_${roomConfig.roomCode.toLowerCase()}`);
+    } catch {}
+
     const channelName = `proprush_sync_${roomConfig.roomCode.toLowerCase()}`;
     let channel: BroadcastChannel | null = null;
     try {
@@ -691,8 +696,11 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         } else if (data.type === 'PLAYER_KICKED') {
           const isMeKicked = Boolean(
             !isCurrentUserHost && (
-              (data.kickedPlayerId && (data.kickedPlayerId === myPlayerId || data.kickedPlayerId === user.id || (myPlayer && data.kickedPlayerId === myPlayer.id))) ||
-              (data.kickedPlayerName && (data.kickedPlayerName === user.username || (myPlayer && data.kickedPlayerName === myPlayer.name)))
+              data.kickedPlayerId && (
+                data.kickedPlayerId === myPlayerId ||
+                (user.id && user.id.length > 5 && data.kickedPlayerId === user.id) ||
+                (myPlayer && data.kickedPlayerId === myPlayer.id)
+              )
             )
           );
           if (isMeKicked) {
@@ -716,12 +724,9 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           if (data.kickedPlayerId) {
             kickedPlayerIdsRef.current.add(data.kickedPlayerId);
           }
-          if (data.kickedPlayerName) {
-            kickedPlayerIdsRef.current.add(data.kickedPlayerName);
-          }
           setRoom(prev => {
             const updatedPlayers = (data.room?.players || prev.players).filter((p: any) =>
-              p.id !== data.kickedPlayerId && p.name !== data.kickedPlayerName
+              p.id !== data.kickedPlayerId
             );
             return {
               ...prev,
@@ -824,22 +829,16 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           const isNowPlaying = sRoom.status === 'playing';
 
           // Check if current user got explicitly kicked by host from lobby or match
-          const amIHost = isCurrentUserHost || (sRoom.hostId && (sRoom.hostId === myPlayerId || sRoom.hostId === user.id));
+          const amIHost = isCurrentUserHost || (sRoom.hostId && (sRoom.hostId === myPlayerId || (user.id && sRoom.hostId === user.id)));
           if (!amIHost) {
             const kickedList = Array.isArray(sRoom.kickedPlayerIds) ? sRoom.kickedPlayerIds : [];
-            const isExplicitlyKicked = (
+            const isExplicitlyKicked = Boolean(
               kickedList.includes(myPlayerId) ||
-              (user.id && kickedList.includes(user.id)) ||
-              (myPlayer && kickedList.includes(myPlayer.id)) ||
-              (user.username && kickedList.includes(user.username)) ||
-              (myPlayer?.name && kickedList.includes(myPlayer.name)) ||
-              sessionStorage.getItem(`proprush_kicked_${roomConfig.roomCode.toLowerCase()}`) === 'true'
+              (user.id && user.id.length > 5 && kickedList.includes(user.id)) ||
+              (myPlayer?.id && kickedList.includes(myPlayer.id))
             );
 
-            const wasInRoom = prev.players.some(p => p.id === myPlayerId || p.id === user.id);
-            const isStillInRoom = sRoom.players?.some((p: any) => p.id === myPlayerId || p.id === user.id);
-
-            if (isExplicitlyKicked || (wasWaiting && wasInRoom && !isStillInRoom)) {
+            if (isExplicitlyKicked) {
               clearActiveMatch();
               try {
                 sessionStorage.setItem(`proprush_kicked_${roomConfig.roomCode.toLowerCase()}`, 'true');
@@ -869,11 +868,24 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           // Merge players safely using both local exclusion and server kicked list
           const activeKickedSet = new Set<string>([
             ...Array.from(kickedPlayerIdsRef.current),
-            ...(Array.isArray(sRoom.kickedPlayerIds) ? sRoom.kickedPlayerIds : [])
+            ...(Array.isArray(sRoom.kickedPlayerIds) ? sRoom.kickedPlayerIds.filter(id => id && id !== 'Guest Player' && id !== 'Player') : [])
           ]);
 
           let safePlayers = (sRoom.players && sRoom.players.length > 0 ? sRoom.players : prev.players)
-            .filter((p: any) => p && p.id && !activeKickedSet.has(p.id) && (!p.name || !activeKickedSet.has(p.name)));
+            .filter((p: any) => p && p.id && !activeKickedSet.has(p.id));
+
+          // If current non-host player is waiting in room, protect against momentary polling lag
+          if (wasWaiting && !amIHost) {
+            const hasMe = safePlayers.some((p: any) => p && (p.id === myPlayerId || (user.id && p.id === user.id)));
+            if (!hasMe) {
+              const myP = myPlayer || prev.players.find(p => p && (p.id === myPlayerId || (user.id && p.id === user.id)));
+              if (myP) {
+                safePlayers = [...safePlayers, myP];
+                // Gently ensure registration on server
+                joinServerRoom(roomConfig.roomCode, { ...myPlayerPayload, id: myPlayerId, isHost: false }).catch(() => {});
+              }
+            }
+          }
 
           if (wasWaiting && isCurrentUserHost) {
             const hasHost = safePlayers.some((p: any) => p.id === myPlayerId || p.id === user.id || p.isHost);
@@ -1080,16 +1092,13 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   const handleRemovePlayerFromLobby = async (playerId: string) => {
     if (!isCurrentUserHost) return;
 
-    // Record in local exclusion ref immediately
+    // Record in local exclusion ref strictly by player ID
     kickedPlayerIdsRef.current.add(playerId);
     const targetPlayer = room.players.find(p => p.id === playerId);
     const targetName = targetPlayer?.name || 'A player';
-    if (targetPlayer?.name) {
-      kickedPlayerIdsRef.current.add(targetPlayer.name);
-    }
 
-    // 1. INSTANT zero-lag optimistic local update
-    const updatedPlayers = room.players.filter(p => p.id !== playerId && p.name !== targetName);
+    // 1. INSTANT zero-lag optimistic local update (by ID only)
+    const updatedPlayers = room.players.filter(p => p.id !== playerId);
     const updatedRoom: GameRoom = {
       ...room,
       players: updatedPlayers,
@@ -1117,7 +1126,6 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       channel.postMessage({
         type: 'PLAYER_KICKED',
         kickedPlayerId: playerId,
-        kickedPlayerName: targetName,
         room: updatedRoom
       });
       channel.close();
@@ -1134,7 +1142,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       );
       if (serverRoom && serverRoom.players) {
         const cleanedPlayers = serverRoom.players.filter(
-          (p: any) => p && p.id !== playerId && p.name !== targetName && !kickedPlayerIdsRef.current.has(p.id)
+          (p: any) => p && p.id !== playerId && !kickedPlayerIdsRef.current.has(p.id)
         );
         setRoom(prev => ({
           ...prev,
