@@ -159,13 +159,13 @@ export async function kickPlayerFromServer(
 /**
  * Leaves a room on the server (Voluntary exit by player).
  */
-export async function leaveServerRoom(code: string, playerId: string, username?: string): Promise<GameRoom | null> {
+export async function leaveServerRoom(code: string, playerId: string, username?: string, isDisband?: boolean): Promise<GameRoom | null> {
   try {
     const clean = code.trim().toLowerCase();
     const data = await safeFetchJson(`/api/rooms/${clean}/leave`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerId, username })
+      body: JSON.stringify({ playerId, username, isDisband: Boolean(isDisband) })
     });
     if (data && !data._httpError && data.room) {
       return data.room as GameRoom;
@@ -174,5 +174,23 @@ export async function leaveServerRoom(code: string, playerId: string, username?:
   } catch (err) {
     console.warn(`Failed to leave room ${code} on server:`, err);
     return null;
+  }
+}
+
+/**
+ * Disbands / cancels a waiting room on the server (Host-only).
+ */
+export async function disbandServerRoom(code: string, hostId?: string, userId?: string): Promise<boolean> {
+  try {
+    const clean = code.trim().toLowerCase();
+    const data = await safeFetchJson(`/api/rooms/${clean}/disband`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hostId, userId })
+    });
+    return Boolean(data && data.success);
+  } catch (err) {
+    console.warn(`Failed to disband room ${code} on server:`, err);
+    return false;
   }
 }

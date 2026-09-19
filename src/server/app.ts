@@ -764,6 +764,14 @@ function findRoomByCode(code: string): ServerRoom | undefined {
     r = serverRooms.get('custom_' + clean);
     if (r) return r;
   }
+  // Also look across all rooms by exact code, room name, or sanitized name slug
+  for (const room of serverRooms.values()) {
+    if (!room) continue;
+    if (room.code && room.code.toLowerCase() === clean) return room;
+    if (room.name && room.name.toLowerCase().trim() === clean) return room;
+    const nameSlug = (room.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (nameSlug && nameSlug === clean) return room;
+  }
   return undefined;
 }
 
@@ -780,6 +788,28 @@ api.get("/rooms/:code", (req: Request, res: Response): void => {
     res.json({ exists: true, room });
   } catch (err: any) {
     res.status(500).json({ exists: false, error: err.message || "Server error" });
+  }
+});
+
+// POST /rooms/:code/disband - Host cancels/disbands the waiting room & removes it
+api.post("/rooms/:code/disband", (req: Request, res: Response): void => {
+  try {
+    const code = (req.params.code || '').trim().toLowerCase();
+    loadPersistedRooms();
+    const room = findRoomByCode(code);
+    if (!room) {
+      res.json({ success: true, message: 'Room already closed or removed' });
+      return;
+    }
+    const realCode = (room.code || '').toLowerCase();
+    serverRooms.delete(realCode);
+    serverRooms.delete(code);
+    serverRooms.delete('custom_' + realCode);
+    serverRooms.delete('custom_' + code);
+    savePersistedRooms();
+    res.json({ success: true, message: `Room ${code} disbanded successfully` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to disband room' });
   }
 });
 
@@ -1323,16 +1353,32 @@ api.post("/rooms/:code/leave", (req: Request, res: Response): void => {
       const displayName = leavingPlayer?.name || username || 'A player';
 
       if (room.status === 'waiting') {
-        room.players.splice(leavingPlayerIndex, 1);
-        if (leavingPlayer.isHost || room.hostId === leavingPlayer.id) {
-          if (room.players.length > 0) {
-            const nextHost = room.players.find(p => !p.isBot) || room.players[0];
+        const isHost = leavingPlayer.isHost || room.hostId === leavingPlayer.id;
+        const otherPlayers = room.players.filter((_, idx) => idx !== leavingPlayerIndex);
+
+        if (req.body?.isDisband && isHost) {
+          // Explicit disband requested
+          serverRooms.delete(room.code.toLowerCase());
+          serverRooms.delete(code.toLowerCase());
+          savePersistedRooms();
+          res.json({ success: true, message: 'Room disbanded', disbanded: true });
+          return;
+        }
+
+        if (otherPlayers.length > 0) {
+          room.players.splice(leavingPlayerIndex, 1);
+          if (isHost) {
+            const nextHost = otherPlayers.find(p => !p.isBot) || otherPlayers[0];
             nextHost.isHost = true;
             room.hostId = nextHost.id;
-          } else {
-            room.hostId = '';
           }
+        } else if (!isHost) {
+          room.players.splice(leavingPlayerIndex, 1);
+        } else {
+          // Host temporarily stepping away to lobby: mark host disconnected, but preserve room
+          leavingPlayer.isDisconnected = true;
         }
+
         if (!Array.isArray(room.logs)) room.logs = [];
         room.logs.unshift({
           id: 'l_leave_' + Date.now(),

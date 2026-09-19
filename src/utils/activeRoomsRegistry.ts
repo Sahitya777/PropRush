@@ -102,17 +102,41 @@ export function getAllActiveRooms(): ActiveRoomInfo[] {
 export async function refreshActiveRoomsFromServer(): Promise<ActiveRoomInfo[]> {
   try {
     const serverRooms = await fetchActiveRoomsFromServer();
+    const existingLocal = getAllActiveRooms();
+    const now = Date.now();
+    // Preserve local custom rooms created recently
+    const activeLocalCustom = existingLocal.filter(r => r.isCustom && (now - (r.createdAt || 0) < ROOM_TTL_MS));
+
+    const merged: ActiveRoomInfo[] = [];
+
+    // Add server rooms first
     if (Array.isArray(serverRooms) && serverRooms.length > 0) {
-      // Merge with default rooms
-      const merged = [...serverRooms];
-      DEFAULT_ACTIVE_ROOMS.forEach(def => {
-        if (!merged.some(r => r.code.toLowerCase() === def.code.toLowerCase())) {
-          merged.push(def);
+      serverRooms.forEach(sr => {
+        if (!merged.some(m => m.code.toLowerCase() === sr.code.toLowerCase())) {
+          merged.push(sr);
         }
       });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-      return merged;
     }
+
+    // Keep active local custom rooms so host's table is never lost
+    activeLocalCustom.forEach(lr => {
+      const existingIdx = merged.findIndex(m => m.code.toLowerCase() === lr.code.toLowerCase());
+      if (existingIdx >= 0) {
+        merged[existingIdx] = { ...lr, ...merged[existingIdx] };
+      } else {
+        merged.push(lr);
+      }
+    });
+
+    // Merge default rooms
+    DEFAULT_ACTIVE_ROOMS.forEach(def => {
+      if (!merged.some(r => r.code.toLowerCase() === def.code.toLowerCase())) {
+        merged.push(def);
+      }
+    });
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+    return merged;
   } catch (e) {
     console.warn('Failed to refresh rooms from server:', e);
   }
@@ -120,13 +144,17 @@ export async function refreshActiveRoomsFromServer(): Promise<ActiveRoomInfo[]> 
 }
 
 /**
- * Finds an active room by code (case-insensitive) synchronously from cache.
+ * Finds an active room by code or name (case-insensitive) synchronously from cache.
  */
 export function findActiveRoomByCode(code: string): ActiveRoomInfo | null {
   if (!code) return null;
   const cleanCode = code.trim().toLowerCase();
   const allRooms = getAllActiveRooms();
-  return allRooms.find(r => r.code.toLowerCase() === cleanCode) || null;
+  return allRooms.find(r => 
+    r.code.toLowerCase() === cleanCode ||
+    (r.name && r.name.toLowerCase().trim() === cleanCode) ||
+    (r.name && r.name.toLowerCase().replace(/[^a-z0-9]/g, '') === cleanCode)
+  ) || null;
 }
 
 /**
@@ -167,10 +195,34 @@ export async function findActiveRoomByCodeAsync(code: string): Promise<ActiveRoo
   }
 
   // 3. Check default rooms
-  const def = DEFAULT_ACTIVE_ROOMS.find(r => r.code.toLowerCase() === cleanCode);
+  const def = DEFAULT_ACTIVE_ROOMS.find(r => 
+    r.code.toLowerCase() === cleanCode ||
+    r.name.toLowerCase().trim() === cleanCode ||
+    r.name.toLowerCase().replace(/[^a-z0-9]/g, '') === cleanCode
+  );
   if (def) return def;
 
   return null;
+}
+
+/**
+ * Removes an active room from local storage (e.g. upon disband or completion).
+ */
+export function removeActiveRoom(code: string): void {
+  try {
+    const clean = code.trim().toLowerCase();
+    const all = getAllActiveRooms().filter(r => 
+      r.code.toLowerCase() !== clean &&
+      (r.name || '').toLowerCase().replace(/[^a-z0-9]/g, '') !== clean
+    );
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+
+    try {
+      const bc = new BroadcastChannel('proprush_rooms_directory');
+      bc.postMessage({ type: 'ROOM_REMOVED', code: clean });
+      bc.close();
+    } catch {}
+  } catch {}
 }
 
 /**
@@ -194,26 +246,35 @@ export function registerActiveRoom(room: Omit<ActiveRoomInfo, 'createdAt'>): voi
     currentRooms.unshift(newEntry);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(currentRooms));
 
+    // Also broadcast over directory channel so other tabs immediately see room
+    try {
+      const bc = new BroadcastChannel('proprush_rooms_directory');
+      bc.postMessage({ type: 'ROOM_REGISTERED', room: newEntry });
+      bc.close();
+    } catch {}
+
     const mapTheme: 'classic' | 'cyber' | 'worldwide' = room.map.toLowerCase().includes('cyber')
       ? 'cyber'
       : room.map.toLowerCase().includes('world')
       ? 'worldwide'
       : 'classic';
 
+    const effectiveHostId = room.hostId || 'host_' + now;
+
     // Also register on Express backend server with explicit host identity
     createServerRoom({
       code: room.code,
       name: room.name,
-      hostId: room.hostId || '',
+      hostId: effectiveHostId,
       maxPlayers: room.max,
       betAmount: room.bet,
       boardTheme: mapTheme,
       isPrivate: false,
       fillWithBots: false,
-      players: room.hostId ? [
+      players: [
         {
-          id: room.hostId,
-          name: room.host,
+          id: effectiveHostId,
+          name: room.host || 'Host',
           avatar: room.hostAvatar || 'orange',
           isHost: true,
           cash: room.initialCash || 1500,
@@ -229,7 +290,7 @@ export function registerActiveRoom(room: Omit<ActiveRoomInfo, 'createdAt'>): voi
           isBot: false,
           color: '#e65c00'
         }
-      ] : []
+      ]
     } as any).catch(err => console.warn('Could not post room to server:', err));
   } catch (err) {
     console.error('Failed to register active room:', err);
@@ -253,21 +314,6 @@ export function updateActiveRoomPlayerCount(code: string, playersCount: number):
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   } catch (err) {
     console.error('Failed to update active room player count:', err);
-  }
-}
-
-/**
- * Removes a room from the registry when completed or disbanded.
- */
-export function removeActiveRoom(code: string): void {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const currentRooms: ActiveRoomInfo[] = JSON.parse(raw);
-    const filtered = currentRooms.filter(r => r.code.toLowerCase() !== code.trim().toLowerCase());
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
-  } catch (err) {
-    console.error('Failed to remove active room:', err);
   }
 }
 

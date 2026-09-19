@@ -255,11 +255,16 @@ function AppContent() {
       }
     }
 
-    // Check if player is reconnecting to an active unexpired match
+    // Check if player is reconnecting to an active unexpired match or already paid buy-in
     const existingSaved = getActiveMatch();
+    const cleanCode = config.roomCode.toLowerCase();
+    const alreadyPaid = typeof window !== 'undefined' && (
+      sessionStorage.getItem(`proprush_paid_${cleanCode}`) === 'true' ||
+      localStorage.getItem(`proprush_paid_${cleanCode}`) === 'true'
+    );
     const isReconnecting = Boolean(
-      existingSaved &&
-      existingSaved.roomConfig.roomCode.toLowerCase() === config.roomCode.toLowerCase()
+      alreadyPaid ||
+      (existingSaved && existingSaved.roomConfig.roomCode.toLowerCase() === cleanCode)
     );
 
     // If room requires a buy-in / wager, verify wallet balance & deduct (only on first join, not reconnect)
@@ -277,6 +282,10 @@ function AppContent() {
         setIsWalletOpen(true);
         return;
       }
+      try {
+        sessionStorage.setItem(`proprush_paid_${cleanCode}`, 'true');
+        localStorage.setItem(`proprush_paid_${cleanCode}`, 'true');
+      } catch {}
     }
 
     sounds.playCashRegister();

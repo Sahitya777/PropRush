@@ -31,7 +31,8 @@ export interface ActiveSavedMatch {
 }
 
 const STORAGE_KEY = 'richup_active_match_v1';
-const RECONNECT_GRACE_PERIOD_MS = 120_000; // 2 minutes in milliseconds
+const RECONNECT_GRACE_PERIOD_MS = 120_000; // 2 minutes for matches in progress
+const WAITING_ROOM_GRACE_PERIOD_MS = 1_800_000; // 30 minutes for waiting lobby rooms
 
 /**
  * Saves the active match state to local storage with an expiration timestamp.
@@ -50,6 +51,7 @@ export function saveActiveMatch(
 
     const existing = getActiveMatch();
     const now = Date.now();
+    const graceMs = room.status === 'waiting' ? WAITING_ROOM_GRACE_PERIOD_MS : RECONNECT_GRACE_PERIOD_MS;
     
     const payload: ActiveSavedMatch = {
       room,
@@ -57,7 +59,7 @@ export function saveActiveMatch(
       chatMessages,
       savedAt: now,
       // If previously saved and disconnected, preserve the original expiresAt unless extending
-      expiresAt: existing ? Math.max(existing.expiresAt, now + RECONNECT_GRACE_PERIOD_MS) : now + RECONNECT_GRACE_PERIOD_MS,
+      expiresAt: existing ? Math.max(existing.expiresAt, now + graceMs) : now + graceMs,
       disconnectedAt: existing?.disconnectedAt || undefined
     };
 
@@ -68,7 +70,7 @@ export function saveActiveMatch(
 }
 
 /**
- * Marks that the user intentionally navigated away / disconnected, setting a strict 2-minute timer from now.
+ * Marks that the user intentionally navigated away / disconnected.
  */
 export function markDisconnected(room: GameRoom, roomConfig: RoomConfig, chatMessages: ChatMsg[] = []): void {
   try {
@@ -77,12 +79,13 @@ export function markDisconnected(room: GameRoom, roomConfig: RoomConfig, chatMes
       return;
     }
     const now = Date.now();
+    const graceMs = room.status === 'waiting' ? WAITING_ROOM_GRACE_PERIOD_MS : RECONNECT_GRACE_PERIOD_MS;
     const payload: ActiveSavedMatch = {
       room,
       roomConfig,
       chatMessages,
       savedAt: now,
-      expiresAt: now + RECONNECT_GRACE_PERIOD_MS, // exactly 2 minutes from disconnect
+      expiresAt: now + graceMs,
       disconnectedAt: now
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));

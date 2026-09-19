@@ -13,9 +13,10 @@ import {
   findActiveRoomByCodeAsync,
   refreshActiveRoomsFromServer,
   registerActiveRoom,
+  removeActiveRoom,
   ActiveRoomInfo
 } from '../utils/activeRoomsRegistry';
-import { fetchServerRoom } from '../utils/serverRoomSync';
+import { fetchServerRoom, createServerRoom, disbandServerRoom } from '../utils/serverRoomSync';
 
 interface HomeLobbyViewProps {
   onJoinRoom: (roomConfig: {
@@ -121,6 +122,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
   // Room config state
   const [roomName, setRoomName] = useState('Room ' + Math.random().toString(36).substring(2, 6).toUpperCase());
   const [roomCode, setRoomCode] = useState(() => Math.random().toString(36).substring(2, 6).toLowerCase());
+  const [isRoomCodeCustomized, setIsRoomCodeCustomized] = useState<boolean>(false);
   const [maxPlayers, setMaxPlayers] = useState<number>(4);
   const [wagerPreset, setWagerPreset] = useState<string>('10');
   const [customWagerAmount, setCustomWagerAmount] = useState<string>('75');
@@ -206,7 +208,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
     setBetAmount(nextVal);
   };
 
-  const handleCreateRoomSubmit = (e: React.FormEvent) => {
+  const handleCreateRoomSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isBanned) {
       sounds.playBankrupt();
@@ -226,8 +228,10 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       }
     }
 
-    const effectiveCode = (roomCode || 'room_' + Math.random().toString(36).substring(2, 7)).trim().toLowerCase();
-    const effectiveName = roomName || 'Custom Room';
+    const nameSlug = (roomName || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16);
+    const effectiveCode = (roomCode || nameSlug || 'room_' + Math.random().toString(36).substring(2, 7)).trim().toLowerCase();
+    const effectiveName = roomName.trim() || (effectiveCode ? effectiveCode.toUpperCase() : 'Custom Room');
+    const effectiveHostId = user.id || 'host_' + Date.now();
 
     // Persist creator role for this browser session & local storage
     try {
@@ -235,13 +239,15 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       localStorage.setItem(`proprush_creator_${effectiveCode}`, 'true');
     } catch {}
 
+    const mapTheme: 'classic' | 'cyber' | 'worldwide' = boardTheme === 'cyber' ? 'cyber' : boardTheme === 'worldwide' ? 'worldwide' : 'classic';
+
     // Register into active rooms registry
     registerActiveRoom({
       code: effectiveCode,
       name: effectiveName,
       host: user.username || 'Host',
       hostAvatar: user.avatar || 'orange',
-      hostId: user.id,
+      hostId: effectiveHostId,
       players: 1,
       max: maxPlayers,
       bet: effectiveBet,
@@ -250,6 +256,45 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       initialCash
     });
     setActiveRooms(getAllActiveRooms());
+
+    // Register on backend server before proceeding so other players can discover immediately
+    try {
+      await Promise.race([
+        createServerRoom({
+          code: effectiveCode,
+          name: effectiveName,
+          hostId: effectiveHostId,
+          maxPlayers,
+          betAmount: effectiveBet,
+          boardTheme: mapTheme,
+          isPrivate: false,
+          fillWithBots,
+          players: [
+            {
+              id: effectiveHostId,
+              name: user.username || 'Host',
+              avatar: user.avatar || 'orange',
+              isHost: true,
+              cash: initialCash,
+              netWorth: initialCash,
+              position: 0,
+              properties: [],
+              mortgaged: [],
+              houses: {},
+              inJail: false,
+              jailTurns: 0,
+              getOutOfJailCards: 0,
+              isBankrupt: false,
+              isBot: false,
+              color: '#e65c00'
+            }
+          ]
+        } as any),
+        new Promise(resolve => setTimeout(resolve, 800))
+      ]);
+    } catch (err) {
+      console.warn('Could not post room to server ahead of join:', err);
+    }
 
     sounds.playCashRegister();
     onJoinRoom({
@@ -413,19 +458,28 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2 mb-0.5">
-                <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 text-[10px] font-mono-code font-bold uppercase tracking-wide flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
-                  Active Match In Progress
+                <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono-code font-bold uppercase tracking-wide flex items-center gap-1 border ${
+                  activeSavedMatch.room?.status === 'waiting'
+                    ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                    : 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full animate-ping ${activeSavedMatch.room?.status === 'waiting' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                  {activeSavedMatch.room?.status === 'waiting' ? 'Waiting Lobby Active' : 'Match In Progress'}
                 </span>
                 <span className={`text-xs font-mono-code ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
                   Room: <strong className={`font-black ${isLight ? 'text-slate-900' : 'text-white'}`}>{activeSavedMatch.roomConfig.roomCode.toUpperCase()}</strong>
                 </span>
+                {activeSavedMatch.roomConfig.betAmount > 0 && (
+                  <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/40 text-[10px] font-mono-code font-bold">
+                    ${activeSavedMatch.roomConfig.betAmount} Buy-in
+                  </span>
+                )}
               </div>
               <h3 className={`font-heading font-black text-base sm:text-lg truncate ${isLight ? 'text-slate-900' : 'text-white'}`}>
                 {activeSavedMatch.roomConfig.roomName}
               </h3>
               <div className={`text-xs flex items-center gap-2 mt-0.5 ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
-                <span>⏱️ Reconnect grace period:</span>
+                <span>{activeSavedMatch.room?.status === 'waiting' ? '⏱️ Table active for:' : '⏱️ Reconnect grace period:'}</span>
                 <span className="font-mono-code font-extrabold text-amber-600 dark:text-amber-400 text-sm bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 rounded border border-amber-300 dark:border-amber-500/40">
                   {formatRemainingTime(secondsRemaining)}
                 </span>
@@ -437,12 +491,24 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
             <button
               id="btn-forfeit-reconnect-match"
               onClick={() => {
+                const code = activeSavedMatch.roomConfig.roomCode.toLowerCase();
                 if (activeSavedMatch.room?.status === 'waiting' && activeSavedMatch.roomConfig.betAmount > 0) {
                   depositFunds(activeSavedMatch.roomConfig.betAmount, 'room_forfeit_refund');
                   sounds.playCashRegister();
                 } else {
                   sounds.playBankrupt();
                 }
+                if (activeSavedMatch.room?.status === 'waiting') {
+                  disbandServerRoom(code, user.id, user.id).catch(() => {});
+                  removeActiveRoom(code);
+                  setActiveRooms(getAllActiveRooms());
+                }
+                try {
+                  localStorage.removeItem(`proprush_paid_${code}`);
+                  sessionStorage.removeItem(`proprush_paid_${code}`);
+                  localStorage.removeItem(`proprush_creator_${code}`);
+                  sessionStorage.removeItem(`proprush_creator_${code}`);
+                } catch {}
                 clearActiveMatch();
                 setActiveSavedMatch(null);
                 setSecondsRemaining(0);
@@ -452,10 +518,14 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
                   ? 'bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border-slate-300 hover:border-rose-300'
                   : 'bg-slate-900/80 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border-slate-700 hover:border-rose-500/50'
               }`}
-              title="Abandon match and clear saved session"
+              title={activeSavedMatch.room?.status === 'waiting' ? 'Cancel table and refund buy-in' : 'Abandon match and forfeit'}
             >
               <span>✕</span>
-              <span>{activeSavedMatch.room?.status === 'waiting' ? 'Leave & Refund' : 'Forfeit'}</span>
+              <span>
+                {activeSavedMatch.room?.status === 'waiting'
+                  ? (activeSavedMatch.roomConfig.betAmount > 0 ? `Cancel & Refund ($${activeSavedMatch.roomConfig.betAmount})` : 'Cancel Table')
+                  : 'Forfeit'}
+              </span>
             </button>
             <button
               id="btn-reconnect-match"
@@ -466,7 +536,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
               className="flex-1 sm:flex-initial px-5 sm:px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#7059e2] to-[#8e76f7] hover:from-[#5e46d0] hover:to-[#7b61f0] text-white font-heading font-black text-xs sm:text-sm shadow-[0_0_20px_rgba(112,89,226,0.6)] cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-2"
             >
               <span>⚡</span>
-              <span>RECONNECT & RESUME</span>
+              <span>{activeSavedMatch.room?.status === 'waiting' ? 'REJOIN TABLE' : 'RECONNECT & RESUME'}</span>
             </button>
           </div>
         </div>
@@ -704,82 +774,148 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {activeRooms.map(r => (
-            <div
-              key={r.code}
-              className={`p-5 rounded-2xl border transition-all flex flex-col justify-between gap-4 shadow-sm hover:shadow-md group ${
-                isLight
-                  ? 'bg-white border-slate-200 hover:border-[#7059e2]/60'
-                  : 'bg-[#19142b] border-[#2b2447] hover:border-[#7059e2]/50'
-              }`}
-            >
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <AvatarCharacter avatarId={r.hostAvatar} size="xs" />
-                    <span className={`text-xs font-medium ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>{r.host}</span>
+          {activeRooms.map(r => {
+            const isHostOfRoom = Boolean(
+              (r.hostId && r.hostId === user.id) ||
+              (user.username && r.host === user.username) ||
+              (typeof window !== 'undefined' && (
+                localStorage.getItem(`proprush_creator_${r.code.toLowerCase()}`) === 'true' ||
+                sessionStorage.getItem(`proprush_creator_${r.code.toLowerCase()}`) === 'true'
+              ))
+            );
+
+            return (
+              <div
+                key={r.code}
+                className={`p-5 rounded-2xl border transition-all flex flex-col justify-between gap-4 shadow-sm hover:shadow-md group ${
+                  isHostOfRoom
+                    ? isLight
+                      ? 'bg-amber-50/50 border-amber-300 ring-1 ring-amber-400/40'
+                      : 'bg-[#221a36] border-amber-500/40 ring-1 ring-amber-500/30'
+                    : isLight
+                      ? 'bg-white border-slate-200 hover:border-[#7059e2]/60'
+                      : 'bg-[#19142b] border-[#2b2447] hover:border-[#7059e2]/50'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <AvatarCharacter avatarId={r.hostAvatar} size="xs" />
+                      <span className={`text-xs font-medium ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                        {r.host}
+                        {isHostOfRoom && ' (You)'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {isHostOfRoom && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono-code font-extrabold bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40">
+                          👑 Host
+                        </span>
+                      )}
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono-code font-bold ${
+                        isLight ? 'bg-slate-100 text-slate-700 border border-slate-200' : 'bg-slate-800 text-slate-300 border border-slate-700'
+                      }`}>
+                        Code: {r.code}
+                      </span>
+                      {r.bet > 0 ? (
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono-code font-bold border ${
+                          isLight
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                            : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        }`}>
+                          ${r.bet} Buy-in
+                        </span>
+                      ) : (
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          isLight ? 'bg-slate-100 text-slate-600' : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          Casual Free
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono-code font-bold ${
-                      isLight ? 'bg-slate-100 text-slate-700 border border-slate-200' : 'bg-slate-800 text-slate-300 border border-slate-700'
-                    }`}>
-                      Code: {r.code}
-                    </span>
-                    {r.bet > 0 ? (
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono-code font-bold border ${
-                        isLight
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                          : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                      }`}>
-                        ${r.bet} Buy-in
-                      </span>
-                    ) : (
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                        isLight ? 'bg-slate-100 text-slate-600' : 'bg-slate-800 text-slate-400'
-                      }`}>
-                        Casual Free
-                      </span>
-                    )}
+
+                  <h3 className={`font-heading font-black text-lg transition-colors ${
+                    isLight ? 'text-slate-900 group-hover:text-[#7059e2]' : 'text-white group-hover:text-[#a390ff]'
+                  }`}>
+                    {r.name}
+                  </h3>
+
+                  <div className={`flex items-center gap-3 text-xs font-mono-code mt-2 ${
+                    isLight ? 'text-slate-500' : 'text-slate-400'
+                  }`}>
+                    <span>👥 {r.players}/{r.max} Players</span>
+                    <span>⏱️ {r.turnTime}s timer</span>
+                    <span>🗺️ {r.map}</span>
                   </div>
                 </div>
 
-                <h3 className={`font-heading font-black text-lg transition-colors ${
-                  isLight ? 'text-slate-900 group-hover:text-[#7059e2]' : 'text-white group-hover:text-[#a390ff]'
-                }`}>
-                  {r.name}
-                </h3>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleCopyShareLink(r.code)}
+                    className={`px-3 py-2 rounded-xl text-xs cursor-pointer border transition-all active:scale-95 ${
+                      isLight
+                        ? 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700'
+                        : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300'
+                    }`}
+                    title="Copy share link"
+                  >
+                    🔗
+                  </button>
 
-                <div className={`flex items-center gap-3 text-xs font-mono-code mt-2 ${
-                  isLight ? 'text-slate-500' : 'text-slate-400'
-                }`}>
-                  <span>👥 {r.players}/{r.max} Players</span>
-                  <span>⏱️ {r.turnTime}s timer</span>
-                  <span>🗺️ {r.map}</span>
+                  {isHostOfRoom ? (
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const msg = r.bet > 0
+                            ? `Cancel "${r.name}" and refund $${r.bet} buy-in to your wallet?`
+                            : `Cancel and close table "${r.name}"?`;
+                          if (confirm(msg)) {
+                            if (r.bet > 0) {
+                              depositFunds(r.bet, 'room_cancel_refund');
+                              sounds.playCashRegister();
+                            }
+                            const cleanCode = r.code.toLowerCase();
+                            disbandServerRoom(cleanCode, user.id, user.id).catch(() => {});
+                            removeActiveRoom(cleanCode);
+                            clearActiveMatch();
+                            try {
+                              localStorage.removeItem(`proprush_paid_${cleanCode}`);
+                              sessionStorage.removeItem(`proprush_paid_${cleanCode}`);
+                              localStorage.removeItem(`proprush_creator_${cleanCode}`);
+                              sessionStorage.removeItem(`proprush_creator_${cleanCode}`);
+                            } catch {}
+                            setActiveRooms(getAllActiveRooms());
+                            setActiveSavedMatch(null);
+                          }
+                        }}
+                        className="px-3 py-2 rounded-xl text-xs font-bold border border-rose-500/30 text-rose-500 hover:bg-rose-500/10 transition-all cursor-pointer"
+                        title="Cancel table and refund"
+                      >
+                        ✕ Refund
+                      </button>
+                      <button
+                        onClick={() => handleQuickJoinActiveRoom(r)}
+                        className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 font-heading font-black text-xs text-slate-950 cursor-pointer shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                      >
+                        <span>RESUME YOUR TABLE</span>
+                        <span>→</span>
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => handleQuickJoinActiveRoom(r)}
+                      className="flex-1 py-2.5 rounded-xl bg-[#7059e2] hover:bg-[#5f45d8] font-heading font-bold text-xs text-white cursor-pointer shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                    >
+                      <span>JOIN GAME ROOM</span>
+                      <span>→</span>
+                    </button>
+                  )}
                 </div>
               </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleCopyShareLink(r.code)}
-                  className={`px-3 py-2 rounded-xl text-xs cursor-pointer border transition-all active:scale-95 ${
-                    isLight
-                      ? 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700'
-                      : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300'
-                  }`}
-                  title="Copy share link"
-                >
-                  🔗
-                </button>
-                <button
-                  onClick={() => handleQuickJoinActiveRoom(r)}
-                  className="flex-1 py-2.5 rounded-xl bg-[#7059e2] hover:bg-[#5f45d8] font-heading font-bold text-xs text-white cursor-pointer shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5"
-                >
-                  <span>JOIN GAME ROOM</span>
-                  <span>→</span>
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -853,7 +989,13 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
                 <input
                   type="text"
                   value={roomName}
-                  onChange={e => setRoomName(e.target.value)}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setRoomName(val);
+                    if (!isRoomCodeCustomized) {
+                      setRoomCode(val.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16));
+                    }
+                  }}
                   className={`w-full px-3 py-2 rounded-xl font-medium focus:outline-none focus:border-[#7059e2] border ${
                     isLight
                       ? 'bg-slate-50 border-slate-200 text-slate-900'
@@ -868,8 +1010,8 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
                   <label className={`font-bold ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Custom Room Code / Link</label>
                   <button
                     type="button"
-                    onClick={() => handleCopyShareLink(roomCode)}
-                    className="text-emerald-500 hover:underline text-[11px] font-bold"
+                    onClick={() => handleCopyShareLink(roomCode || roomName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16))}
+                    className="text-emerald-500 hover:underline text-[11px] font-bold cursor-pointer"
                   >
                     {copiedLink ? 'Copied to Clipboard! ✓' : 'Copy Room Link 🔗'}
                   </button>
@@ -879,7 +1021,10 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
                   <input
                     type="text"
                     value={roomCode}
-                    onChange={e => setRoomCode(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))}
+                    onChange={e => {
+                      setIsRoomCodeCustomized(true);
+                      setRoomCode(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''));
+                    }}
                     className={`flex-1 px-3 py-2 rounded-xl font-mono-code font-bold focus:outline-none focus:border-[#7059e2] border ${
                       isLight
                         ? 'bg-slate-50 border-slate-200 text-slate-900'
