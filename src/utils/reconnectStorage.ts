@@ -11,6 +11,8 @@ export interface RoomConfig {
   fillWithBots: boolean;
   isCreator?: boolean;
   isPrivate?: boolean;
+  wagerMode?: 'free' | 'crypto';
+  wagerContractAddress?: string;
 }
 
 export interface ChatMsg {

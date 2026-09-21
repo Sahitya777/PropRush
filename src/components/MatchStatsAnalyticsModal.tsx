@@ -39,7 +39,9 @@ import { BASE_BOARD_TILES } from '../data/boardTiles';
 import { calculateMatchAnalytics, GROUP_COLORS } from '../utils/matchAnalytics';
 import { AvatarCharacter } from './AvatarCharacter';
 import { ShareVictoryModal } from './ShareVictoryModal';
+import { WagerSettlementModal } from './WagerSettlementModal';
 import { useTheme } from '../context/ThemeContext';
+import { useUser } from '../context/UserContext';
 import { sounds } from '../utils/audio';
 
 interface MatchStatsAnalyticsModalProps {
@@ -61,6 +63,7 @@ export const MatchStatsAnalyticsModal: React.FC<MatchStatsAnalyticsModalProps> =
   onClose,
   isStandalonePreview = false
 }) => {
+  const { user } = useUser();
   const { isLight } = useTheme();
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [timelineMetric, setTimelineMetric] = useState<'netWorth' | 'cash' | 'props'>('netWorth');
@@ -233,6 +236,14 @@ export const MatchStatsAnalyticsModal: React.FC<MatchStatsAnalyticsModalProps> =
         {/* TAB 1: OVERVIEW & PODIUM */}
         {activeTab === 'overview' && (
           <div className="space-y-6 animate-fade-in">
+            {/* On-Chain Base Sepolia Wager Settlement Escrow */}
+            {Boolean(room.wagerContractAddress && winner) && (
+              <WagerSettlementModal
+                room={room}
+                winner={winner as Player}
+                currentUserWallet={user?.walletAddress}
+              />
+            )}
             
             {/* Champion Box */}
             <div className="p-5 sm:p-6 rounded-2xl border bg-gradient-to-r from-amber-500/[0.07] via-amber-400/[0.04] to-transparent border-amber-400/30 flex items-center justify-between flex-wrap gap-4">

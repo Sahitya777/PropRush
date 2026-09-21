@@ -30,6 +30,8 @@ interface HomeLobbyViewProps {
     fillWithBots: boolean;
     isCreator?: boolean;
     isPrivate?: boolean;
+    wagerMode?: 'free' | 'crypto';
+    wagerContractAddress?: string;
   }) => void;
   onOpenWallet: () => void;
   onOpenStore: () => void;
@@ -116,7 +118,19 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
 
     checkActiveMatch();
     const interval = setInterval(checkActiveMatch, 1000);
-    return () => clearInterval(interval);
+
+    // Also check immediately when window gains focus or storage changes (e.g. from another tab or back navigation)
+    const handleFocus = () => checkActiveMatch();
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('storage', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('storage', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
   }, []);
 
   // Room config state
@@ -125,6 +139,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
   const [isRoomCodeCustomized, setIsRoomCodeCustomized] = useState<boolean>(false);
   const [maxPlayers, setMaxPlayers] = useState<number>(4);
   const [wagerPreset, setWagerPreset] = useState<string>('10');
+  const [wagerMode, setWagerMode] = useState<'free' | 'crypto'>('crypto');
   const [customWagerAmount, setCustomWagerAmount] = useState<string>('75');
   const [betAmount, setBetAmount] = useState<number>(10);
   const [initialCash, setInitialCash] = useState<number>(1500);
@@ -269,12 +284,14 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
           boardTheme: mapTheme,
           isPrivate: false,
           fillWithBots,
+          wagerMode: effectiveBet > 0 ? wagerMode : 'free',
           players: [
             {
               id: effectiveHostId,
               name: user.username || 'Host',
               avatar: user.avatar || 'orange',
               isHost: true,
+              walletAddress: user.walletAddress,
               cash: initialCash,
               netWorth: initialCash,
               position: 0,
@@ -306,6 +323,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       turnTimeSeconds: turnTimeSeconds || 15,
       boardTheme,
       fillWithBots,
+      wagerMode: effectiveBet > 0 ? wagerMode : 'free',
       isCreator: true
     });
     setShowCreateModal(false);
@@ -818,13 +836,18 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
                         Code: {r.code}
                       </span>
                       {r.bet > 0 ? (
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono-code font-bold border ${
-                          isLight
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                            : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                        }`}>
-                          ${r.bet} Buy-in
-                        </span>
+                        <>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono-code font-bold border ${
+                            isLight
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                              : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          }`}>
+                            ${r.bet} Buy-in
+                          </span>
+                          <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-blue-500/15 text-blue-500 dark:text-blue-400 border border-blue-500/30">
+                            🔵 Base Sepolia Escrow
+                          </span>
+                        </>
                       ) : (
                         <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                           isLight ? 'bg-slate-100 text-slate-600' : 'bg-slate-800 text-slate-400'
@@ -1167,6 +1190,73 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
                   <div className={`flex justify-between text-[10px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                     <span>Platform Rake (5%):</span>
                     <span>${platformFee}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Escrow Settlement Mode: Base Sepolia USDC Smart Contract vs In-App Virtual Chips */}
+              {betAmount > 0 && (
+                <div
+                  id="wager-settlement-mode-selector"
+                  className={`p-3 rounded-2xl border space-y-2 ${
+                    isLight ? 'bg-blue-50/70 border-blue-200' : 'bg-blue-950/20 border-blue-500/30'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className={`font-bold flex items-center gap-1.5 ${isLight ? 'text-blue-900' : 'text-blue-200'}`}>
+                      <span>🛡️</span> Escrow Settlement Mode
+                    </span>
+                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-bold border border-blue-500/30">
+                      Base Sepolia Testnet
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      id="opt-wager-mode-crypto"
+                      onClick={() => setWagerMode('crypto')}
+                      className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                        wagerMode === 'crypto'
+                          ? isLight
+                            ? 'bg-white border-blue-500 shadow-sm ring-2 ring-blue-500/20 text-blue-950'
+                            : 'bg-blue-900/40 border-blue-400 shadow-md ring-1 ring-blue-400/40 text-white'
+                          : isLight
+                          ? 'bg-white/60 border-slate-200 text-slate-600 hover:border-slate-300'
+                          : 'bg-slate-900/40 border-slate-700/50 text-slate-400 hover:border-slate-600'
+                      }`}
+                    >
+                      <div className="font-bold flex items-center justify-between">
+                        <span className="flex items-center gap-1">🔵 On-Chain WagerPool</span>
+                        {wagerMode === 'crypto' && <span className="text-blue-400 text-xs">✓ Active</span>}
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-1">
+                        Base Sepolia smart contract escrow (MockUSDC). Non-custodial 95% winner payout.
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      id="opt-wager-mode-free"
+                      onClick={() => setWagerMode('free')}
+                      className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                        wagerMode === 'free'
+                          ? isLight
+                            ? 'bg-white border-blue-500 shadow-sm ring-2 ring-blue-500/20 text-blue-950'
+                            : 'bg-blue-900/40 border-blue-400 shadow-md ring-1 ring-blue-400/40 text-white'
+                          : isLight
+                          ? 'bg-white/60 border-slate-200 text-slate-600 hover:border-slate-300'
+                          : 'bg-slate-900/40 border-slate-700/50 text-slate-400 hover:border-slate-600'
+                      }`}
+                    >
+                      <div className="font-bold flex items-center justify-between">
+                        <span className="flex items-center gap-1">💵 Platform Balance</span>
+                        {wagerMode === 'free' && <span className="text-blue-400 text-xs">✓ Active</span>}
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-1">
+                        Settles with in-game PropRush cash balance.
+                      </div>
+                    </button>
                   </div>
                 </div>
               )}

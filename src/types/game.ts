@@ -139,6 +139,10 @@ export interface Player {
   jailTurns: number;
   getOutOfJailCards: number;
   isBankrupt: boolean;
+  isDisconnected?: boolean;
+  disconnectedAt?: number;
+  wagerJoined?: boolean;
+  wagerTxHash?: string;
   properties: number[]; // tile ids owned
   mortgaged: number[]; // tile ids mortgaged
   houses: Record<number, number>; // tileId -> number of houses (1-4) or 5 for hotel
@@ -244,6 +248,18 @@ export interface GameRoom {
   kickedPlayerIds?: string[];
   version?: number;
   updatedAt?: number;
+  wagerMode?: 'free' | 'crypto';
+  wagerContractAddress?: string;
+  wagerTokenAddress?: string;
+  wagerBuyInWei?: string;
+  wagerTotalPool?: number;
+  wagerStatus?: 'Open' | 'Locked' | 'Proposed' | 'Disputed' | 'Settled' | 'Refunded';
+  wagerWinnerAddress?: string;
+  wagerClaimed?: boolean;
+  wagerTxHash?: string;
+  wagerProposalTxHash?: string;
+  wagerProposalTime?: number;
+  wagerDisputeWindow?: number;
   pendingCard?: {
     type: 'chance' | 'chest';
     title: string;

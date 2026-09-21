@@ -22,6 +22,7 @@ import {
   kickPlayerFromServer,
   leaveServerRoom
 } from '../utils/serverRoomSync';
+import { WagerPoolLobbyCard } from '../components/WagerPoolLobbyCard';
 
 interface GameRoomViewProps {
   roomConfig: {
@@ -35,6 +36,8 @@ interface GameRoomViewProps {
     fillWithBots: boolean;
     isCreator?: boolean;
     isPrivate?: boolean;
+    wagerMode?: 'free' | 'crypto';
+    wagerContractAddress?: string;
   };
   onLeaveRoom: () => void;
   isMuted?: boolean;
@@ -168,6 +171,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         betAmount: roomConfig.betAmount,
         totalPrizePool: roomConfig.betAmount * roomConfig.maxPlayers,
         platformFeeRate: 0.05,
+        wagerMode: roomConfig.wagerMode || 'free',
+        wagerContractAddress: roomConfig.wagerContractAddress,
         boardTheme: (roomConfig.boardTheme || 'classic') as BoardMapTheme,
         fastSpeed: true
       };
@@ -185,6 +190,7 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           const newPlayer: Player = {
             id: user.id,
             name: user.username,
+            walletAddress: user.walletAddress,
             avatar: user.avatar || 'orange',
             avatarFrame: user.avatarFrame,
             diceSkin: user.diceSkin || 'dice_golden',
@@ -243,6 +249,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         betAmount: roomConfig.betAmount,
         totalPrizePool: 0,
         platformFeeRate: 0.05,
+        wagerMode: roomConfig.wagerMode || 'free',
+        wagerContractAddress: roomConfig.wagerContractAddress,
         boardTheme: (roomConfig.boardTheme || 'classic') as BoardMapTheme,
         fastSpeed: true
       };
@@ -304,6 +312,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       betAmount: roomConfig.betAmount,
       totalPrizePool: roomConfig.betAmount * 1,
       platformFeeRate: 0.05,
+      wagerMode: roomConfig.wagerMode || 'free',
+      wagerContractAddress: roomConfig.wagerContractAddress,
       boardTheme: (roomConfig.boardTheme || 'classic') as BoardMapTheme,
       fastSpeed: true
     };
@@ -798,8 +808,29 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                   ]
                 };
               } else if (prev.status === 'playing') {
+                const isDisconnect = data.reason === 'disconnect';
+                if (isDisconnect) {
+                  // Mark player as temporarily disconnected (2 min grace period)
+                  const updatedPlayers = prev.players.map(p =>
+                    (p.id === data.playerId || p.name === data.username) ? { ...p, isDisconnected: true, disconnectedAt: Date.now() } : p
+                  );
+                  return {
+                    ...prev,
+                    players: updatedPlayers,
+                    logs: [
+                      {
+                        id: 'log_dc_' + Date.now(),
+                        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        text: `⚠️ ${leavingName} disconnected. Reconnect window active (2m).`,
+                        type: 'info'
+                      },
+                      ...prev.logs
+                    ]
+                  };
+                }
+
                 const updatedPlayers = prev.players.map(p =>
-                  (p.id === data.playerId || p.name === data.username) ? { ...p, isBankrupt: true, cash: 0 } : p
+                  (p.id === data.playerId || p.name === data.username) ? { ...p, isBankrupt: true, cash: 0, properties: [], houses: {}, mortgaged: [] } : p
                 );
                 return {
                   ...prev,
@@ -1014,7 +1045,11 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
     // Leave beacon on page unload / tab close
     const handleBeforeUnload = () => {
       try {
-        const payload = JSON.stringify({ playerId: myPlayerId, username: user.username });
+        // Save active match state to local storage so user sees the 2-minute reconnect banner on home lobby!
+        if (room.status === 'playing' || room.status === 'waiting') {
+          markDisconnected(room, roomConfig, chatMessages);
+        }
+        const payload = JSON.stringify({ playerId: myPlayerId, username: user.username, reason: 'disconnect' });
         if (navigator.sendBeacon) {
           navigator.sendBeacon(`/api/rooms/${encodeURIComponent(roomConfig.roomCode.toLowerCase())}/leave`, payload);
         } else {
@@ -1030,7 +1065,8 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           type: 'PLAYER_LEFT',
           playerId: myPlayerId,
           username: user.username,
-          roomStatus: room.status
+          roomStatus: room.status,
+          reason: 'disconnect'
         });
         ch.close();
       } catch {}
@@ -2485,6 +2521,33 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         </button>
       </div>
 
+      {/* On-Chain Base Sepolia Smart Contract Escrow Lobby Banner / Card */}
+      {room.status === 'waiting' && (room.wagerMode === 'crypto' || roomConfig.wagerMode === 'crypto' || Boolean(room.wagerContractAddress)) && (
+        <div id="wager-pool-lobby-container" className="w-full max-w-5xl mx-auto px-2 sm:px-3 pt-2 pb-1 flex-shrink-0 z-20">
+          <WagerPoolLobbyCard
+            room={room}
+            isHost={isCurrentUserHost}
+            currentUserWallet={user.walletAddress}
+            onPoolUpdated={(address, poolState) => {
+              setRoom(prev => {
+                const updated: GameRoom = {
+                  ...prev,
+                  wagerMode: 'crypto',
+                  wagerContractAddress: address,
+                  wagerStatus: poolState?.status || prev.wagerStatus || 'Open',
+                  wagerTotalPool: poolState?.poolValue ? Number(poolState.poolValue) / 1e6 : prev.wagerTotalPool
+                };
+                broadcastAndSync(updated, 'SYNC_ROOM');
+                return updated;
+              });
+            }}
+            onPoolStartedOnChain={() => {
+              handleHostStartGame();
+            }}
+          />
+        </div>
+      )}
+
       {/* 2. MAIN LAYOUT: RESPONSIVE ACROSS MOBILE, IPAD/TABLET & DESKTOP */}
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row items-stretch justify-between p-1.5 sm:p-2.5 lg:p-3 gap-2 sm:gap-3 overflow-hidden">
         
@@ -2572,8 +2635,13 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                             maxNameWidthClass="max-w-[105px]"
                           />
                         </div>
-                        <div className={`text-[10px] font-mono-code ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                          {(p.properties || []).length} props
+                        <div className={`text-[10px] font-mono-code flex items-center gap-1 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                          <span>{(p.properties || []).length} props</span>
+                          {p.isDisconnected && !p.isBankrupt && (
+                            <span className="px-1 py-0.2 rounded text-[9px] bg-amber-500/20 text-amber-500 border border-amber-500/40 font-bold animate-pulse" title="Player disconnected (2m grace period to reconnect)">
+                              DC (2m)
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

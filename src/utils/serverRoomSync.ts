@@ -157,15 +157,22 @@ export async function kickPlayerFromServer(
 }
 
 /**
- * Leaves a room on the server (Voluntary exit by player).
+ * Leaves a room on the server (Voluntary exit by player or accidental disconnect).
+ * Reason can be 'disconnect' (temporary, preserve state for 2m reconnect) or 'forfeit' (voluntary surrender).
  */
-export async function leaveServerRoom(code: string, playerId: string, username?: string, isDisband?: boolean): Promise<GameRoom | null> {
+export async function leaveServerRoom(
+  code: string,
+  playerId: string,
+  username?: string,
+  isDisband?: boolean,
+  reason: 'disconnect' | 'forfeit' | 'leave' = 'leave'
+): Promise<GameRoom | null> {
   try {
     const clean = code.trim().toLowerCase();
     const data = await safeFetchJson(`/api/rooms/${clean}/leave`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerId, username, isDisband: Boolean(isDisband) })
+      body: JSON.stringify({ playerId, username, isDisband: Boolean(isDisband), reason })
     });
     if (data && !data._httpError && data.room) {
       return data.room as GameRoom;

@@ -12,9 +12,14 @@ import {
   upsertDbRoom,
   deleteDbRoom,
   getDbRooms,
+  pruneStaleDbRooms,
   recordDbMatch,
   recordDbTransaction,
 } from "../db/index";
+import {
+  keeperProposeResult,
+  getServerPoolStatus,
+} from "./wagerKeeperService";
 
 // Load environment variables from .env if present
 dotenv.config();
@@ -123,6 +128,17 @@ export interface ServerRoom {
   properties?: any[];
   dice?: [number, number];
   turnStartedAt?: number;
+  wagerMode?: 'free' | 'crypto';
+  wagerContractAddress?: string;
+  wagerTokenAddress?: string;
+  wagerBuyInWei?: string;
+  wagerTotalPool?: number;
+  wagerStatus?: string;
+  wagerWinnerAddress?: string;
+  wagerProposalTxHash?: string;
+  wagerProposalTime?: number;
+  wagerDisputeWindow?: number;
+  wagerClaimed?: boolean;
 }
 
 const serverRooms = new Map<string, ServerRoom>();
@@ -246,8 +262,66 @@ function savePersistedRooms(): void {
   }
 }
 
-// Initial load
+/**
+ * Prunes empty, abandoned, or finished rooms that are taking up server resources.
+ * - Waiting rooms with 0 players or no activity for 30 minutes are removed.
+ * - Finished/gameover rooms inactive for over 5 minutes are cleaned up.
+ * - Playing rooms with all players disconnected/inactive for over 20 minutes are removed.
+ */
+export function pruneStaleRooms(): number {
+  const now = Date.now();
+  let prunedCount = 0;
+
+  for (const [code, room] of serverRooms.entries()) {
+    // Keep standard demo default rooms permanently
+    if (code === 'room1' || code === 'room2') continue;
+
+    const updatedAt = room.updatedAt || room.createdAt || now;
+    const ageMs = now - updatedAt;
+    const players = Array.isArray(room.players) ? room.players : [];
+
+    let shouldPrune = false;
+
+    if (room.status === 'finished' || room.status === 'gameover') {
+      // Clean up finished rooms after 5 minutes
+      if (ageMs > 5 * 60 * 1000) shouldPrune = true;
+    } else if (room.status === 'waiting') {
+      // Waiting room with no players or idle for 30 minutes
+      if (players.length === 0 || ageMs > 30 * 60 * 1000) shouldPrune = true;
+    } else if (room.status === 'playing') {
+      // Playing room idle for 20 minutes with no updates, or all players are bankrupt/disconnected
+      const activeConnected = players.filter(p => !p.isBankrupt && !p.isDisconnected);
+      if (activeConnected.length === 0 && ageMs > 5 * 60 * 1000) {
+        shouldPrune = true;
+      } else if (ageMs > 25 * 60 * 1000) {
+        shouldPrune = true;
+      }
+    }
+
+    if (shouldPrune) {
+      serverRooms.delete(code);
+      deleteDbRoom(code).catch(() => {});
+      prunedCount++;
+    }
+  }
+
+  if (prunedCount > 0) {
+    savePersistedRooms();
+    console.log(`[Cleanup] Pruned ${prunedCount} stale/inactive room(s) from memory and database.`);
+  }
+
+  // Also prune stale rooms from Postgres
+  pruneStaleDbRooms().catch(() => {});
+
+  return prunedCount;
+}
+
+// Initial load & cleanup
 loadPersistedRooms();
+pruneStaleRooms();
+
+// Run room cleanup every 2 minutes to free server memory and prevent resource leaks
+setInterval(pruneStaleRooms, 2 * 60 * 1000);
 
 // Bootstrap Neon PostgreSQL schema and sync data when DATABASE_URL is configured
 initDatabase()
@@ -1138,6 +1212,7 @@ api.post("/rooms/:code/join", (req: Request, res: Response): void => {
       if (isPlayerTheHost && !room.hostId) {
         room.hostId = player.id;
       }
+      const wasDisconnected = Boolean(room.players[existingPlayerIndex].isDisconnected);
       room.players[existingPlayerIndex] = {
         ...room.players[existingPlayerIndex],
         ...player,
@@ -1146,8 +1221,20 @@ api.post("/rooms/:code/join", (req: Request, res: Response): void => {
         firstName: player.firstName || room.players[existingPlayerIndex].firstName,
         lastName: player.lastName || room.players[existingPlayerIndex].lastName,
         walletAddress: player.walletAddress || room.players[existingPlayerIndex].walletAddress,
-        isHost: isPlayerTheHost
+        isHost: isPlayerTheHost,
+        isDisconnected: false,
+        disconnectedAt: undefined
       };
+
+      if (wasDisconnected) {
+        if (!Array.isArray(room.logs)) room.logs = [];
+        room.logs.unshift({
+          id: 'l_rejoin_' + Date.now(),
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          text: `🔄 ${room.players[existingPlayerIndex].name} reconnected to the match!`,
+          type: 'info'
+        });
+      }
     } else {
       if (room.players.length >= room.maxPlayers) {
         res.status(400).json({ error: `Room is full (${room.players.length}/${room.maxPlayers} players).` });
@@ -1446,6 +1533,26 @@ api.post("/rooms/:code/state", (req: Request, res: Response): void => {
     upsertDbRoom(merged).catch(() => {});
 
     if ((merged.status === 'gameover' || merged.status === 'finished') && merged.winner) {
+      if (merged.wagerMode === 'crypto' && merged.wagerContractAddress) {
+        const winnerObj = (typeof merged.winner === 'object' && merged.winner !== null)
+          ? merged.winner
+          : (merged.players || []).find((p: any) => p.name === merged.winner || p.id === (merged.winner as any)?.id);
+        const winnerWallet = (winnerObj as any)?.walletAddress;
+        if (winnerWallet && merged.wagerStatus !== 'Proposed' && merged.wagerStatus !== 'Settled') {
+          keeperProposeResult(merged.wagerContractAddress, winnerWallet)
+            .then(res => {
+              if (res.success) {
+                merged.wagerStatus = 'Proposed';
+                merged.wagerWinnerAddress = winnerWallet;
+                merged.wagerProposalTxHash = res.txHash;
+                merged.wagerProposalTime = Math.floor(Date.now() / 1000);
+                savePersistedRooms();
+              }
+            })
+            .catch(() => {});
+        }
+      }
+
       recordDbMatch({
         id: 'm_' + (merged.code || '') + '_' + now,
         roomCode: merged.code,
@@ -1557,11 +1664,11 @@ api.post("/rooms/:code/kick", (req: Request, res: Response): void => {
   }
 });
 
-// POST /rooms/:code/leave - Player leaves the room voluntarily
+// POST /rooms/:code/leave - Player leaves the room voluntarily or disconnects
 api.post("/rooms/:code/leave", (req: Request, res: Response): void => {
   try {
     const code = (req.params.code || '').trim().toLowerCase();
-    const { playerId, username } = req.body || {};
+    const { playerId, username, reason } = req.body || {};
     loadPersistedRooms();
     const room = findRoomByCode(code);
     if (!room) {
@@ -1602,6 +1709,7 @@ api.post("/rooms/:code/leave", (req: Request, res: Response): void => {
         } else {
           // Host temporarily stepping away to lobby: mark host disconnected, but preserve room
           leavingPlayer.isDisconnected = true;
+          leavingPlayer.disconnectedAt = Date.now();
         }
 
         if (!Array.isArray(room.logs)) room.logs = [];
@@ -1612,27 +1720,61 @@ api.post("/rooms/:code/leave", (req: Request, res: Response): void => {
           type: 'info'
         });
       } else if (room.status === 'playing') {
-        leavingPlayer.isBankrupt = true;
-        leavingPlayer.cash = 0;
-        if (!Array.isArray(room.logs)) room.logs = [];
-        room.logs.unshift({
-          id: 'l_leave_' + Date.now(),
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          text: `🚩 ${displayName} surrendered and left the match.`,
-          type: 'info'
-        });
+        const isDisconnect = reason === 'disconnect';
 
-        const activePlayers = room.players.filter(p => !p.isBankrupt);
-        if (activePlayers.length <= 1) {
-          room.status = 'finished';
-          room.winner = activePlayers[0] || room.players[0];
-        } else if (room.currentTurnPlayerId === leavingPlayer.id) {
-          const nextIdx = (room.currentTurnIndex + 1) % room.players.length;
-          const nextPlayer = room.players[nextIdx];
-          room.currentTurnIndex = nextIdx;
-          room.currentTurnPlayerId = nextPlayer?.id || activePlayers[0]?.id || '';
-          room.turnPhase = 'roll';
-          room.turnTimer = room.turnTimeSeconds || 15;
+        if (isDisconnect) {
+          // Accidental tab close or temporary navigation: Mark disconnected with 2-minute grace period!
+          // DO NOT mark bankrupt or clear cash/properties.
+          leavingPlayer.isDisconnected = true;
+          leavingPlayer.disconnectedAt = Date.now();
+
+          if (!Array.isArray(room.logs)) room.logs = [];
+          room.logs.unshift({
+            id: 'l_dc_' + Date.now(),
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            text: `⚠️ ${displayName} disconnected. They have 2 minutes to reconnect.`,
+            type: 'info'
+          });
+
+          // If it was this player's active turn, advance the turn so the match isn't frozen for other players
+          if (room.currentTurnPlayerId === leavingPlayer.id) {
+            const activeEligible = room.players.filter(p => !p.isBankrupt);
+            const nextIdx = (room.currentTurnIndex + 1) % room.players.length;
+            const nextPlayer = room.players[nextIdx];
+            room.currentTurnIndex = nextIdx;
+            room.currentTurnPlayerId = nextPlayer?.id || activeEligible[0]?.id || '';
+            room.turnPhase = 'roll';
+            room.turnTimer = room.turnTimeSeconds || 15;
+          }
+        } else {
+          // Intentional forfeit / surrender: bankrupt the player
+          leavingPlayer.isBankrupt = true;
+          leavingPlayer.isDisconnected = false;
+          leavingPlayer.cash = 0;
+          leavingPlayer.properties = [];
+          leavingPlayer.houses = {};
+          leavingPlayer.mortgaged = [];
+
+          if (!Array.isArray(room.logs)) room.logs = [];
+          room.logs.unshift({
+            id: 'l_leave_' + Date.now(),
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            text: `🚩 ${displayName} surrendered and left the match.`,
+            type: 'info'
+          });
+
+          const activePlayers = room.players.filter(p => !p.isBankrupt);
+          if (activePlayers.length <= 1) {
+            room.status = 'finished';
+            room.winner = activePlayers[0] || room.players[0];
+          } else if (room.currentTurnPlayerId === leavingPlayer.id) {
+            const nextIdx = (room.currentTurnIndex + 1) % room.players.length;
+            const nextPlayer = room.players[nextIdx];
+            room.currentTurnIndex = nextIdx;
+            room.currentTurnPlayerId = nextPlayer?.id || activePlayers[0]?.id || '';
+            room.turnPhase = 'roll';
+            room.turnTimer = room.turnTimeSeconds || 15;
+          }
         }
       }
 
@@ -1641,6 +1783,7 @@ api.post("/rooms/:code/leave", (req: Request, res: Response): void => {
       serverRooms.set(room.code, room);
       if (room.code !== code) serverRooms.set(code, room);
       savePersistedRooms();
+      upsertDbRoom(room).catch(() => {});
     }
 
     res.json({ success: true, room });
@@ -2057,6 +2200,55 @@ api.post("/admin/users/action", (req: Request, res: Response): void => {
     res.json({ success: true, user: target });
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Failed action" });
+  }
+});
+
+// GET /wager/config - Returns on-chain contract addresses and keeper status
+api.get("/wager/config", (_req: Request, res: Response) => {
+  res.json({
+    factoryAddress: "0xb6Ed4A314112f0f771E34d0099E3eEd471683DFD",
+    mockUsdcAddress: "0x6482c263a6F3f651Ab292443DC60B378482E5e17",
+    defaultKeeperAddress: "0xCaE1F9b142908090aE806ae344C4A3a9c31ae69D",
+    chainId: 84532,
+    chainName: "Base Sepolia",
+    hasKeeperConfigured: Boolean(process.env.KEEPER_PRIVATE_KEY),
+  });
+});
+
+// POST /wager/propose-result - Keeper proposes match winner on-chain
+api.post("/wager/propose-result", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { poolAddress, winnerAddress, roomCode } = req.body || {};
+    if (!poolAddress || !winnerAddress) {
+      res.status(400).json({ error: "poolAddress and winnerAddress are required" });
+      return;
+    }
+    const result = await keeperProposeResult(poolAddress, winnerAddress);
+    if (result.success && roomCode) {
+      loadPersistedRooms();
+      const room = findRoomByCode(roomCode);
+      if (room) {
+        room.wagerStatus = 'Proposed';
+        room.wagerWinnerAddress = winnerAddress;
+        room.wagerProposalTxHash = result.txHash;
+        room.wagerProposalTime = Math.floor(Date.now() / 1000);
+        savePersistedRooms();
+      }
+    }
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to propose result" });
+  }
+});
+
+// GET /wager/pool/:address - Live status of pool on Base Sepolia
+api.get("/wager/pool/:address", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const address = req.params.address;
+    const status = await getServerPoolStatus(address);
+    res.json(status);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to get pool status" });
   }
 });
 
