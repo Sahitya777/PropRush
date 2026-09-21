@@ -146,7 +146,7 @@ function calculateLeagueTier(lp: number): LeagueTier {
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { setShowAuthFlow, handleLogOut } = useSafeDynamic();
+  const { setShowAuthFlow, handleLogOut, setSimulatedUser } = useSafeDynamic();
   const [user, setUser] = useState<UserProfile>(() => {
     // Check clean version flag to reset legacy mock profiles
     const cleanFlag = localStorage.getItem('proprush_real_dynamic_v3');
@@ -227,6 +227,11 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const closeAuthModal = () => {
     setIsAuthModalOpen(false);
     setAuthModalReason(null);
+    try {
+      setShowAuthFlow(false);
+    } catch {
+      // ignore
+    }
   };
 
   const requireAuth = (reason: string, onAuthenticated: () => void) => {
@@ -360,10 +365,23 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user]);
 
   const loginWithGoogle = (email?: string, name?: string, avatar?: string) => {
-    const userEmail = email || 'sahi@gmail.com';
+    const userEmail = email || 'sahityanijhawan@gmail.com';
     const userName = name || userEmail.split('@')[0];
     setIsLoggedIn(true);
+    localStorage.setItem('proprush_dynamic_auth', 'true');
     localStorage.setItem('proprush_clerk_auth', 'true');
+    
+    if (setSimulatedUser) {
+      try {
+        setSimulatedUser({
+          userId: 'usr_sahi_' + Math.random().toString(36).substring(2, 9),
+          email: userEmail,
+          username: userName,
+        });
+      } catch {
+        // ignore
+      }
+    }
     
     const storageKey = `proprush_user_${userEmail.toLowerCase()}`;
     const savedUserStr = localStorage.getItem(storageKey);
@@ -457,6 +475,20 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }) => {
     setIsLoggedIn(true);
     localStorage.setItem('proprush_dynamic_auth', 'true');
+    localStorage.setItem('proprush_clerk_auth', 'true');
+
+    if (setSimulatedUser) {
+      try {
+        setSimulatedUser({
+          userId: dynamicData.id,
+          email: dynamicData.email,
+          username: dynamicData.username,
+          walletAddress: dynamicData.walletAddress,
+        });
+      } catch {
+        // ignore
+      }
+    }
     setUser(prev => {
       const email = dynamicData.email || prev.email || '';
       const walletAddress = dynamicData.walletAddress || prev.walletAddress || '';
@@ -659,12 +691,14 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoggedIn(false);
     localStorage.removeItem('proprush_clerk_auth');
     localStorage.removeItem('proprush_dynamic_auth');
+    localStorage.removeItem('proprush_user_profile');
     sounds.playClick();
     try {
       handleLogOut();
     } catch {
       // ignore
     }
+    setUser({ ...DEFAULT_USER, id: getTabSessionId() });
   };
 
   const [lastDailyClaim, setLastDailyClaim] = useState<string | null>(() => {
