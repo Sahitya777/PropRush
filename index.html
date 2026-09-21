@@ -5,43 +5,33 @@
       /**
        * Polyfill protection against read-only fetch in iframe environments.
        * Prevents "TypeError: Cannot assign to read only property 'fetch' of object '#<Window>'".
+       * Also ensures fetch is always invoked with window context to avoid "Illegal invocation" errors.
        */
       (function() {
         try {
-          var realFetch = window.fetch;
-          if (typeof realFetch === 'function') {
-            var activeFetch = realFetch;
+          if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
+            var nativeFetch = window.fetch.bind(window);
+            var activeFetch = nativeFetch;
             try {
               Object.defineProperty(window, 'fetch', {
                 get: function() {
-                  return activeFetch;
+                  return function() {
+                    return (activeFetch || nativeFetch).apply(window, arguments);
+                  };
                 },
                 set: function(newFetch) {
-                  if (this === window || this === globalThis || !this) {
-                    activeFetch = newFetch;
-                  } else {
-                    try {
-                      Object.defineProperty(this, 'fetch', {
-                        value: newFetch,
-                        writable: true,
-                        configurable: true,
-                        enumerable: true
-                      });
-                    } catch (e) {
-                      this.fetch = newFetch;
-                    }
+                  if (typeof newFetch === 'function') {
+                    activeFetch = newFetch.bind ? newFetch.bind(window) : newFetch;
                   }
                 },
                 configurable: true,
                 enumerable: true
               });
             } catch (err) {
-              // If already non-configurable, define on prototype or ignore
+              // If already defined or non-configurable, ensure window.fetch is safe
             }
           }
-        } catch (e) {
-          // Silent fallback
-        }
+        } catch (e) {}
       })();
     </script>
     <meta charset="UTF-8" />

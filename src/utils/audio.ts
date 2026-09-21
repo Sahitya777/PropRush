@@ -67,6 +67,14 @@ class SoundEngine {
     this.playVictory();
   }
 
+  public playCash() {
+    this.playCashRegister();
+  }
+
+  public playError() {
+    this.playPayRent();
+  }
+
   public playAuction() {
     this.playClick();
   }

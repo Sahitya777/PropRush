@@ -19,6 +19,7 @@ import {
 import {
   keeperProposeResult,
   getServerPoolStatus,
+  serverMintMockUsdc,
 } from "./wagerKeeperService";
 
 // Load environment variables from .env if present
@@ -2249,6 +2250,26 @@ api.get("/wager/pool/:address", async (req: Request, res: Response): Promise<voi
     res.json(status);
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Failed to get pool status" });
+  }
+});
+
+// POST /faucet/mint - Mint testnet MockUSDC tokens on Base Sepolia
+api.post("/faucet/mint", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { address, amount } = req.body || {};
+    if (!address || typeof address !== 'string' || !address.startsWith('0x')) {
+      res.status(400).json({ error: "Valid recipient Ethereum address (0x...) is required" });
+      return;
+    }
+    const tokenAmount = Number(amount) > 0 ? Math.min(Number(amount), 1000) : 50;
+    const result = await serverMintMockUsdc(address, tokenAmount);
+    if (!result.success) {
+      res.status(400).json(result);
+      return;
+    }
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to mint test tokens" });
   }
 });
 

@@ -173,6 +173,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return {
             ...DEFAULT_USER,
             ...parsed,
+            walletBalance: typeof parsed.walletBalance === 'number' && !isNaN(parsed.walletBalance) ? parsed.walletBalance : 0.00,
+            coins: typeof parsed.coins === 'number' && !isNaN(parsed.coins) ? parsed.coins : 0,
             inventory: {
               appearances: parsed.inventory?.appearances || ['orange'],
               maps: parsed.inventory?.maps || ['classic'],

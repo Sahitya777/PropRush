@@ -158,3 +158,50 @@ export async function getServerPoolStatus(poolAddress: string) {
     return { error: err?.message || 'Failed to read pool' };
   }
 }
+
+/**
+ * Server-assisted Faucet: Mints testnet MockUSDC (mUSDC) to a recipient address
+ */
+export async function serverMintMockUsdc(
+  recipientAddress: string,
+  amountDollars: number = 50
+): Promise<{ success: boolean; txHash?: Hash; error?: string }> {
+  try {
+    const cleanRecipient = recipientAddress.trim() as Address;
+    const keeperWallet = getServerKeeperWallet();
+    if (!keeperWallet) {
+      return {
+        success: false,
+        error: 'KEEPER_PRIVATE_KEY is not configured on the server. Please mint directly using your connected Web3 wallet.',
+      };
+    }
+
+    const mockUsdcAddress = (
+      process.env.VITE_MOCK_USDC_ADDRESS ||
+      process.env.MOCK_USDC_ADDRESS ||
+      '0x6482c263a6F3f651Ab292443DC60B378482E5e17'
+    ) as Address;
+
+    const amountWei = BigInt(Math.round(amountDollars * 1_000_000));
+
+    console.log(`[Server Faucet] Minting ${amountDollars} MockUSDC to ${cleanRecipient}...`);
+    const txHash = await keeperWallet.walletClient.writeContract({
+      address: mockUsdcAddress,
+      abi: parseAbi(['function mint(address to, uint256 amount)']),
+      functionName: 'mint',
+      args: [cleanRecipient, amountWei],
+      account: keeperWallet.account,
+      chain: baseSepolia,
+    });
+
+    console.log(`[Server Faucet] Mint tx submitted: ${txHash}. Waiting for receipt...`);
+    await serverPublicClient.waitForTransactionReceipt({ hash: txHash });
+    console.log(`[Server Faucet] Mint tx confirmed: ${txHash}`);
+
+    return { success: true, txHash };
+  } catch (err: any) {
+    console.error('[Server Faucet] Error minting MockUSDC:', err);
+    return { success: false, error: err?.message || 'Failed to mint MockUSDC from server' };
+  }
+}
+

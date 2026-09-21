@@ -143,16 +143,30 @@ export const MOCK_USDC_ABI = parseAbi([
   'event Approval(address indexed owner, address indexed spender, uint256 value)',
 ]);
 
-export function formatUsdc(units: bigint | number | string): string {
-  const b = BigInt(units || 0);
-  const whole = b / 1_000_000n;
-  const rem = (b % 1_000_000n).toString().padStart(6, '0').slice(0, 2);
-  return `${whole.toString()}.${rem}`;
+export function formatUsdc(units: bigint | number | string | undefined | null): string {
+  try {
+    if (typeof units === 'bigint') {
+      const whole = units / 1_000_000n;
+      const rem = (units % 1_000_000n).toString().padStart(6, '0').slice(0, 2);
+      return `${whole.toString()}.${rem}`;
+    }
+    const num = Number(units) || 0;
+    const rounded = BigInt(Math.floor(num));
+    const whole = rounded / 1_000_000n;
+    const rem = (rounded % 1_000_000n).toString().padStart(6, '0').slice(0, 2);
+    return `${whole.toString()}.${rem}`;
+  } catch {
+    return '0.00';
+  }
 }
 
-export function parseUsdc(dollars: number | string): bigint {
-  const num = typeof dollars === 'string' ? parseFloat(dollars) || 0 : dollars;
-  return BigInt(Math.round(num * 1_000_000));
+export function parseUsdc(dollars: number | string | undefined | null): bigint {
+  try {
+    const num = typeof dollars === 'string' ? parseFloat(dollars) || 0 : (Number(dollars) || 0);
+    return BigInt(Math.round(num * 1_000_000));
+  } catch {
+    return 0n;
+  }
 }
 
 export function getBaseScanAddressUrl(address: string): string {

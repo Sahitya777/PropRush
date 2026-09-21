@@ -140,29 +140,29 @@ const DynamicStateBridge: React.FC<{
   return (
     <DynamicStateContext.Provider value={stateValue}>
       {children}
-      <DynamicUserProfile />
+      {isDynAuth && <DynamicUserProfile />}
     </DynamicStateContext.Provider>
   );
 };
 
-// Fallback demo environment ID - defaults to user's sandbox ID from Dynamic dashboard
+// Fallback demo environment ID placeholder
 export const DEFAULT_DEMO_ENVIRONMENT_ID = 'ee9cc749-fbf9-478e-8885-c144fda9b3ef';
 
 function isValidDynamicEnvId(id: string | null | undefined): boolean {
   if (!id) return false;
   const trimmed = id.trim();
-  // UUID format or non-empty string with length >= 16
-  return trimmed.length >= 16 && !trimmed.includes(' ');
+  // Must be a valid non-placeholder UUID/ID with length >= 16 and not the dummy demo default
+  return trimmed.length >= 16 && !trimmed.includes(' ') && trimmed !== DEFAULT_DEMO_ENVIRONMENT_ID;
 }
 
 export const DynamicIntegrationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const envVarId = (((import.meta as any).env?.VITE_DYNAMIC_ENVIRONMENT_ID as string | undefined) || '').trim();
 
-  const [environmentId, setEnvironmentIdInternal] = useState<string>(() => {
+  const [environmentId, setEnvironmentIdInternal] = useState<string | null>(() => {
     if (isValidDynamicEnvId(envVarId)) return envVarId;
     const local = localStorage.getItem('proprush_dynamic_env_id')?.trim() || '';
     if (isValidDynamicEnvId(local)) return local;
-    return DEFAULT_DEMO_ENVIRONMENT_ID;
+    return null;
   });
 
   const [simulatedUser, setSimulatedUser] = useState<any>(null);
@@ -170,17 +170,19 @@ export const DynamicIntegrationProvider: React.FC<{ children: React.ReactNode }>
 
   const setEnvironmentId = (id: string) => {
     const trimmed = id.trim();
-    localStorage.setItem('proprush_dynamic_env_id', trimmed);
-    setEnvironmentIdInternal(trimmed);
+    if (trimmed) {
+      localStorage.setItem('proprush_dynamic_env_id', trimmed);
+      setEnvironmentIdInternal(trimmed);
+    }
   };
 
   const clearEnvironmentId = () => {
     localStorage.removeItem('proprush_dynamic_env_id');
-    setEnvironmentIdInternal(envVarId || DEFAULT_DEMO_ENVIRONMENT_ID);
+    setEnvironmentIdInternal(isValidDynamicEnvId(envVarId) ? envVarId : null);
   };
 
   const isDynamicConfigured = isValidDynamicEnvId(environmentId);
-  const activeEnvironmentId = isDynamicConfigured ? environmentId : DEFAULT_DEMO_ENVIRONMENT_ID;
+  const activeEnvironmentId = environmentId || '';
 
   const configValue: DynamicConfigContextType = {
     environmentId: activeEnvironmentId,
@@ -208,25 +210,29 @@ export const DynamicIntegrationProvider: React.FC<{ children: React.ReactNode }>
 
   return (
     <DynamicConfigContext.Provider value={configValue}>
-      <DynamicErrorBoundary fallback={fallbackContent}>
-        <DynamicContextProvider
-          settings={{
-            environmentId: activeEnvironmentId,
-            appName: 'PropRush',
-            walletConnectors: [EthereumWalletConnectors],
-          }}
-          theme="dark"
-        >
-          <DynamicStateBridge
-            simulatedUser={simulatedUser}
-            setSimulatedUser={setSimulatedUser}
-            simulatedShowAuth={simulatedShowAuth}
-            setSimulatedShowAuth={setSimulatedShowAuth}
+      {isDynamicConfigured ? (
+        <DynamicErrorBoundary fallback={fallbackContent}>
+          <DynamicContextProvider
+            settings={{
+              environmentId: activeEnvironmentId,
+              appName: 'PropRush',
+              walletConnectors: [EthereumWalletConnectors],
+            }}
+            theme="dark"
           >
-            {children}
-          </DynamicStateBridge>
-        </DynamicContextProvider>
-      </DynamicErrorBoundary>
+            <DynamicStateBridge
+              simulatedUser={simulatedUser}
+              setSimulatedUser={setSimulatedUser}
+              simulatedShowAuth={simulatedShowAuth}
+              setSimulatedShowAuth={setSimulatedShowAuth}
+            >
+              {children}
+            </DynamicStateBridge>
+          </DynamicContextProvider>
+        </DynamicErrorBoundary>
+      ) : (
+        fallbackContent
+      )}
     </DynamicConfigContext.Provider>
   );
 };
