@@ -87,7 +87,8 @@ const DynamicStateBridge: React.FC<{
   setSimulatedUser: (u: any) => void;
   simulatedShowAuth: boolean;
   setSimulatedShowAuth: (s: boolean) => void;
-}> = ({ children, simulatedUser, setSimulatedUser, simulatedShowAuth, setSimulatedShowAuth }) => {
+  triggerLogoutReset: () => void;
+}> = ({ children, simulatedUser, setSimulatedUser, simulatedShowAuth, setSimulatedShowAuth, triggerLogoutReset }) => {
   let dynamic: any = null;
   try {
     // Attempt to access dynamic context if available
@@ -109,21 +110,31 @@ const DynamicStateBridge: React.FC<{
       if (typeof dynamic?.setShowAuthFlow === 'function') {
         try {
           dynamic.setShowAuthFlow(show);
-        } catch {
-          // ignore
+        } catch (e) {
+          console.warn('[Dynamic] setShowAuthFlow invocation issue:', e);
         }
       }
     },
     showAuthFlow: Boolean(dynamic?.showAuthFlow || simulatedShowAuth),
     handleLogOut: async () => {
       setSimulatedUser(null);
+      setSimulatedShowAuth(false);
       if (typeof dynamic?.handleLogOut === 'function') {
         try {
           await dynamic.handleLogOut();
+        } catch (e) {
+          console.warn('[Dynamic] handleLogOut exception:', e);
+        }
+      }
+      if (typeof dynamic?.setShowAuthFlow === 'function') {
+        try {
+          dynamic.setShowAuthFlow(false);
         } catch {
           // ignore
         }
       }
+      // Trigger a clean re-initialization of DynamicContextProvider if needed
+      triggerLogoutReset();
     },
     setShowDynamicUserProfile: (show: boolean) => {
       if (typeof dynamic?.setShowDynamicUserProfile === 'function') {
@@ -167,6 +178,11 @@ export const DynamicIntegrationProvider: React.FC<{ children: React.ReactNode }>
 
   const [simulatedUser, setSimulatedUser] = useState<any>(null);
   const [simulatedShowAuth, setSimulatedShowAuth] = useState(false);
+  const [logoutSessionKey, setLogoutSessionKey] = useState(0);
+
+  const triggerLogoutReset = () => {
+    setLogoutSessionKey(prev => prev + 1);
+  };
 
   const setEnvironmentId = (id: string) => {
     const trimmed = id.trim();
@@ -211,8 +227,9 @@ export const DynamicIntegrationProvider: React.FC<{ children: React.ReactNode }>
   return (
     <DynamicConfigContext.Provider value={configValue}>
       {isDynamicConfigured ? (
-        <DynamicErrorBoundary fallback={fallbackContent}>
+        <DynamicErrorBoundary key={`dynamic-boundary-${logoutSessionKey}`} fallback={fallbackContent}>
           <DynamicContextProvider
+            key={`dynamic-provider-${logoutSessionKey}`}
             settings={{
               environmentId: activeEnvironmentId,
               appName: 'PropRush',
@@ -225,6 +242,7 @@ export const DynamicIntegrationProvider: React.FC<{ children: React.ReactNode }>
               setSimulatedUser={setSimulatedUser}
               simulatedShowAuth={simulatedShowAuth}
               setSimulatedShowAuth={setSimulatedShowAuth}
+              triggerLogoutReset={triggerLogoutReset}
             >
               {children}
             </DynamicStateBridge>
