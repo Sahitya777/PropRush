@@ -1,18 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { useUser } from '../context/UserContext';
-import { useSafeDynamic } from '../context/DynamicIntegration';
+import { useSafeDynamic, useDynamicConfig } from '../context/DynamicIntegration';
 import { useTheme } from '../context/ThemeContext';
 import { DynamicActiveAuth } from './DynamicActiveAuth';
 import { DynamicSetupAuth } from './DynamicSetupAuth';
 import { sounds } from '../utils/audio';
 
 export const DynamicAuthModal: React.FC = () => {
-  const { isAuthModalOpen, authModalReason, closeAuthModal, isLoggedIn } = useUser();
+  const { isAuthModalOpen, authModalReason, closeAuthModal } = useUser();
+  const { isDynamicConfigured } = useDynamicConfig();
   const { showAuthFlow, setShowAuthFlow } = useSafeDynamic();
   const { isLight } = useTheme();
 
   const [isConfigOpen, setIsConfigOpen] = useState(false);
-  const [activeView, setActiveView] = useState<'auth' | 'config'>('auth');
+  const [activeView, setActiveView] = useState<'auth' | 'config'>('config');
 
   useEffect(() => {
     const handleOpen = () => {
@@ -23,7 +24,9 @@ export const DynamicAuthModal: React.FC = () => {
     return () => window.removeEventListener('open_dynamic_config', handleOpen);
   }, []);
 
-  const isOpen = isAuthModalOpen || showAuthFlow || isConfigOpen;
+  // When Dynamic is configured, the native Dynamic modal handles all authentication directly.
+  // We only show this custom container if developer config is explicitly opened or if Dynamic is not yet configured.
+  const isOpen = isConfigOpen || (!isDynamicConfigured && isAuthModalOpen);
 
   // Handle ESC key to close
   useEffect(() => {
@@ -43,13 +46,7 @@ export const DynamicAuthModal: React.FC = () => {
   const handleClose = () => {
     sounds.playClick();
     setIsConfigOpen(false);
-    setActiveView('auth');
     closeAuthModal();
-    try {
-      setShowAuthFlow(false);
-    } catch {
-      // ignore
-    }
   };
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {

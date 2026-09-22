@@ -156,24 +156,25 @@ const DynamicStateBridge: React.FC<{
   );
 };
 
-// Fallback demo environment ID placeholder
-export const DEFAULT_DEMO_ENVIRONMENT_ID = 'ee9cc749-fbf9-478e-8885-c144fda9b3ef';
+// Working sandbox environment ID for Dynamic Web3 authentication
+export const DEFAULT_DYNAMIC_ENVIRONMENT_ID = 'ee9cc749-fbf9-478e-8885-c144fda9b3ef';
+export const DEFAULT_DEMO_ENVIRONMENT_ID = DEFAULT_DYNAMIC_ENVIRONMENT_ID;
 
-function isValidDynamicEnvId(id: string | null | undefined): boolean {
+export function isValidDynamicEnvId(id: string | null | undefined): boolean {
   if (!id) return false;
   const trimmed = id.trim();
-  // Must be a valid non-placeholder UUID/ID with length >= 16 and not the dummy demo default
-  return trimmed.length >= 16 && !trimmed.includes(' ') && trimmed !== DEFAULT_DEMO_ENVIRONMENT_ID;
+  // Must be a valid UUID/ID with length >= 16 and no whitespace
+  return trimmed.length >= 16 && !trimmed.includes(' ');
 }
 
 export const DynamicIntegrationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const envVarId = (((import.meta as any).env?.VITE_DYNAMIC_ENVIRONMENT_ID as string | undefined) || '').trim();
 
-  const [environmentId, setEnvironmentIdInternal] = useState<string | null>(() => {
+  const [environmentId, setEnvironmentIdInternal] = useState<string>(() => {
     if (isValidDynamicEnvId(envVarId)) return envVarId;
     const local = localStorage.getItem('proprush_dynamic_env_id')?.trim() || '';
     if (isValidDynamicEnvId(local)) return local;
-    return null;
+    return DEFAULT_DYNAMIC_ENVIRONMENT_ID;
   });
 
   const [simulatedUser, setSimulatedUser] = useState<any>(null);
@@ -194,11 +195,11 @@ export const DynamicIntegrationProvider: React.FC<{ children: React.ReactNode }>
 
   const clearEnvironmentId = () => {
     localStorage.removeItem('proprush_dynamic_env_id');
-    setEnvironmentIdInternal(isValidDynamicEnvId(envVarId) ? envVarId : null);
+    setEnvironmentIdInternal(isValidDynamicEnvId(envVarId) ? envVarId : DEFAULT_DYNAMIC_ENVIRONMENT_ID);
   };
 
   const isDynamicConfigured = isValidDynamicEnvId(environmentId);
-  const activeEnvironmentId = environmentId || '';
+  const activeEnvironmentId = environmentId || DEFAULT_DYNAMIC_ENVIRONMENT_ID;
 
   const configValue: DynamicConfigContextType = {
     environmentId: activeEnvironmentId,
