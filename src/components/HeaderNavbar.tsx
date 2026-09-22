@@ -282,6 +282,7 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
                 id="btn-nav-dynamic-signin"
                 onClick={() => {
                   sounds.playClick();
+                  openAuthModal('Sign in or connect wallet to save progress, claim daily rewards, and play high stakes');
                   setShowAuthFlow(true);
                 }}
                 className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-heading font-black text-xs shadow-md shadow-indigo-500/25 transition-all cursor-pointer active:scale-95 shrink-0 whitespace-nowrap"
@@ -738,6 +739,7 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
                   onClick={() => {
                     sounds.playClick();
                     setIsDrawerOpen(false);
+                    openAuthModal('Sign in or connect wallet to save progress, claim daily rewards, and play high stakes');
                     setShowAuthFlow(true);
                   }}
                   className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-heading font-black text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-98"

@@ -199,6 +199,7 @@ export const ProfileView: React.FC = () => {
             <button
               onClick={() => {
                 sounds.playClick();
+                openAuthModal('Sign in or connect wallet to save progress, claim daily rewards, and play high stakes');
                 setShowAuthFlow(true);
               }}
               className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-heading font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
