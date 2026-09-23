@@ -57,22 +57,72 @@ export interface WagerPoolState {
 }
 
 /**
+ * Resolves the best available Ethereum provider.
+ * When multiple extensions (e.g. MetaMask and Phantom) are installed,
+ * prioritizes genuine MetaMask.
+ */
+export function getInjectedProvider(preferred?: any): any {
+  if (preferred?.request) return preferred;
+  if (preferred?.connector?.findProvider) {
+    try {
+      const p = preferred.connector.findProvider();
+      if (p?.request) return p;
+    } catch {}
+  }
+  if (typeof window === 'undefined') return null;
+
+  const win = window as any;
+
+  // 1. Multiple providers array (EIP-5749 / EIP-6963 standard in modern extensions)
+  if (win.ethereum?.providers && Array.isArray(win.ethereum.providers)) {
+    // Prefer MetaMask
+    const mm = win.ethereum.providers.find((p: any) => p.isMetaMask && !p.isPhantom);
+    if (mm) return mm;
+    const anyMm = win.ethereum.providers.find((p: any) => p.isMetaMask);
+    if (anyMm) return anyMm;
+    return win.ethereum.providers[0];
+  }
+
+  // 2. Window provider map
+  if (win.ethereum?.providerMap?.get?.('MetaMask')) {
+    return win.ethereum.providerMap.get('MetaMask');
+  }
+
+  // 3. Fallback to window.ethereum
+  if (win.ethereum) {
+    return win.ethereum;
+  }
+
+  return null;
+}
+
+/**
  * Ensures wallet is switched to Base Sepolia (Chain ID 84532)
  */
 export async function ensureBaseSepolia(provider?: any): Promise<void> {
-  const ethereum = provider || (typeof window !== 'undefined' ? (window as any).ethereum : null);
+  const ethereum = getInjectedProvider(provider);
   if (!ethereum?.request) return;
 
   const chainIdHex = `0x${BASE_SEPOLIA_CONFIG.chainId.toString(16)}`;
 
   try {
+    const currentChain = await ethereum.request({ method: 'eth_chainId' }).catch(() => null);
+    if (currentChain && currentChain.toLowerCase() === chainIdHex.toLowerCase()) {
+      // Already on Base Sepolia, do not send redundant switch requests
+      return;
+    }
+
     await ethereum.request({
       method: 'wallet_switchEthereumChain',
       params: [{ chainId: chainIdHex }],
     });
   } catch (switchError: any) {
     // 4902: Chain not added yet
-    if (switchError?.code === 4902 || switchError?.message?.includes('4902')) {
+    if (
+      switchError?.code === 4902 ||
+      switchError?.message?.includes('4902') ||
+      switchError?.data?.originalError?.code === 4902
+    ) {
       await ethereum.request({
         method: 'wallet_addEthereumChain',
         params: [
@@ -85,28 +135,102 @@ export async function ensureBaseSepolia(provider?: any): Promise<void> {
           },
         ],
       });
+    } else {
+      console.warn('Switch chain warning:', switchError);
     }
   }
 }
 
 /**
- * Gets a viable WalletClient from injected window.ethereum or passed provider
+ * Requests wallet account authorization with automatic fallback to permissions prompt
+ * if dApp interaction is disabled or disconnected in MetaMask.
  */
-export async function getWalletClient(customProvider?: any): Promise<{ walletClient: WalletClient; address: Address }> {
-  const ethereum = customProvider || (typeof window !== 'undefined' ? (window as any).ethereum : null);
+export async function requestWalletAccounts(provider?: any): Promise<Address[]> {
+  const ethereum = getInjectedProvider(provider);
+  if (!ethereum?.request) {
+    throw new Error('No crypto wallet detected. Please install or unlock MetaMask.');
+  }
+
+  try {
+    const accounts: string[] = await ethereum.request({ method: 'eth_requestAccounts' });
+    if (accounts && accounts.length > 0) {
+      return accounts.map((a: string) => a as Address);
+    }
+  } catch (err: any) {
+    const errMsg = (err?.message || '').toLowerCase();
+    // When "DApp interaction is disabled" or 4100 (unauthorized), force MetaMask to open permissions UI
+    if (
+      errMsg.includes('disabled') ||
+      errMsg.includes('unauthorized') ||
+      err?.code === 4100 ||
+      err?.code === -32603
+    ) {
+      try {
+        await ethereum.request({
+          method: 'wallet_requestPermissions',
+          params: [{ eth_accounts: {} }],
+        });
+        const accounts: string[] = await ethereum.request({ method: 'eth_accounts' });
+        if (accounts && accounts.length > 0) {
+          return accounts.map((a: string) => a as Address);
+        }
+      } catch (permErr: any) {
+        throw new Error(
+          permErr?.message?.includes('User rejected')
+            ? 'Wallet connection request was rejected. Please approve the connection in MetaMask.'
+            : 'MetaMask connection is disabled or pending. Please open MetaMask and enable connection for this site.'
+        );
+      }
+    } else if (errMsg.includes('user rejected') || err?.code === 4001) {
+      throw new Error('Connection request was rejected in wallet.');
+    } else {
+      throw err;
+    }
+  }
+
+  // Fallback to eth_accounts
+  const fallbackAccounts: string[] = await ethereum.request({ method: 'eth_accounts' });
+  if (fallbackAccounts && fallbackAccounts.length > 0) {
+    return fallbackAccounts.map((a: string) => a as Address);
+  }
+
+  throw new Error('No wallet accounts authorized. Please unlock MetaMask and approve the connection.');
+}
+
+/**
+ * Gets a viable WalletClient from injected window.ethereum, Dynamic primaryWallet, or passed provider
+ */
+export async function getWalletClient(
+  customProviderOrWallet?: any
+): Promise<{ walletClient: WalletClient; address: Address }> {
+  // If a Dynamic primaryWallet with getWalletClient is passed:
+  if (customProviderOrWallet?.connector?.getWalletClient) {
+    try {
+      const dynClient = await customProviderOrWallet.connector.getWalletClient('84532');
+      if (dynClient && dynClient.account) {
+        return {
+          walletClient: dynClient as WalletClient,
+          address: dynClient.account.address as Address,
+        };
+      }
+    } catch (e) {
+      console.warn('Dynamic getWalletClient fallback to injected provider:', e);
+    }
+  }
+
+  const ethereum = getInjectedProvider(customProviderOrWallet);
   if (!ethereum) {
     throw new Error('No crypto wallet detected. Please connect MetaMask, Coinbase Wallet, or Dynamic.');
   }
 
+  // 1. Authorize accounts FIRST (opens wallet popup if needed, or wakes up disabled interaction)
+  const accounts = await requestWalletAccounts(ethereum);
+  const address = accounts[0];
+
+  // 2. Ensure chain is Base Sepolia
   await ensureBaseSepolia(ethereum);
 
-  const accounts: string[] = await ethereum.request({ method: 'eth_requestAccounts' });
-  if (!accounts || accounts.length === 0) {
-    throw new Error('No wallet accounts authorized.');
-  }
-
-  const address = accounts[0] as Address;
-
+  // 3. Create wallet client
   const walletClient = createWalletClient({
     account: address,
     chain: BASE_SEPOLIA_CHAIN,
@@ -157,11 +281,13 @@ export async function getMockUsdcAllowance(owner: Address, spender: Address): Pr
 
 /**
  * Mints testnet mUSDC from MockUSDC contract (Free Test Faucet)
+ * Explicit gas limit ensures the wallet popup (MetaMask) is triggered immediately
+ * without pre-flight client-side RPC simulation blocking the user prompt.
  */
 export async function mintTestUsdc(
   walletClient: WalletClient,
   recipient: Address,
-  amountInDollars = 100
+  amountInDollars = 50
 ): Promise<string> {
   const amountWei = parseUsdc(amountInDollars);
   const account = walletClient.account || recipient;
@@ -173,6 +299,7 @@ export async function mintTestUsdc(
     args: [recipient, amountWei],
     account,
     chain: BASE_SEPOLIA_CHAIN,
+    gas: 120000n,
   });
 
   await publicClient.waitForTransactionReceipt({ hash });

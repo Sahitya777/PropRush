@@ -27,6 +27,7 @@ import {
   getWalletClient,
   getMockUsdcBalance,
   mintTestUsdc,
+  getInjectedProvider,
 } from '../contracts/client';
 import { sounds } from '../utils/audio';
 
@@ -158,6 +159,47 @@ export const MockUsdcFaucetModal: React.FC<MockUsdcFaucetModalProps> = ({
     }
   };
 
+  // Explicit Reconnect for MetaMask / Injected Provider
+  const handleReconnectWallet = async () => {
+    sounds.playClick();
+    setIsMinting(true);
+    setStatusMessage({
+      type: 'info',
+      text: 'Opening MetaMask connection prompt... Please approve the connection request.',
+    });
+
+    try {
+      const ethereum = getInjectedProvider();
+      if (!ethereum?.request) {
+        throw new Error('MetaMask or Web3 wallet extension not detected.');
+      }
+
+      await ethereum.request({
+        method: 'wallet_requestPermissions',
+        params: [{ eth_accounts: {} }],
+      });
+
+      setStatusMessage({
+        type: 'info',
+        text: 'Wallet reconnected! Preparing transaction popup...',
+      });
+
+      // Automatically retry mint
+      setTimeout(() => {
+        handleWeb3Mint();
+      }, 500);
+    } catch (err: any) {
+      console.warn('Reconnect error:', err);
+      setIsMinting(false);
+      setStatusMessage({
+        type: 'error',
+        text: err?.message?.includes('rejected')
+          ? 'Reconnection was cancelled. Please click the fox icon in MetaMask to enable connection.'
+          : (err?.message || 'Failed to reconnect wallet.'),
+      });
+    }
+  };
+
   // Direct Web3 Mint to Connected Wallet
   const handleWeb3Mint = async () => {
     if (!hasConnectedWallet) {
@@ -172,12 +214,18 @@ export const MockUsdcFaucetModal: React.FC<MockUsdcFaucetModalProps> = ({
     setIsMinting(true);
     setStatusMessage({
       type: 'info',
-      text: `Confirming mint of ${CLAIM_AMOUNT} Mock USDC to ${connectedAddress.slice(0, 6)}...${connectedAddress.slice(-4)} on Base Sepolia...`,
+      text: `Waiting for signature in your wallet... Please check the MetaMask popup to confirm the transaction.`,
     });
 
     try {
-      const { walletClient, address } = await getWalletClient();
+      const { walletClient, address } = await getWalletClient(primaryWallet);
       const targetAddress = (connectedAddress || address) as `0x${string}`;
+
+      setStatusMessage({
+        type: 'info',
+        text: `Please sign & confirm the 50 mUSDC mint transaction in your MetaMask popup window...`,
+      });
+
       const txHash = await mintTestUsdc(walletClient, targetAddress, CLAIM_AMOUNT);
 
       sounds.playCash();
@@ -192,14 +240,24 @@ export const MockUsdcFaucetModal: React.FC<MockUsdcFaucetModalProps> = ({
     } catch (err: any) {
       console.error('Direct Web3 mint error:', err);
       sounds.playError();
-      const errMsg = err?.message || 'Transaction failed or rejected.';
-      if (errMsg.includes('gas') || errMsg.includes('insufficient funds')) {
+      const errMsg = (err?.message || '').toLowerCase();
+      if (errMsg.includes('user rejected') || errMsg.includes('denied') || err?.code === 4001) {
+        setStatusMessage({
+          type: 'error',
+          text: 'Transaction was cancelled in your wallet.',
+        });
+      } else if (errMsg.includes('disabled') || errMsg.includes('unauthorized') || err?.code === 4100) {
+        setStatusMessage({
+          type: 'error',
+          text: 'DApp interaction is disabled or disconnected in MetaMask. Click "Reconnect MetaMask" below to re-authorize.',
+        });
+      } else if (errMsg.includes('gas') || errMsg.includes('insufficient funds')) {
         setStatusMessage({
           type: 'error',
           text: 'Insufficient Base Sepolia ETH for gas. Get free Base Sepolia ETH from the faucet link below.',
         });
       } else {
-        setStatusMessage({ type: 'error', text: errMsg });
+        setStatusMessage({ type: 'error', text: err?.message || 'Transaction failed or rejected.' });
       }
     } finally {
       setIsMinting(false);
@@ -478,6 +536,17 @@ export const MockUsdcFaucetModal: React.FC<MockUsdcFaucetModalProps> = ({
                 )}
                 <div className="space-y-1">
                   <div>{statusMessage.text}</div>
+                  {statusMessage.type === 'error' && statusMessage.text.includes('disabled') && (
+                    <button
+                      type="button"
+                      onClick={handleReconnectWallet}
+                      disabled={isMinting}
+                      className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] cursor-pointer shadow-sm transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isMinting ? 'animate-spin' : ''}`} />
+                      <span>Reconnect MetaMask Now</span>
+                    </button>
+                  )}
                   {statusMessage.txHash && (
                     <a
                       href={getBaseScanTxUrl(statusMessage.txHash)}
