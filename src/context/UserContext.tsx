@@ -13,6 +13,7 @@ import {
   isReferralAlreadyClaimedLocally,
   clearPendingReferrer
 } from '../utils/referralService';
+import { getMockUsdcBalance } from '../contracts/client';
 
 interface UserContextType {
   user: UserProfile;
@@ -22,6 +23,8 @@ interface UserContextType {
   depositFunds: (amount: number, method: string) => boolean;
   withdrawFunds: (amount: number) => boolean;
   buyCoinPack: (coins: number, priceUsd: number) => boolean;
+  exchangeUsdcForCoins: (usdcAmount: number, coinsGranted: number) => boolean;
+  refreshOnChainUsdcBalance: (addressOverride?: string) => Promise<void>;
   deductBuyIn: (amount: number) => boolean;
   buyStoreItem: (itemId: string, category: string, price: number) => boolean;
   equipItem: (
@@ -777,17 +780,100 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return false;
     }
     sounds.playCashRegister();
-    setUser(prev => ({
-      ...prev,
-      walletBalance: Math.round((prev.walletBalance - priceUsd) * 100) / 100,
-      coins: prev.coins + coins,
-      stats: {
-        ...prev.stats,
-        totalCoinsEarned: prev.stats.totalCoinsEarned + coins
+    setUser(prev => {
+      const updatedUser = {
+        ...prev,
+        walletBalance: Math.max(0, Math.round((prev.walletBalance - priceUsd) * 100) / 100),
+        coins: prev.coins + coins,
+        stats: {
+          ...prev.stats,
+          totalCoinsEarned: prev.stats.totalCoinsEarned + coins
+        }
+      };
+      localStorage.setItem('proprush_user_profile', JSON.stringify(updatedUser));
+      if (updatedUser.dynamicUserId) {
+        localStorage.setItem(`proprush_dynamic_${updatedUser.dynamicUserId}`, JSON.stringify(updatedUser));
       }
-    }));
+      return updatedUser;
+    });
     return true;
   };
+
+  const exchangeUsdcForCoins = (usdcAmount: number, coinsGranted: number): boolean => {
+    if (isBanned || usdcAmount <= 0 || user.walletBalance < usdcAmount) {
+      sounds.playBankrupt();
+      return false;
+    }
+    sounds.playVictory();
+    setUser(prev => {
+      const updatedUser = {
+        ...prev,
+        walletBalance: Math.max(0, Math.round((prev.walletBalance - usdcAmount) * 100) / 100),
+        coins: prev.coins + coinsGranted,
+        stats: {
+          ...prev.stats,
+          totalCoinsEarned: prev.stats.totalCoinsEarned + coinsGranted
+        }
+      };
+      localStorage.setItem('proprush_user_profile', JSON.stringify(updatedUser));
+      if (updatedUser.dynamicUserId) {
+        localStorage.setItem(`proprush_dynamic_${updatedUser.dynamicUserId}`, JSON.stringify(updatedUser));
+      }
+      return updatedUser;
+    });
+    return true;
+  };
+
+  const refreshOnChainUsdcBalance = useCallback(async (addressOverride?: string) => {
+    try {
+      const targetAddr = (addressOverride || user.walletAddress || (window as any).ethereum?.selectedAddress);
+      if (!targetAddr || !targetAddr.startsWith('0x') || targetAddr.length < 10) return;
+      const res = await getMockUsdcBalance(targetAddr as `0x${string}`);
+      const val = parseFloat(res.formatted);
+      if (!isNaN(val)) {
+        setUser(prev => {
+          if (val !== prev.walletBalance) {
+            const updated = {
+              ...prev,
+              walletBalance: val,
+              walletAddress: prev.walletAddress || targetAddr
+            };
+            localStorage.setItem('proprush_user_profile', JSON.stringify(updated));
+            if (updated.dynamicUserId) {
+              localStorage.setItem(`proprush_dynamic_${updated.dynamicUserId}`, JSON.stringify(updated));
+            }
+            return updated;
+          }
+          return prev;
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to sync on-chain USDC balance:', e);
+    }
+  }, [user.walletAddress]);
+
+  useEffect(() => {
+    refreshOnChainUsdcBalance();
+
+    const handleUsdcUpdated = (e: any) => {
+      const addr = e.detail?.address;
+      refreshOnChainUsdcBalance(addr);
+    };
+
+    window.addEventListener('proprush_usdc_updated', handleUsdcUpdated);
+    const onFocus = () => refreshOnChainUsdcBalance();
+    window.addEventListener('focus', onFocus);
+
+    const interval = setInterval(() => {
+      refreshOnChainUsdcBalance();
+    }, 15000);
+
+    return () => {
+      window.removeEventListener('proprush_usdc_updated', handleUsdcUpdated);
+      window.removeEventListener('focus', onFocus);
+      clearInterval(interval);
+    };
+  }, [refreshOnChainUsdcBalance]);
 
   const deductBuyIn = (amount: number): boolean => {
     if (isBanned) {
@@ -1011,6 +1097,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
         depositFunds,
         withdrawFunds,
         buyCoinPack,
+        exchangeUsdcForCoins,
+        refreshOnChainUsdcBalance,
         deductBuyIn,
         buyStoreItem,
         equipItem,

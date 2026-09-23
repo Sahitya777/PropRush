@@ -6,6 +6,7 @@ import { AvatarCharacter } from '../components/AvatarCharacter';
 import { DiceFaceMini } from '../components/DiceFaceMini';
 import { StoreItem } from '../types/user';
 import { sounds } from '../utils/audio';
+import { MockUsdcFaucetModal } from '../components/MockUsdcFaucetModal';
 
 export const StoreView: React.FC = () => {
   const { user, buyStoreItem, buyCoinPack, equipItem, isLoggedIn, openAuthModal } = useUser();
@@ -13,6 +14,7 @@ export const StoreView: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [buySuccessMsg, setBuySuccessMsg] = useState<string | null>(null);
   const [buyErrorMsg, setBuyErrorMsg] = useState<string | null>(null);
+  const [showFaucetModal, setShowFaucetModal] = useState(false);
 
   const categories = [
     { id: 'all', label: 'All Items', icon: '🏠' },
@@ -71,22 +73,22 @@ export const StoreView: React.FC = () => {
 
     if (user.walletBalance < pack.priceUsd) {
       sounds.playPayRent();
-      setBuyErrorMsg(`Insufficient wallet balance ($${user.walletBalance.toFixed(2)} available). You need $${pack.priceUsd.toFixed(2)} to buy ${pack.name}. Please deposit funds.`);
-      setTimeout(() => setBuyErrorMsg(null), 4500);
+      setBuyErrorMsg(`Insufficient USDC balance ($${user.walletBalance.toFixed(2)} available). You need $${pack.priceUsd.toFixed(2)} USDC to buy ${pack.name}. Please claim free USDC from the Base Sepolia faucet below!`);
+      setTimeout(() => setBuyErrorMsg(null), 6000);
       return;
     }
 
     const ok = buyCoinPack(pack.coins, pack.priceUsd);
     if (ok) {
-      setBuySuccessMsg(`💰 Successfully bought +${pack.coins} PropRush Coins! $${pack.priceUsd.toFixed(2)} deducted from your account.`);
+      setBuySuccessMsg(`💰 Successfully bought +${pack.coins.toLocaleString()} PropRush Coins! $${pack.priceUsd.toFixed(2)} USDC deducted from your wallet.`);
       setTimeout(() => setBuySuccessMsg(null), 4000);
     }
   };
 
   const coinPacks = [
-    { id: 'coins_100', name: 'Pouch of Coins', coins: 100, priceUsd: 1.99, icon: '🪙' },
-    { id: 'coins_350', name: 'Tycoon Chest', coins: 350, priceUsd: 4.99, icon: '💰', popular: true },
-    { id: 'coins_1000', name: 'Mogul Vault', coins: 1000, priceUsd: 11.99, icon: '👑' }
+    { id: 'coins_100', name: 'Pouch of Coins', coins: 100, priceUsd: 1, icon: '🪙' },
+    { id: 'coins_350', name: 'Tycoon Chest', coins: 350, priceUsd: 3, icon: '💰', popular: true },
+    { id: 'coins_1000', name: 'Mogul Vault', coins: 1000, priceUsd: 8, icon: '👑' }
   ];
 
   const getRarityBadge = (rarity?: string) => {
@@ -127,15 +129,15 @@ export const StoreView: React.FC = () => {
 
         {/* Current Balances Badges */}
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
-          {/* USD Wallet Balance */}
+          {/* USDC Balance */}
           <div className={`flex items-center gap-2 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-2xl border font-mono-code font-bold text-xs sm:text-base shadow-sm ${
             isLight
-              ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-              : 'bg-[#131d2e] border-emerald-500/40 text-emerald-300'
+              ? 'bg-blue-50 border-blue-300 text-blue-800'
+              : 'bg-[#101a2e] border-blue-500/40 text-blue-300'
           }`}>
-            <span>💵</span>
+            <span>💎</span>
             <span>${user.walletBalance.toFixed(2)}</span>
-            <span className="text-[10px] text-emerald-600 dark:text-emerald-400/80 font-normal uppercase hidden sm:inline">Wallet</span>
+            <span className="text-[10px] text-blue-500 font-bold uppercase hidden sm:inline">USDC</span>
           </div>
 
           {/* PropRush Coins */}
@@ -145,7 +147,7 @@ export const StoreView: React.FC = () => {
               : 'bg-[#1c1630] border-amber-500/40 text-amber-300'
           }`}>
             <span className="text-base sm:text-lg">🪙</span>
-            <span>{user.coins} Coins</span>
+            <span>{user.coins.toLocaleString()} Coins</span>
           </div>
         </div>
       </div>
@@ -301,22 +303,54 @@ export const StoreView: React.FC = () => {
           {selectedCategory === 'coins' ? (
             /* PropRush Coins Purchase Packs */
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h2 className={`font-heading font-black text-xl ${isLight ? 'text-slate-900' : 'text-white'}`}>
                     PropRush Coin Packs
                   </h2>
                   <p className={`text-xs mt-0.5 ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                    PropRush Coins are instantly purchased with your USD account balance and credited to your inventory.
+                    PropRush Coins are instantly purchased with your Web3 USDC and credited to your inventory.
                   </p>
                 </div>
-                <span className={`text-xs font-mono-code font-bold px-3 py-1 rounded-xl border ${
-                  isLight
-                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                    : 'bg-emerald-950/40 border-emerald-500/30 text-emerald-400'
-                }`}>
-                  Balance: ${user.walletBalance.toFixed(2)}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-mono-code font-bold px-3 py-1 rounded-xl border ${
+                    isLight
+                      ? 'bg-blue-50 border-blue-300 text-blue-800'
+                      : 'bg-blue-950/40 border-blue-500/30 text-blue-400'
+                  }`}>
+                    USDC: ${user.walletBalance.toFixed(2)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowFaucetModal(true)}
+                    className="px-2.5 py-1 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white cursor-pointer shadow-sm transition-all flex items-center gap-1"
+                  >
+                    <span>💧</span>
+                    <span>+50 Faucet</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Faucet Promo Banner */}
+              <div className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 ${
+                isLight ? 'bg-blue-50/70 border-blue-200' : 'bg-blue-950/20 border-blue-500/30'
+              }`}>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-xl">💧</span>
+                  <div>
+                    <span className="font-bold text-blue-500 block">Base Sepolia Testnet USDC Faucet</span>
+                    <span className={isLight ? 'text-slate-600' : 'text-slate-400'}>
+                      Claim 50 free Mock USDC to buy any coin pack or join high-stakes multiplayer rooms!
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowFaucetModal(true)}
+                  className="w-full sm:w-auto px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer shadow-md transition-all active:scale-95 shrink-0"
+                >
+                  Claim 50 Free USDC
+                </button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -341,16 +375,16 @@ export const StoreView: React.FC = () => {
                     <span className="text-4xl my-2">{pack.icon}</span>
                     <h3 className={`font-heading font-bold text-base ${isLight ? 'text-slate-900' : 'text-white'}`}>{pack.name}</h3>
                     <div className={`font-mono-code font-black text-2xl ${isLight ? 'text-amber-700' : 'text-amber-300'}`}>
-                      +{pack.coins} Coins
+                      +{pack.coins.toLocaleString()} Coins
                     </div>
                     <p className={`text-[11px] ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                       Instantly unlocks animated avatar frames, skins, dice, and maps!
                     </p>
                     <button
                       onClick={() => handleBuyCoins(pack)}
-                      className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-heading font-bold text-xs cursor-pointer transition-all shadow-md mt-2 active:scale-95 flex items-center justify-center gap-1"
+                      className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-heading font-bold text-xs cursor-pointer transition-all shadow-md mt-2 active:scale-95 flex items-center justify-center gap-1.5"
                     >
-                      <span>Buy for ${pack.priceUsd.toFixed(2)} USD</span>
+                      <span>Buy for ${pack.priceUsd} USDC</span>
                     </button>
                   </div>
                 ))}
@@ -515,6 +549,12 @@ export const StoreView: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Mock USDC Faucet Modal for Store Purchases */}
+      <MockUsdcFaucetModal
+        isOpen={showFaucetModal}
+        onClose={() => setShowFaucetModal(false)}
+      />
     </div>
   );
 };

@@ -43,7 +43,7 @@ export const MockUsdcFaucetModal: React.FC<MockUsdcFaucetModalProps> = ({
   initialAddress,
 }) => {
   const { isLight } = useTheme();
-  const { user, openAuthModal } = useUser();
+  const { user, openAuthModal, depositFunds, refreshOnChainUsdcBalance } = useUser();
   const { primaryWallet, setShowAuthFlow } = useSafeDynamic();
 
   // Fixed 50 mUSDC allocation
@@ -229,14 +229,21 @@ export const MockUsdcFaucetModal: React.FC<MockUsdcFaucetModalProps> = ({
       const txHash = await mintTestUsdc(walletClient, targetAddress, CLAIM_AMOUNT);
 
       sounds.playCash();
+      depositFunds(CLAIM_AMOUNT, 'mock_usdc_faucet');
       setStatusMessage({
         type: 'success',
         text: `Successfully minted ${CLAIM_AMOUNT} Mock USDC to ${targetAddress.slice(0, 6)}...${targetAddress.slice(-4)}!`,
         txHash,
       });
 
-      // Refresh balance
+      // Refresh balance locally & sync with global account
       await fetchBalance(targetAddress);
+      refreshOnChainUsdcBalance(targetAddress);
+      window.dispatchEvent(
+        new CustomEvent('proprush_usdc_updated', {
+          detail: { address: targetAddress, amount: CLAIM_AMOUNT, txHash },
+        })
+      );
     } catch (err: any) {
       console.error('Direct Web3 mint error:', err);
       sounds.playError();

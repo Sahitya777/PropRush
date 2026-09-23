@@ -187,19 +187,20 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
               </span>
             </button>
 
-            {/* Wallet Balance ($ Wager system) */}
+            {/* Wallet Balance (Base Sepolia USDC & Coins) */}
             <button
               id="btn-wallet-open"
               onClick={handleWalletClick}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono-code font-bold text-xs transition-all cursor-pointer shadow-xs shrink-0 ${
                 isLight
-                  ? 'bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800'
-                  : 'bg-emerald-950/50 hover:bg-emerald-900/60 border border-emerald-500/40 text-emerald-300'
+                  ? 'bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-800'
+                  : 'bg-blue-950/50 hover:bg-blue-900/60 border border-blue-500/40 text-blue-300'
               }`}
-              title="Real-Money Wallet Balance"
+              title="Base Sepolia USDC & Game Wallet"
             >
-              <span>💵</span>
+              <span>💎</span>
               <span>${(Number(user?.walletBalance) || 0).toFixed(2)}</span>
+              <span className="text-[10px] text-blue-500 font-bold hidden sm:inline">USDC</span>
             </button>
 
             {/* Base Sepolia Faucet: Claim 50 Mock USDC */}
@@ -644,7 +645,7 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
                   )}
                 </button>
 
-                {/* Wallet / Cashier */}
+                {/* Wallet / USDC Cashier */}
                 <button
                   type="button"
                   onClick={() => {
@@ -654,16 +655,16 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
                   }}
                   className={`w-full px-3.5 py-3 rounded-2xl font-bold text-sm flex items-center justify-between transition-all cursor-pointer ${
                     isLight
-                      ? 'hover:bg-emerald-50 text-emerald-800'
-                      : 'hover:bg-emerald-950/30 text-emerald-300'
+                      ? 'hover:bg-blue-50 text-blue-800'
+                      : 'hover:bg-blue-950/30 text-blue-300'
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <span className="text-lg">💵</span>
-                    <span>Wallet & Cashier</span>
+                    <span className="text-lg">💎</span>
+                    <span>USDC & Coins Wallet</span>
                   </div>
-                  <span className="text-xs font-mono-code font-bold text-emerald-400">
-                    ${(Number(user?.walletBalance) || 0).toFixed(2)}
+                  <span className="text-xs font-mono-code font-bold text-blue-400">
+                    ${(Number(user?.walletBalance) || 0).toFixed(2)} USDC
                   </span>
                 </button>
 
