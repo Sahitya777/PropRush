@@ -14,6 +14,8 @@ export interface ActiveRoomInfo {
   createdAt: number;
   initialCash?: number;
   isCustom?: boolean;
+  wagerContractAddress?: string;
+  wagerMode?: 'free' | 'crypto';
 }
 
 const STORAGE_KEY = 'proprush_active_rooms_registry_v1';
@@ -185,7 +187,9 @@ export async function findActiveRoomByCodeAsync(code: string): Promise<ActiveRoo
         map: (s.boardTheme || '').toLowerCase().includes('cyber') ? 'Cyber Neon' : (s.boardTheme || '').toLowerCase().includes('world') ? 'Worldwide' : 'Classic',
         createdAt: Date.now(),
         initialCash: s.initialCash || 1500,
-        isCustom: true
+        isCustom: true,
+        wagerContractAddress: s.wagerContractAddress,
+        wagerMode: s.wagerMode
       };
       registerActiveRoom(roomInfo);
       return roomInfo;

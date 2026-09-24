@@ -17,6 +17,10 @@ import {
   ActiveRoomInfo
 } from '../utils/activeRoomsRegistry';
 import { fetchServerRoom, createServerRoom, disbandServerRoom } from '../utils/serverRoomSync';
+import { useSafeDynamic } from '../context/DynamicIntegration';
+import { createWagerPool, getWalletClient } from '../contracts/client';
+import { getBaseScanTxUrl } from '../contracts/config';
+import { Loader2, Shield, AlertCircle, CheckCircle2, ExternalLink } from 'lucide-react';
 
 interface HomeLobbyViewProps {
   onJoinRoom: (roomConfig: {
@@ -62,12 +66,18 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
 }) => {
   const { user, deductBuyIn, depositFunds, isLoggedIn, openAuthModal, isBanned } = useUser();
   const { isLight } = useTheme();
+  const { primaryWallet } = useSafeDynamic();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [roomCodeInput, setRoomCodeInput] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [isJoinErrorShaking, setIsJoinErrorShaking] = useState(false);
   const [sampleCompletedMatch, setSampleCompletedMatch] = useState<GameRoom | null>(null);
+
+  // WagerPool on-chain deployment state for room creation
+  const [isDeployingPool, setIsDeployingPool] = useState(false);
+  const [poolDeployStatus, setPoolDeployStatus] = useState<string | null>(null);
+  const [createRoomError, setCreateRoomError] = useState<string | null>(null);
 
   // Active rooms registry state
   const [activeRooms, setActiveRooms] = useState<ActiveRoomInfo[]>(() => getAllActiveRooms());
@@ -158,14 +168,18 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
         openAuthModal('Log in or sign up with Dynamic to enter cash stakes matches and win real prize pools.');
         return;
       }
-      if (user.walletBalance < bet) {
-        onOpenWallet();
-        return;
-      }
+      // When bet > 0, on-chain WagerPool must be deployed via wallet confirmation first:
+      setBetAmount(bet);
+      setWagerPreset(bet.toString());
+      setWagerMode('crypto');
+      setTurnTimeSeconds(timer);
+      setCreateRoomError(null);
+      setShowCreateModal(true);
+      return;
     }
 
     const quickCode = 'quick_' + Math.floor(100 + Math.random() * 900);
-    const quickRoomName = bet > 0 ? `$${bet} Wager Blitz` : 'Casual Fast Room';
+    const quickRoomName = 'Casual Fast Room';
 
     // Register active room into live registry
     registerActiveRoom({
@@ -176,10 +190,11 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       hostId: user.id,
       players: 1,
       max: 4,
-      bet,
+      bet: 0,
       turnTime: timer,
       map: 'Classic',
-      initialCash: 1500
+      initialCash: 1500,
+      wagerMode: 'free'
     });
     setActiveRooms(getAllActiveRooms());
 
@@ -188,11 +203,12 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       roomCode: quickCode,
       roomName: quickRoomName,
       maxPlayers: 4,
-      betAmount: bet,
+      betAmount: 0,
       initialCash: 1500,
       turnTimeSeconds: timer,
       boardTheme: 'classic',
       fillWithBots: true,
+      wagerMode: 'free',
       isCreator: true
     });
   };
@@ -232,14 +248,40 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
     }
     const effectiveBet = wagerPreset === 'custom' ? (parseInt(customWagerAmount, 10) || 0) : betAmount;
 
+    let deployedPoolAddress: string | undefined = undefined;
+
+    // IF MONEY / WAGER IS INVOLVED: Deploy WagerPool on-chain first via wallet approval!
     if (effectiveBet > 0) {
       if (!isLoggedIn) {
         openAuthModal('Log in or sign up with Dynamic to create real-money wager rooms.');
         return;
       }
-      if (user.walletBalance < effectiveBet) {
-        onOpenWallet();
-        return;
+
+      setIsDeployingPool(true);
+      setCreateRoomError(null);
+      setPoolDeployStatus('1/2: Please confirm the WagerPool creation in your wallet popup (MetaMask / Dynamic)...');
+
+      try {
+        const { walletClient } = await getWalletClient(primaryWallet);
+        setPoolDeployStatus(`2/2: Deploying WagerPool ($${effectiveBet} USDC, ${maxPlayers} max players) on Base Sepolia... Waiting for block confirmation...`);
+        
+        const result = await createWagerPool(
+          walletClient,
+          effectiveBet,
+          maxPlayers,
+          500 // 5% platform fee
+        );
+
+        deployedPoolAddress = result.poolAddress;
+        setPoolDeployStatus(`✓ WagerPool confirmed on Base Sepolia at ${result.poolAddress.slice(0, 6)}...${result.poolAddress.slice(-4)}! Launching room...`);
+      } catch (err: any) {
+        console.error('Failed to create WagerPool on-chain:', err);
+        setIsDeployingPool(false);
+        setPoolDeployStatus(null);
+        sounds.playBankrupt();
+        const errText = err?.shortMessage || err?.message || 'Transaction rejected by user or failed on chain.';
+        setCreateRoomError(`Wallet transaction failed: ${errText}. Room creation cancelled.`);
+        return; // CRITICAL: Stop execution! Do NOT make room!
       }
     }
 
@@ -268,7 +310,9 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       bet: effectiveBet,
       turnTime: turnTimeSeconds || 15,
       map: boardTheme === 'cyber' ? 'Cyber Neon' : boardTheme === 'worldwide' ? 'Worldwide' : 'Classic',
-      initialCash
+      initialCash,
+      wagerContractAddress: deployedPoolAddress,
+      wagerMode: effectiveBet > 0 ? 'crypto' : 'free'
     });
     setActiveRooms(getAllActiveRooms());
 
@@ -284,7 +328,8 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
           boardTheme: mapTheme,
           isPrivate: false,
           fillWithBots,
-          wagerMode: effectiveBet > 0 ? wagerMode : 'free',
+          wagerMode: effectiveBet > 0 ? 'crypto' : 'free',
+          wagerContractAddress: deployedPoolAddress,
           players: [
             {
               id: effectiveHostId,
@@ -314,6 +359,8 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
     }
 
     sounds.playCashRegister();
+    setIsDeployingPool(false);
+    setPoolDeployStatus(null);
     onJoinRoom({
       roomCode: effectiveCode,
       roomName: effectiveName,
@@ -323,7 +370,8 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       turnTimeSeconds: turnTimeSeconds || 15,
       boardTheme,
       fillWithBots,
-      wagerMode: effectiveBet > 0 ? wagerMode : 'free',
+      wagerMode: effectiveBet > 0 ? 'crypto' : 'free',
+      wagerContractAddress: deployedPoolAddress,
       isCreator: true
     });
     setShowCreateModal(false);
@@ -379,7 +427,9 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
         turnTimeSeconds: foundRoom.turnTime,
         boardTheme: foundRoom.map.toLowerCase(),
         fillWithBots: !foundRoom.isCustom,
-        isCreator: false
+        isCreator: false,
+        wagerContractAddress: foundRoom.wagerContractAddress,
+        wagerMode: foundRoom.wagerMode || (foundRoom.bet > 0 ? 'crypto' : 'free')
       });
       return;
     }
@@ -398,7 +448,9 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
         turnTimeSeconds: directServerRoom.turnTimeLimit || (directServerRoom as any).turnTimeSeconds || 15,
         boardTheme: (directServerRoom.boardTheme || 'classic').toLowerCase(),
         fillWithBots: false,
-        isCreator: false
+        isCreator: false,
+        wagerContractAddress: (directServerRoom as any).wagerContractAddress,
+        wagerMode: (directServerRoom as any).wagerMode || (((directServerRoom as any).betAmount || 0) > 0 ? 'crypto' : 'free')
       });
       return;
     }
@@ -432,7 +484,9 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       turnTimeSeconds: room.turnTime,
       boardTheme: room.map.toLowerCase(),
       fillWithBots: !room.isCustom,
-      isCreator: false
+      isCreator: false,
+      wagerContractAddress: room.wagerContractAddress,
+      wagerMode: room.wagerMode || (room.bet > 0 ? 'crypto' : 'free')
     });
   };
 
@@ -449,7 +503,8 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
-  const totalPot = maxPlayers * betAmount;
+  const effectiveBet = wagerPreset === 'custom' ? (parseInt(customWagerAmount, 10) || 0) : betAmount;
+  const totalPot = maxPlayers * effectiveBet;
   const winnerPayout = totalPot > 0 ? (totalPot * 0.95).toFixed(2) : '0';
   const platformFee = totalPot > 0 ? (totalPot * 0.05).toFixed(2) : '0';
 
@@ -1006,6 +1061,58 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
             </div>
 
             <form onSubmit={handleCreateRoomSubmit} className="space-y-4 text-xs">
+              {/* Active Deployment Card */}
+              {isDeployingPool && (
+                <div className="p-4 rounded-2xl border bg-gradient-to-r from-blue-900/50 via-indigo-900/50 to-purple-900/50 border-blue-400/50 text-white text-xs space-y-2 animate-fade-in shadow-xl">
+                  <div className="flex items-center gap-2 font-bold text-blue-300 text-sm">
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-400 shrink-0" />
+                    <span>Deploying On-Chain Escrow Smart Contract</span>
+                  </div>
+                  <p className="text-[11px] text-slate-200 leading-relaxed font-mono-code">
+                    {poolDeployStatus}
+                  </p>
+                  <p className="text-[10px] text-amber-300 font-bold flex items-center gap-1.5 pt-1 border-t border-blue-400/20">
+                    <span>⚠️</span>
+                    <span>Please approve the transaction prompt in your wallet popup. Do not close this tab.</span>
+                  </p>
+                </div>
+              )}
+
+              {/* Deployment Error Alert */}
+              {createRoomError && (
+                <div className="p-3.5 rounded-xl border bg-rose-500/15 border-rose-500/40 text-rose-300 text-xs space-y-1 animate-fade-in">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-bold text-rose-400">
+                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                      <span>Room Creation Cancelled</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCreateRoomError(null)}
+                      className="text-slate-400 hover:text-white text-xs"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-relaxed">{createRoomError}</p>
+                </div>
+              )}
+
+              {/* On-Chain Escrow Info Banner when bet > 0 */}
+              {effectiveBet > 0 && !isDeployingPool && (
+                <div className={`p-3 rounded-xl border flex items-start gap-2.5 ${
+                  isLight ? 'bg-blue-50 border-blue-200 text-blue-900' : 'bg-blue-950/30 border-blue-500/30 text-blue-300'
+                }`}>
+                  <Shield className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-xs">Base Sepolia Smart Contract Escrow</div>
+                    <p className={`text-[11px] leading-relaxed ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
+                      When creating this room, your wallet will prompt you to deploy the on-chain WagerPool contract (${effectiveBet} USDC buy-in). The room is only created once approved and confirmed on-chain.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Room Name & Unique Link */}
               <div>
                 <label className={`block font-bold mb-1 ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>Room Name</label>
@@ -1328,8 +1435,9 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
+                  disabled={isDeployingPool}
                   onClick={() => setShowCreateModal(false)}
-                  className={`flex-1 py-2.5 rounded-xl font-bold cursor-pointer ${
+                  className={`flex-1 py-2.5 rounded-xl font-bold cursor-pointer transition-all disabled:opacity-50 ${
                     isLight
                       ? 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                       : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
@@ -1339,9 +1447,22 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-[#7059e2] to-[#8e76f7] hover:from-[#6047d8] hover:to-[#7f63f3] font-heading font-black text-white cursor-pointer shadow-lg active:scale-95"
+                  disabled={isDeployingPool}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-[#7059e2] to-[#8e76f7] hover:from-[#6047d8] hover:to-[#7f63f3] disabled:opacity-60 font-heading font-black text-white cursor-pointer shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
                 >
-                  Launch Room 🚀
+                  {isDeployingPool ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>Deploying Escrow ({poolDeployStatus ? 'In Progress' : 'Prompting'}...)...</span>
+                    </>
+                  ) : effectiveBet > 0 ? (
+                    <>
+                      <Shield className="w-4 h-4" />
+                      <span>Deploy Escrow & Launch Room 🚀</span>
+                    </>
+                  ) : (
+                    <span>Launch Free Room 🚀</span>
+                  )}
                 </button>
               </div>
             </form>

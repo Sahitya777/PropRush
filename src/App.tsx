@@ -203,7 +203,9 @@ function AppContent() {
               turnTimeSeconds: found.turnTime,
               boardTheme: found.map.toLowerCase(),
               fillWithBots: !found.isCustom,
-              isCreator: amIHost
+              isCreator: amIHost,
+              wagerContractAddress: found.wagerContractAddress,
+              wagerMode: found.wagerMode || (found.bet > 0 ? 'crypto' : 'free')
             });
           } else {
             // Enter custom room directly from share link
@@ -433,7 +435,9 @@ function AppContent() {
                     initialCash: found.initialCash || 1500,
                     turnTimeSeconds: found.turnTime,
                     boardTheme: found.map.toLowerCase(),
-                    fillWithBots: true
+                    fillWithBots: true,
+                    wagerContractAddress: found.wagerContractAddress,
+                    wagerMode: found.wagerMode || (found.bet > 0 ? 'crypto' : 'free')
                   });
                 } else {
                   // Connect directly with default parameters

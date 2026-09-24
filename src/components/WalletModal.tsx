@@ -48,7 +48,6 @@ export const WalletModal: React.FC<WalletModalProps> = ({
     user,
     depositFunds,
     withdrawFunds,
-    exchangeUsdcForCoins,
     refreshOnChainUsdcBalance,
     isLoggedIn,
     openAuthModal,
@@ -56,12 +55,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
   const { isLight } = useTheme();
   const { primaryWallet } = useSafeDynamic();
 
-  const [tab, setTab] = useState<'exchange' | 'faucet' | 'deposit' | 'withdraw' | 'wager_info'>('exchange');
-
-  // Exchange state
-  const [selectedExchangePack, setSelectedExchangePack] = useState<number>(10);
-  const [customUsdcAmount, setCustomUsdcAmount] = useState<number>(10);
-  const [isExchanging, setIsExchanging] = useState(false);
+  const [tab, setTab] = useState<'faucet' | 'deposit' | 'withdraw'>('faucet');
 
   // Faucet state (embedded directly so user has full control)
   const [isMintingFaucet, setIsMintingFaucet] = useState(false);
@@ -76,10 +70,6 @@ export const WalletModal: React.FC<WalletModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isRefreshingBalance, setIsRefreshingBalance] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState(false);
-
-  // Withdraw state
-  const [withdrawAmount, setWithdrawAmount] = useState<number>(10);
-  const [withdrawAddress, setWithdrawAddress] = useState<string>('');
 
   // Active address
   const activeAddress = (
@@ -98,66 +88,6 @@ export const WalletModal: React.FC<WalletModalProps> = ({
   if (!isOpen) return null;
 
   const currentUsdcBalance = Number(user.walletBalance) || 0;
-
-  // Exchange Rate Helper
-  const getCoinsForUsdc = (usdc: number): number => {
-    if (usdc <= 0) return 0;
-    if (usdc >= 50) return Math.floor(usdc * 140); // 40% bonus
-    if (usdc >= 20) return Math.floor(usdc * 125); // 25% bonus
-    if (usdc >= 10) return Math.floor(usdc * 120); // 20% bonus
-    return Math.floor(usdc * 100);
-  };
-
-  const exchangePacks = [
-    { usdc: 5, coins: 500, label: 'Starter Pack', bonus: '' },
-    { usdc: 10, coins: 1200, label: 'Popular', bonus: '+20% Bonus' },
-    { usdc: 20, coins: 2500, label: 'Tycoon Pack', bonus: '+25% Bonus' },
-    { usdc: 50, coins: 7000, label: 'Best Value', bonus: '+40% Bonus', highlight: true },
-  ];
-
-  // Action: Convert USDC to PropRush Coins
-  const handleExchange = () => {
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
-    const neededUsdc = customUsdcAmount;
-    if (neededUsdc <= 0) {
-      setErrorMsg('Please select or enter a valid USDC amount to exchange.');
-      return;
-    }
-
-    if (currentUsdcBalance < neededUsdc) {
-      sounds.playPayRent();
-      setErrorMsg(
-        `Insufficient USDC balance ($${currentUsdcBalance.toFixed(2)} available). You need $${neededUsdc.toFixed(2)} USDC. Claim free USDC from the Faucet below!`
-      );
-      return;
-    }
-
-    const coinsToReceive = getCoinsForUsdc(neededUsdc);
-    setIsExchanging(true);
-
-    try {
-      const ok = exchangeUsdcForCoins(neededUsdc, coinsToReceive);
-      if (ok) {
-        sounds.playVictory();
-        try {
-          fireConfetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
-        } catch {}
-        setSuccessMsg(
-          `🎉 Successfully exchanged ${neededUsdc} USDC for +${coinsToReceive.toLocaleString()} PropRush Coins!`
-        );
-        setTimeout(() => setSuccessMsg(null), 5000);
-      } else {
-        setErrorMsg('Exchange failed. Please check your available balance.');
-      }
-    } catch (err: any) {
-      console.error('Exchange error:', err);
-      setErrorMsg(err.message || 'Failed to exchange USDC for coins.');
-    } finally {
-      setIsExchanging(false);
-    }
-  };
 
   // Action: Quick Faucet Claim (Fixed 50 mUSDC to connected wallet)
   const handleQuickFaucetMint = async () => {
@@ -265,30 +195,12 @@ export const WalletModal: React.FC<WalletModalProps> = ({
     setTimeout(() => setIsRefreshingBalance(false), 600);
   };
 
-  // Action: Withdraw
-  const handleWithdraw = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg(null);
-    if (withdrawAmount <= 0 || withdrawAmount > currentUsdcBalance) {
-      setErrorMsg('Invalid withdrawal amount. Exceeds available USDC balance.');
-      return;
-    }
-    const ok = withdrawFunds(withdrawAmount);
-    if (ok) {
-      sounds.playCash();
-      setSuccessMsg(
-        `Withdrawal of $${withdrawAmount.toFixed(2)} USDC initiated to ${withdrawAddress || activeAddress || 'connected wallet'}!`
-      );
-      setTimeout(() => setSuccessMsg(null), 4000);
-    }
-  };
-
   return (
     <div
       id="modal-unified-wallet"
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fade-in"
       onClick={(e) => {
-        if (e.target === e.currentTarget && !isMintingFaucet && !isExchanging) {
+        if (e.target === e.currentTarget && !isMintingFaucet) {
           onClose();
         }
       }}
@@ -443,13 +355,9 @@ export const WalletModal: React.FC<WalletModalProps> = ({
               <span className={isLight ? 'text-slate-500' : 'text-slate-400'}>
                 Used for skins & maps
               </span>
-              <button
-                type="button"
-                onClick={() => setTab('exchange')}
-                className="text-amber-600 dark:text-amber-400 font-bold hover:underline cursor-pointer flex items-center gap-0.5 text-[11px]"
-              >
-                <span>🪙 Get Coins</span>
-              </button>
+              <span className="text-[11px] font-bold text-amber-500/80">
+                Earn in Matches
+              </span>
             </div>
           </div>
         </div>
@@ -469,28 +377,15 @@ export const WalletModal: React.FC<WalletModalProps> = ({
           </div>
         )}
 
-        {/* Tabs */}
+        {/* Tabs: Only Faucet, Deposit, Withdraw */}
         <div
-          className={`grid grid-cols-4 gap-1 p-1 rounded-xl border text-xs font-bold ${
+          className={`grid grid-cols-3 gap-1.5 p-1 rounded-xl border text-xs font-bold ${
             isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-900/80 border-slate-800'
           }`}
         >
           <button
-            onClick={() => setTab('exchange')}
-            className={`py-2 px-1 rounded-lg transition-all cursor-pointer text-center text-xs truncate flex items-center justify-center gap-1 ${
-              tab === 'exchange'
-                ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md font-black'
-                : isLight
-                ? 'text-slate-600 hover:text-slate-900'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <span>🪙</span>
-            <span>Get Coins</span>
-          </button>
-          <button
             onClick={() => setTab('faucet')}
-            className={`py-2 px-1 rounded-lg transition-all cursor-pointer text-center text-xs truncate flex items-center justify-center gap-1 ${
+            className={`py-2 px-1 rounded-lg transition-all cursor-pointer text-center text-xs truncate flex items-center justify-center gap-1.5 ${
               tab === 'faucet'
                 ? 'bg-blue-600 text-white shadow-md font-black'
                 : isLight
@@ -503,7 +398,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
           </button>
           <button
             onClick={() => setTab('deposit')}
-            className={`py-2 px-1 rounded-lg transition-all cursor-pointer text-center text-xs truncate flex items-center justify-center gap-1 ${
+            className={`py-2 px-1 rounded-lg transition-all cursor-pointer text-center text-xs truncate flex items-center justify-center gap-1.5 ${
               tab === 'deposit'
                 ? 'bg-indigo-600 text-white shadow-md font-black'
                 : isLight
@@ -513,10 +408,13 @@ export const WalletModal: React.FC<WalletModalProps> = ({
           >
             <span>+</span>
             <span>Deposit</span>
+            <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 font-semibold border border-amber-500/30">
+              Soon
+            </span>
           </button>
           <button
             onClick={() => setTab('withdraw')}
-            className={`py-2 px-1 rounded-lg transition-all cursor-pointer text-center text-xs truncate flex items-center justify-center gap-1 ${
+            className={`py-2 px-1 rounded-lg transition-all cursor-pointer text-center text-xs truncate flex items-center justify-center gap-1.5 ${
               tab === 'withdraw'
                 ? 'bg-purple-600 text-white shadow-md font-black'
                 : isLight
@@ -526,163 +424,11 @@ export const WalletModal: React.FC<WalletModalProps> = ({
           >
             <span>↗</span>
             <span>Withdraw</span>
+            <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 font-semibold border border-amber-500/30">
+              Soon
+            </span>
           </button>
         </div>
-
-        {/* TAB 1: CONVERT USDC TO COINS (User's primary requested flow) */}
-        {tab === 'exchange' && (
-          <div className="space-y-4 animate-fade-in">
-            <div
-              className={`p-3 rounded-2xl border text-xs flex items-center justify-between ${
-                isLight ? 'bg-amber-50/70 border-amber-200' : 'bg-amber-950/20 border-amber-500/30'
-              }`}
-            >
-              <div>
-                <div className="font-bold text-amber-500 flex items-center gap-1.5 text-xs">
-                  <Coins className="w-4 h-4" />
-                  <span>Exchange Rate: 1 USDC = 100 PropRush Coins</span>
-                </div>
-                <div className={`text-[11px] mt-0.5 ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                  Convert your Base Sepolia USDC to buy skins, dice skins, maps & avatar frames!
-                </div>
-              </div>
-            </div>
-
-            {/* Pre-set Exchange Packs */}
-            <div>
-              <label
-                className={`block text-xs font-bold mb-1.5 ${
-                  isLight ? 'text-slate-700' : 'text-slate-300'
-                }`}
-              >
-                Select Coin Exchange Pack
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {exchangePacks.map((pack) => {
-                  const isSelected = selectedExchangePack === pack.usdc;
-                  return (
-                    <button
-                      key={pack.usdc}
-                      type="button"
-                      onClick={() => {
-                        sounds.playClick();
-                        setSelectedExchangePack(pack.usdc);
-                        setCustomUsdcAmount(pack.usdc);
-                      }}
-                      className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer relative overflow-hidden ${
-                        isSelected
-                          ? 'bg-gradient-to-b from-amber-500/20 to-orange-500/20 border-amber-500 shadow-md ring-1 ring-amber-500'
-                          : isLight
-                          ? 'bg-slate-50 border-slate-200 hover:border-amber-300 text-slate-700'
-                          : 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-300'
-                      }`}
-                    >
-                      {pack.bonus && (
-                        <span className="absolute top-1 right-1 text-[9px] font-black px-1 rounded bg-amber-500 text-slate-950">
-                          {pack.bonus}
-                        </span>
-                      )}
-                      <div>
-                        <span className="text-[11px] font-bold block opacity-70">
-                          {pack.label}
-                        </span>
-                        <span className="font-mono-code font-black text-sm text-blue-500 block">
-                          ${pack.usdc} USDC
-                        </span>
-                      </div>
-                      <div className="mt-2 flex items-center gap-1 font-mono-code font-black text-xs text-amber-500">
-                        <span>🪙</span>
-                        <span>+{pack.coins.toLocaleString()}</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Custom USDC Input */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label
-                  className={`text-xs font-bold ${
-                    isLight ? 'text-slate-700' : 'text-slate-300'
-                  }`}
-                >
-                  Or Enter Custom USDC Amount
-                </label>
-                <span className="text-[11px] font-mono-code text-amber-500 font-bold">
-                  Yields: +{getCoinsForUsdc(customUsdcAmount).toLocaleString()} Coins
-                </span>
-              </div>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="1"
-                  max="1000"
-                  value={customUsdcAmount || ''}
-                  onChange={(e) => {
-                    const val = Math.max(0, parseInt(e.target.value, 10) || 0);
-                    setCustomUsdcAmount(val);
-                    setSelectedExchangePack(val);
-                  }}
-                  className={`w-full px-3.5 py-2.5 rounded-xl border text-sm font-mono-code focus:outline-none focus:border-amber-500 ${
-                    isLight
-                      ? 'bg-slate-50 border-slate-300 text-slate-900'
-                      : 'bg-slate-900 border-slate-700 text-white'
-                  }`}
-                  placeholder="Enter USDC (e.g. 5, 25, 50...)"
-                />
-                <span className="absolute right-3.5 top-2.5 text-xs font-bold text-blue-400">
-                  USDC
-                </span>
-              </div>
-            </div>
-
-            {/* Action Button: Exchange or Claim Faucet */}
-            <div>
-              {currentUsdcBalance >= customUsdcAmount && customUsdcAmount > 0 ? (
-                <button
-                  id="btn-exchange-coins"
-                  type="button"
-                  disabled={isExchanging}
-                  onClick={handleExchange}
-                  className="w-full py-3.5 rounded-2xl font-black text-sm text-white flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-95 transition-all bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:from-amber-500 hover:to-orange-500 shadow-amber-500/25 disabled:opacity-50"
-                >
-                  {isExchanging ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Exchanging USDC for Coins...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Coins className="w-4 h-4" />
-                      <span>
-                        Exchange {customUsdcAmount} USDC for +{getCoinsForUsdc(customUsdcAmount).toLocaleString()} Coins
-                      </span>
-                    </>
-                  )}
-                </button>
-              ) : (
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      sounds.playClick();
-                      setTab('faucet');
-                    }}
-                    className="w-full py-3.5 rounded-2xl font-black text-sm text-white flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-95 transition-all bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 shadow-blue-500/25"
-                  >
-                    <Droplets className="w-4 h-4 text-cyan-300" />
-                    <span>Claim 50 Free USDC from Faucet First</span>
-                  </button>
-                  <p className="text-center text-[11px] text-slate-400">
-                    Your balance is ${currentUsdcBalance.toFixed(2)} USDC. Claim free testnet USDC to convert into coins!
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* TAB 2: BASE SEPOLIA FAUCET (Claim 50 Mock USDC) */}
         {tab === 'faucet' && (
@@ -806,21 +552,37 @@ export const WalletModal: React.FC<WalletModalProps> = ({
           </div>
         )}
 
-        {/* TAB 3: DEPOSIT (Web3 USDC & Info) */}
+        {/* TAB 2: DEPOSIT (Coming Soon for Testnet) */}
         {tab === 'deposit' && (
           <div className="space-y-4 animate-fade-in">
             <div
-              className={`p-4 rounded-2xl border text-xs space-y-2 ${
+              className={`p-6 rounded-2xl border text-center space-y-3 ${
                 isLight ? 'bg-indigo-50/70 border-indigo-200 text-slate-800' : 'bg-indigo-950/30 border-indigo-500/30 text-slate-200'
               }`}
             >
-              <div className="font-bold flex items-center gap-2 text-sm text-indigo-400">
-                <Wallet className="w-4 h-4" />
-                <span>Web3 Wallet Deposit (Base Sepolia)</span>
+              <div className="w-12 h-12 mx-auto rounded-2xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-2xl">
+                💳
               </div>
-              <p className="text-[11px] leading-relaxed">
-                Your PropRush balance is automatically synced with your connected Base Sepolia wallet. To top up your balance, simply claim from the Faucet or transfer MockUSDC to your connected address.
-              </p>
+              <div className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                Testnet Phase • Coming Soon
+              </div>
+              <div>
+                <h4 className="font-heading font-black text-base">
+                  Fiat & Mainnet Crypto Deposit
+                </h4>
+                <p className="mt-1 text-xs opacity-75 max-w-sm mx-auto leading-relaxed">
+                  Real credit card on-ramping and mainnet deposits will open when PropRush launches on Base Mainnet. For this testnet version, claim 100% free MockUSDC from the faucet!
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setTab('faucet')}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-heading font-black text-xs cursor-pointer shadow-lg active:scale-95 transition-all inline-flex items-center gap-2"
+              >
+                <Droplets className="w-4 h-4" />
+                <span>Claim Free Testnet USDC Now 💧</span>
+              </button>
             </div>
 
             {/* Connected Wallet Info */}
@@ -855,81 +617,56 @@ export const WalletModal: React.FC<WalletModalProps> = ({
                 )}
               </div>
             </div>
-
-            {/* Quick Faucet Link */}
-            <button
-              type="button"
-              onClick={() => setTab('faucet')}
-              className="w-full py-3 rounded-xl font-bold text-xs bg-blue-600 hover:bg-blue-500 text-white cursor-pointer shadow-md transition-all flex items-center justify-center gap-2"
-            >
-              <Droplets className="w-4 h-4" />
-              <span>Claim Free 50 USDC from Faucet</span>
-            </button>
           </div>
         )}
 
-        {/* TAB 4: WITHDRAW */}
+        {/* TAB 3: WITHDRAW (Coming Soon for Testnet) */}
         {tab === 'withdraw' && (
-          <form onSubmit={handleWithdraw} className="space-y-4 animate-fade-in">
-            <div>
-              <label
-                className={`block text-xs font-bold mb-1.5 ${
-                  isLight ? 'text-slate-700' : 'text-slate-300'
-                }`}
-              >
-                Withdraw Amount (Max: ${currentUsdcBalance.toFixed(2)} USDC)
-              </label>
-              <input
-                type="number"
-                min="1"
-                max={currentUsdcBalance}
-                value={withdrawAmount || ''}
-                onChange={(e) =>
-                  setWithdrawAmount(
-                    Math.min(
-                      currentUsdcBalance,
-                      Math.max(0, parseInt(e.target.value, 10) || 0)
-                    )
-                  )
-                }
-                className={`w-full px-3 py-2.5 rounded-xl border text-sm font-mono-code focus:outline-none focus:border-purple-500 ${
-                  isLight
-                    ? 'bg-slate-50 border-slate-300 text-slate-900'
-                    : 'bg-slate-900 border-slate-700 text-white'
-                }`}
-              />
-            </div>
-
-            <div>
-              <label
-                className={`block text-xs font-bold mb-1.5 ${
-                  isLight ? 'text-slate-700' : 'text-slate-300'
-                }`}
-              >
-                Destination Wallet Address (Base Sepolia)
-              </label>
-              <input
-                type="text"
-                value={withdrawAddress}
-                onChange={(e) => setWithdrawAddress(e.target.value)}
-                placeholder={activeAddress || '0x... (Recipient Address)'}
-                className={`w-full px-3 py-2.5 rounded-xl border text-xs font-mono-code focus:outline-none focus:border-purple-500 ${
-                  isLight
-                    ? 'bg-slate-50 border-slate-300 text-slate-900'
-                    : 'bg-slate-900 border-slate-700 text-white'
-                }`}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={withdrawAmount <= 0 || withdrawAmount > currentUsdcBalance}
-              className="w-full py-3.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-heading font-black text-sm cursor-pointer shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+          <div className="space-y-4 animate-fade-in">
+            <div
+              className={`p-6 rounded-2xl border text-center space-y-3 ${
+                isLight ? 'bg-purple-50/70 border-purple-200 text-slate-800' : 'bg-purple-950/30 border-purple-500/30 text-slate-200'
+              }`}
             >
-              <Send className="w-4 h-4" />
-              <span>Withdraw ${withdrawAmount.toFixed(2)} USDC</span>
-            </button>
-          </form>
+              <div className="w-12 h-12 mx-auto rounded-2xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-2xl">
+                🏦
+              </div>
+              <div className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                Testnet Phase • Coming Soon
+              </div>
+              <div>
+                <h4 className="font-heading font-black text-base">
+                  Bank & Mainnet Cashout
+                </h4>
+                <p className="mt-1 text-xs opacity-75 max-w-sm mx-auto leading-relaxed">
+                  Off-ramping to bank accounts and fiat cashouts will be enabled on mainnet release. On Base Sepolia testnet, match prize pools are paid directly from smart contract escrows directly into your Web3 wallet address!
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setTab('faucet')}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-heading font-black text-xs cursor-pointer shadow-lg active:scale-95 transition-all inline-flex items-center gap-2"
+              >
+                <Droplets className="w-4 h-4" />
+                <span>Go to Free Faucet 💧</span>
+              </button>
+            </div>
+
+            <div
+              className={`p-3.5 rounded-2xl border space-y-2 text-xs ${
+                isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900 border-slate-800'
+              }`}
+            >
+              <div className="flex items-center justify-between text-[11px] font-bold">
+                <span className="text-slate-400">Available Testnet Balance</span>
+                <span className="font-mono-code text-emerald-400">${currentUsdcBalance.toFixed(2)} USDC</span>
+              </div>
+              <div className="text-[10px] text-slate-400">
+                Testnet USDC is strictly for testing multiplayer wagering mechanics on Base Sepolia.
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

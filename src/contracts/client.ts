@@ -399,6 +399,8 @@ export async function createWagerPoolOnChain(
   return { poolAddress, txHash: hash };
 }
 
+export const createWagerPool = createWagerPoolOnChain;
+
 /**
  * Reads complete on-chain state of a WagerPool
  */
