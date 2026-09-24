@@ -149,7 +149,6 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
   const [isRoomCodeCustomized, setIsRoomCodeCustomized] = useState<boolean>(false);
   const [maxPlayers, setMaxPlayers] = useState<number>(4);
   const [wagerPreset, setWagerPreset] = useState<string>('10');
-  const [wagerMode, setWagerMode] = useState<'free' | 'crypto'>('crypto');
   const [customWagerAmount, setCustomWagerAmount] = useState<string>('75');
   const [betAmount, setBetAmount] = useState<number>(10);
   const [initialCash, setInitialCash] = useState<number>(1500);
@@ -171,7 +170,6 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       // When bet > 0, on-chain WagerPool must be deployed via wallet confirmation first:
       setBetAmount(bet);
       setWagerPreset(bet.toString());
-      setWagerMode('crypto');
       setTurnTimeSeconds(timer);
       setCreateRoomError(null);
       setShowCreateModal(true);
@@ -250,10 +248,12 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
 
     let deployedPoolAddress: string | undefined = undefined;
 
-    // IF MONEY / WAGER IS INVOLVED: Deploy WagerPool on-chain first via wallet approval!
-    if (effectiveBet > 0) {
+    const isCryptoEscrow = effectiveBet > 0;
+
+    // If money / USDC wager is involved: Deploy WagerPool on-chain first via wallet approval!
+    if (isCryptoEscrow) {
       if (!isLoggedIn) {
-        openAuthModal('Log in or sign up with Dynamic to create real-money wager rooms.');
+        openAuthModal('Log in or connect wallet with Dynamic to create real-money on-chain wager rooms.');
         return;
       }
 
@@ -312,7 +312,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       map: boardTheme === 'cyber' ? 'Cyber Neon' : boardTheme === 'worldwide' ? 'Worldwide' : 'Classic',
       initialCash,
       wagerContractAddress: deployedPoolAddress,
-      wagerMode: effectiveBet > 0 ? 'crypto' : 'free'
+      wagerMode: isCryptoEscrow ? 'crypto' : 'free'
     });
     setActiveRooms(getAllActiveRooms());
 
@@ -328,7 +328,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
           boardTheme: mapTheme,
           isPrivate: false,
           fillWithBots,
-          wagerMode: effectiveBet > 0 ? 'crypto' : 'free',
+          wagerMode: isCryptoEscrow ? 'crypto' : 'free',
           wagerContractAddress: deployedPoolAddress,
           players: [
             {
@@ -370,7 +370,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       turnTimeSeconds: turnTimeSeconds || 15,
       boardTheme,
       fillWithBots,
-      wagerMode: effectiveBet > 0 ? 'crypto' : 'free',
+      wagerMode: isCryptoEscrow ? 'crypto' : 'free',
       wagerContractAddress: deployedPoolAddress,
       isCreator: true
     });
@@ -1301,70 +1301,28 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
                 </div>
               )}
 
-              {/* Escrow Settlement Mode: Base Sepolia USDC Smart Contract vs In-App Virtual Chips */}
+              {/* On-Chain Escrow Info Badge for Real Money Rooms */}
               {betAmount > 0 && (
                 <div
-                  id="wager-settlement-mode-selector"
-                  className={`p-3 rounded-2xl border space-y-2 ${
+                  id="wager-escrow-badge"
+                  className={`p-3 rounded-2xl border flex items-center justify-between gap-3 ${
                     isLight ? 'bg-blue-50/70 border-blue-200' : 'bg-blue-950/20 border-blue-500/30'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className={`font-bold flex items-center gap-1.5 ${isLight ? 'text-blue-900' : 'text-blue-200'}`}>
-                      <span>🛡️</span> Escrow Settlement Mode
-                    </span>
-                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-bold border border-blue-500/30">
-                      Base Sepolia Testnet
-                    </span>
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xl">🛡️</span>
+                    <div>
+                      <div className={`text-xs font-bold ${isLight ? 'text-blue-900' : 'text-blue-200'}`}>
+                        On-Chain Smart Contract Escrow
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Non-custodial Base Sepolia smart contract. Pot is held on-chain and paid 95% to winner.
+                      </div>
+                    </div>
                   </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      id="opt-wager-mode-crypto"
-                      onClick={() => setWagerMode('crypto')}
-                      className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
-                        wagerMode === 'crypto'
-                          ? isLight
-                            ? 'bg-white border-blue-500 shadow-sm ring-2 ring-blue-500/20 text-blue-950'
-                            : 'bg-blue-900/40 border-blue-400 shadow-md ring-1 ring-blue-400/40 text-white'
-                          : isLight
-                          ? 'bg-white/60 border-slate-200 text-slate-600 hover:border-slate-300'
-                          : 'bg-slate-900/40 border-slate-700/50 text-slate-400 hover:border-slate-600'
-                      }`}
-                    >
-                      <div className="font-bold flex items-center justify-between">
-                        <span className="flex items-center gap-1">🔵 On-Chain WagerPool</span>
-                        {wagerMode === 'crypto' && <span className="text-blue-400 text-xs">✓ Active</span>}
-                      </div>
-                      <div className="text-[11px] text-slate-400 mt-1">
-                        Base Sepolia smart contract escrow (MockUSDC). Non-custodial 95% winner payout.
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      id="opt-wager-mode-free"
-                      onClick={() => setWagerMode('free')}
-                      className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
-                        wagerMode === 'free'
-                          ? isLight
-                            ? 'bg-white border-blue-500 shadow-sm ring-2 ring-blue-500/20 text-blue-950'
-                            : 'bg-blue-900/40 border-blue-400 shadow-md ring-1 ring-blue-400/40 text-white'
-                          : isLight
-                          ? 'bg-white/60 border-slate-200 text-slate-600 hover:border-slate-300'
-                          : 'bg-slate-900/40 border-slate-700/50 text-slate-400 hover:border-slate-600'
-                      }`}
-                    >
-                      <div className="font-bold flex items-center justify-between">
-                        <span className="flex items-center gap-1">💵 Platform Balance</span>
-                        {wagerMode === 'free' && <span className="text-blue-400 text-xs">✓ Active</span>}
-                      </div>
-                      <div className="text-[11px] text-slate-400 mt-1">
-                        Settles with in-game PropRush cash balance.
-                      </div>
-                    </button>
-                  </div>
+                  <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-bold border border-blue-500/30 shrink-0">
+                    Base Sepolia
+                  </span>
                 </div>
               )}
 

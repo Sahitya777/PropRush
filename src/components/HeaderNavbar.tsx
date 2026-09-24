@@ -6,7 +6,6 @@ import { AvatarCharacter } from './AvatarCharacter';
 import { sounds } from '../utils/audio';
 import { isUserAdmin } from '../utils/adminRegistry';
 import { openSettingsModal } from './SettingsOptionsModal';
-import { MockUsdcFaucetModal } from './MockUsdcFaucetModal';
 
 interface HeaderNavbarProps {
   currentView: 'home' | 'game' | 'store' | 'profile' | 'rankings' | 'admin' | '404' | 'privacy' | 'terms';
@@ -35,7 +34,6 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
 
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [showFaucetModal, setShowFaucetModal] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Click outside to close user dropdown
@@ -201,25 +199,6 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
               <span>💎</span>
               <span>${(Number(user?.walletBalance) || 0).toFixed(2)}</span>
               <span className="text-[10px] text-blue-500 font-bold hidden sm:inline">USDC</span>
-            </button>
-
-            {/* Base Sepolia Faucet: Claim 50 Mock USDC */}
-            <button
-              id="btn-nav-faucet"
-              onClick={() => {
-                sounds.playClick();
-                setShowFaucetModal(true);
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 border ${
-                isLight
-                  ? 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200 hover:border-blue-300 shadow-xs'
-                  : 'bg-blue-950/40 hover:bg-blue-900/50 text-blue-300 border-blue-500/30 hover:border-blue-400'
-              }`}
-              title="Claim 50 Mock USDC on Base Sepolia"
-            >
-              <span className="text-blue-500">💧</span>
-              <span className="font-mono-code font-bold hidden sm:inline">Claim 50 USDC</span>
-              <span className="font-mono-code font-bold sm:hidden">50 USDC</span>
             </button>
 
             {/* Rankings & Leaderboard Button */}
@@ -535,30 +514,6 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
                   )}
                 </button>
 
-                {/* Claim 50 Mock USDC Faucet (Mobile Drawer) */}
-                <button
-                  id="btn-drawer-faucet"
-                  type="button"
-                  onClick={() => {
-                    sounds.playClick();
-                    setIsDrawerOpen(false);
-                    setShowFaucetModal(true);
-                  }}
-                  className={`w-full px-3.5 py-3 rounded-2xl font-bold text-sm flex items-center justify-between transition-all cursor-pointer border ${
-                    isLight
-                      ? 'bg-blue-50/80 hover:bg-blue-100/90 border-blue-200 text-blue-800'
-                      : 'bg-blue-950/40 hover:bg-blue-900/50 border-blue-500/30 text-blue-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg">💧</span>
-                    <span>Claim 50 Mock USDC</span>
-                  </div>
-                  <span className="text-[11px] font-mono-code font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                    Free Faucet
-                  </span>
-                </button>
-
                 {/* Store */}
                 <button
                   type="button"
@@ -802,13 +757,6 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
           </div>
         </div>
       )}
-
-      {/* Mock USDC Faucet Modal */}
-      <MockUsdcFaucetModal
-        isOpen={showFaucetModal}
-        onClose={() => setShowFaucetModal(false)}
-        initialAddress={walletAddress}
-      />
     </>
   );
 };

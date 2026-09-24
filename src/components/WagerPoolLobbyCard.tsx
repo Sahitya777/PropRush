@@ -36,6 +36,7 @@ import {
   WagerPoolState,
 } from '../contracts/client';
 import { useTheme } from '../context/ThemeContext';
+import { useSafeDynamic } from '../context/DynamicIntegration';
 
 interface WagerPoolLobbyCardProps {
   room: GameRoom;
@@ -54,6 +55,7 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
 }) => {
   const { theme } = useTheme();
   const isLight = theme === 'light';
+  const { primaryWallet } = useSafeDynamic();
 
   const [poolAddress, setPoolAddress] = useState<string>(room.wagerContractAddress || '');
   const [poolState, setPoolState] = useState<WagerPoolState | null>(null);
@@ -151,7 +153,7 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
     setLoadingAction('mint');
     setStatusMessage({ type: 'info', text: 'Minting 100 free testnet USDC (mUSDC) on Base Sepolia...' });
     try {
-      const { walletClient, address } = await getWalletClient();
+      const { walletClient, address } = await getWalletClient(primaryWallet);
       const txHash = await mintTestUsdc(walletClient, address, 100);
       setStatusMessage({
         type: 'success',
@@ -173,7 +175,7 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
     setLoadingAction('approve');
     setStatusMessage({ type: 'info', text: `Approving ${buyInDollars} USDC for the WagerPool escrow...` });
     try {
-      const { walletClient } = await getWalletClient();
+      const { walletClient } = await getWalletClient(primaryWallet);
       const txHash = await approveMockUsdc(walletClient, poolAddress as `0x${string}`, buyInWei);
       setStatusMessage({
         type: 'success',
@@ -195,7 +197,7 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
     setLoadingAction('join');
     setStatusMessage({ type: 'info', text: `Depositing ${buyInDollars} USDC into on-chain escrow...` });
     try {
-      const { walletClient } = await getWalletClient();
+      const { walletClient } = await getWalletClient(primaryWallet);
       const txHash = await joinWagerPool(walletClient, poolAddress as `0x${string}`);
       setStatusMessage({
         type: 'success',
@@ -218,7 +220,7 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
     setLoadingAction('leave');
     setStatusMessage({ type: 'info', text: 'Refunding buy-in and leaving on-chain pool...' });
     try {
-      const { walletClient } = await getWalletClient();
+      const { walletClient } = await getWalletClient(primaryWallet);
       const txHash = await leaveWagerPool(walletClient, poolAddress as `0x${string}`);
       setStatusMessage({
         type: 'success',
@@ -241,7 +243,7 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
     setLoadingAction('refundAll');
     setStatusMessage({ type: 'info', text: 'Cancelling lobby and refunding all escrowed players...' });
     try {
-      const { walletClient } = await getWalletClient();
+      const { walletClient } = await getWalletClient(primaryWallet);
       const txHash = await refundWagerPool(walletClient, poolAddress as `0x${string}`);
       setStatusMessage({
         type: 'success',
@@ -263,7 +265,7 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
     setLoadingAction('start');
     setStatusMessage({ type: 'info', text: 'Locking escrow funds on Base Sepolia and starting match...' });
     try {
-      const { walletClient } = await getWalletClient();
+      const { walletClient } = await getWalletClient(primaryWallet);
       const txHash = await startWagerPool(walletClient, poolAddress as `0x${string}`);
       setStatusMessage({
         type: 'success',
@@ -465,6 +467,15 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
               </a>
             )}
           </div>
+          {statusMessage.type !== 'info' && (
+            <button
+              onClick={() => setStatusMessage(null)}
+              className="text-slate-400 hover:text-white p-0.5 rounded cursor-pointer ml-1"
+              title="Dismiss notification"
+            >
+              ✕
+            </button>
+          )}
         </div>
       )}
 

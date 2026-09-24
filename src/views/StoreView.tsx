@@ -6,7 +6,6 @@ import { AvatarCharacter } from '../components/AvatarCharacter';
 import { DiceFaceMini } from '../components/DiceFaceMini';
 import { StoreItem } from '../types/user';
 import { sounds } from '../utils/audio';
-import { MockUsdcFaucetModal } from '../components/MockUsdcFaucetModal';
 
 export const StoreView: React.FC = () => {
   const { user, buyStoreItem, buyCoinPack, equipItem, isLoggedIn, openAuthModal } = useUser();
@@ -14,7 +13,6 @@ export const StoreView: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [buySuccessMsg, setBuySuccessMsg] = useState<string | null>(null);
   const [buyErrorMsg, setBuyErrorMsg] = useState<string | null>(null);
-  const [showFaucetModal, setShowFaucetModal] = useState(false);
 
   const categories = [
     { id: 'all', label: 'All Items', icon: '🏠' },
@@ -313,44 +311,14 @@ export const StoreView: React.FC = () => {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-xs font-mono-code font-bold px-3 py-1 rounded-xl border ${
+                  <span className={`text-xs font-mono-code font-bold px-3 py-1.5 rounded-xl border ${
                     isLight
                       ? 'bg-blue-50 border-blue-300 text-blue-800'
                       : 'bg-blue-950/40 border-blue-500/30 text-blue-400'
                   }`}>
                     USDC: ${user.walletBalance.toFixed(2)}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setShowFaucetModal(true)}
-                    className="px-2.5 py-1 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white cursor-pointer shadow-sm transition-all flex items-center gap-1"
-                  >
-                    <span>💧</span>
-                    <span>+50 Faucet</span>
-                  </button>
                 </div>
-              </div>
-
-              {/* Faucet Promo Banner */}
-              <div className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-3 ${
-                isLight ? 'bg-blue-50/70 border-blue-200' : 'bg-blue-950/20 border-blue-500/30'
-              }`}>
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="text-xl">💧</span>
-                  <div>
-                    <span className="font-bold text-blue-500 block">Base Sepolia Testnet USDC Faucet</span>
-                    <span className={isLight ? 'text-slate-600' : 'text-slate-400'}>
-                      Claim 50 free Mock USDC to buy any coin pack or join high-stakes multiplayer rooms!
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowFaucetModal(true)}
-                  className="w-full sm:w-auto px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer shadow-md transition-all active:scale-95 shrink-0"
-                >
-                  Claim 50 Free USDC
-                </button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -549,12 +517,6 @@ export const StoreView: React.FC = () => {
           )}
         </div>
       </div>
-
-      {/* Mock USDC Faucet Modal for Store Purchases */}
-      <MockUsdcFaucetModal
-        isOpen={showFaucetModal}
-        onClose={() => setShowFaucetModal(false)}
-      />
     </div>
   );
 };

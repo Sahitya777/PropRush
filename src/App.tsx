@@ -269,8 +269,9 @@ function AppContent() {
       (existingSaved && existingSaved.roomConfig.roomCode.toLowerCase() === cleanCode)
     );
 
-    // If room requires a buy-in / wager, verify wallet balance & deduct (only on first join, not reconnect)
-    if (config.betAmount > 0 && !isReconnecting) {
+    // If room requires a platform balance buy-in, verify balance & deduct (only on first join, not reconnect)
+    // (For crypto wagerMode, deposits are handled on-chain in the escrow lobby card via smart contract)
+    if (config.betAmount > 0 && !isReconnecting && config.wagerMode !== 'crypto') {
       if (user.walletBalance < config.betAmount) {
         sounds.playPayRent();
         alert(`⚠️ Insufficient wallet balance ($${user.walletBalance.toFixed(2)}). You need $${config.betAmount.toFixed(2)} buy-in to join "${config.roomName}". Please deposit funds.`);

@@ -151,6 +151,21 @@ export async function requestWalletAccounts(provider?: any): Promise<Address[]> 
     throw new Error('No crypto wallet detected. Please install or unlock MetaMask.');
   }
 
+  // 1. If wallet is ALREADY connected, return active account immediately without prompting or throwing!
+  if (ethereum.selectedAddress) {
+    return [ethereum.selectedAddress as Address];
+  }
+
+  try {
+    const existingAccounts: string[] = await ethereum.request({ method: 'eth_accounts' });
+    if (existingAccounts && existingAccounts.length > 0) {
+      return existingAccounts.map((a: string) => a as Address);
+    }
+  } catch (err) {
+    console.debug('Passive eth_accounts check:', err);
+  }
+
+  // 2. Not yet connected: request user authorization
   try {
     const accounts: string[] = await ethereum.request({ method: 'eth_requestAccounts' });
     if (accounts && accounts.length > 0) {
@@ -158,12 +173,23 @@ export async function requestWalletAccounts(provider?: any): Promise<Address[]> 
     }
   } catch (err: any) {
     const errMsg = (err?.message || '').toLowerCase();
-    // When "DApp interaction is disabled" or 4100 (unauthorized), force MetaMask to open permissions UI
+    
+    // Check again if accounts became available despite error (e.g. pending request already approved)
+    try {
+      const fallbackAccounts: string[] = await ethereum.request({ method: 'eth_accounts' });
+      if (fallbackAccounts && fallbackAccounts.length > 0) {
+        return fallbackAccounts.map((a: string) => a as Address);
+      }
+      if (ethereum.selectedAddress) {
+        return [ethereum.selectedAddress as Address];
+      }
+    } catch {}
+
+    // When "DApp interaction is disabled" or 4100 (unauthorized), try to request permissions
     if (
       errMsg.includes('disabled') ||
       errMsg.includes('unauthorized') ||
-      err?.code === 4100 ||
-      err?.code === -32603
+      err?.code === 4100
     ) {
       try {
         await ethereum.request({
@@ -175,20 +201,34 @@ export async function requestWalletAccounts(provider?: any): Promise<Address[]> 
           return accounts.map((a: string) => a as Address);
         }
       } catch (permErr: any) {
+        // Final fallback check
+        if (ethereum.selectedAddress) {
+          return [ethereum.selectedAddress as Address];
+        }
         throw new Error(
           permErr?.message?.includes('User rejected')
             ? 'Wallet connection request was rejected. Please approve the connection in MetaMask.'
-            : 'MetaMask connection is disabled or pending. Please open MetaMask and enable connection for this site.'
+            : 'MetaMask connection prompt was dismissed. Please check MetaMask to allow connection.'
         );
       }
     } else if (errMsg.includes('user rejected') || err?.code === 4001) {
-      throw new Error('Connection request was rejected in wallet.');
+      throw new Error('Connection request was cancelled in wallet.');
+    } else if (errMsg.includes('already pending') || err?.code === -32603) {
+      // Pending request: check if selectedAddress is active
+      if (ethereum.selectedAddress) {
+        return [ethereum.selectedAddress as Address];
+      }
+      throw new Error('A wallet connection request is already pending. Please click the MetaMask extension icon to approve.');
     } else {
       throw err;
     }
   }
 
-  // Fallback to eth_accounts
+  // Fallback to eth_accounts or selectedAddress
+  if (ethereum.selectedAddress) {
+    return [ethereum.selectedAddress as Address];
+  }
+
   const fallbackAccounts: string[] = await ethereum.request({ method: 'eth_accounts' });
   if (fallbackAccounts && fallbackAccounts.length > 0) {
     return fallbackAccounts.map((a: string) => a as Address);
