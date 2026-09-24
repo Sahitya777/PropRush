@@ -219,6 +219,25 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
               </span>
             </button>
 
+            {/* USDC Token Balance & Cashier Modal Button */}
+            <button
+              id="btn-wallet-open"
+              onClick={() => {
+                sounds.playClick();
+                if (onOpenWallet) onOpenWallet();
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono-code font-bold text-xs transition-all cursor-pointer shadow-xs shrink-0 ${
+                isLight
+                  ? 'bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-800'
+                  : 'bg-blue-950/50 hover:bg-blue-900/60 border border-blue-500/40 text-blue-300'
+              }`}
+              title="USDC Token Balance, Faucet, Deposit & Withdraw"
+            >
+              <span>💎</span>
+              <span>${(Number(user?.walletBalance) || 0).toFixed(2)}</span>
+              <span className="text-[10px] text-blue-500 font-bold hidden sm:inline">USDC</span>
+            </button>
+
             {/* Admin Console Button (Only if user has Admin rights) */}
             {isAdmin && (
               <button
@@ -379,6 +398,20 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
                     >
                       <span>🛒</span>
                       <span>Store ({user.coins} Coins)</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        sounds.playClick();
+                        setShowUserDropdown(false);
+                        if (onOpenWallet) onOpenWallet();
+                      }}
+                      className={`w-full px-3 py-2 rounded-xl text-left text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+                        isLight ? 'hover:bg-blue-50 text-blue-700' : 'hover:bg-blue-950/40 text-blue-300'
+                      }`}
+                    >
+                      <span>💎</span>
+                      <span>USDC Wallet & Faucet (${(Number(user?.walletBalance) || 0).toFixed(2)})</span>
                     </button>
 
                     <div className={`h-px my-1 ${isLight ? 'bg-slate-100' : 'bg-slate-800'}`} />
@@ -564,6 +597,29 @@ export const HeaderNavbar: React.FC<HeaderNavbarProps> = ({
                   {currentView === 'profile' && (
                     <span className="text-xs font-mono-code opacity-80">● Active</span>
                   )}
+                </button>
+
+                {/* USDC Cashier & Faucet */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    sounds.playClick();
+                    setIsDrawerOpen(false);
+                    if (onOpenWallet) onOpenWallet();
+                  }}
+                  className={`w-full px-3.5 py-3 rounded-2xl font-bold text-sm flex items-center justify-between transition-all cursor-pointer ${
+                    isLight
+                      ? 'hover:bg-blue-50 text-blue-800'
+                      : 'hover:bg-blue-950/30 text-blue-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg">💎</span>
+                    <span>USDC Cashier & Faucet</span>
+                  </div>
+                  <span className="text-xs font-mono-code font-bold text-blue-400">
+                    ${(Number(user?.walletBalance) || 0).toFixed(2)} USDC
+                  </span>
                 </button>
 
                 {/* Rules & Guide */}

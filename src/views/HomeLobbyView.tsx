@@ -416,6 +416,9 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
           setJoinError(`Insufficient USDC: Your connected wallet has $${user.walletBalance.toFixed(2)} USDC, but this table requires a $${foundRoom.bet} buy-in.`);
           setIsJoinErrorShaking(true);
           setTimeout(() => setIsJoinErrorShaking(false), 600);
+          if (onOpenWallet) {
+            setTimeout(() => onOpenWallet(), 300);
+          }
           return;
         }
       }
@@ -477,6 +480,9 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       setJoinError(`Insufficient USDC: Your connected wallet has $${user.walletBalance.toFixed(2)} USDC, but this table requires a $${room.bet} buy-in.`);
       setIsJoinErrorShaking(true);
       setTimeout(() => setIsJoinErrorShaking(false), 600);
+      if (onOpenWallet) {
+        setTimeout(() => onOpenWallet(), 300);
+      }
       return;
     }
 

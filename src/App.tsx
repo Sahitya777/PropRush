@@ -11,6 +11,7 @@ import { AdminCommandCenterView } from './views/AdminCommandCenterView';
 import { NotFoundView } from './views/NotFoundView';
 import { PrivacyPolicyView } from './views/PrivacyPolicyView';
 import { TermsAndConditionsView } from './views/TermsAndConditionsView';
+import { WalletModal } from './components/WalletModal';
 import { RulesModal } from './components/RulesModal';
 import { DynamicAuthModal } from './components/DynamicAuthModal';
 import { DynamicUserSync } from './components/DynamicUserSync';
@@ -65,6 +66,7 @@ function AppContent() {
   const [currentView, setCurrentView] = useState<AppViewType>(getInitialView);
   const [activeRoomConfig, setActiveRoomConfig] = useState<RoomConfig | null>(null);
 
+  const [isWalletOpen, setIsWalletOpen] = useState(false);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTabId>('profile');
@@ -327,6 +329,10 @@ function AppContent() {
           onNavigate={view => {
             navigateTo(view);
           }}
+          onOpenWallet={() => {
+            sounds.playClick();
+            setIsWalletOpen(true);
+          }}
           onOpenRules={() => {
             sounds.playClick();
             setIsRulesOpen(true);
@@ -371,6 +377,7 @@ function AppContent() {
         {currentView === 'home' && (
           <HomeLobbyView
             onJoinRoom={handleJoinRoom}
+            onOpenWallet={() => setIsWalletOpen(true)}
             onOpenStore={() => navigateTo('store')}
           />
         )}
@@ -474,6 +481,14 @@ function AppContent() {
                 Rules & Escrow
               </button>
               <button
+                onClick={() => setIsWalletOpen(true)}
+                className="hover:text-blue-400 cursor-pointer transition-colors font-bold text-blue-400 flex items-center gap-1"
+                title="USDC Token Balance, Faucet, Deposit & Withdraw"
+              >
+                <span>💎</span>
+                <span>USDC Cashier & Faucet</span>
+              </button>
+              <button
                 onClick={() => navigateTo('rankings')}
                 className="hover:text-[#7059e2] cursor-pointer transition-colors font-bold text-purple-400"
               >
@@ -503,6 +518,12 @@ function AppContent() {
           </div>
         </footer>
       )}
+
+      {/* Wallet Modal */}
+      <WalletModal
+        isOpen={isWalletOpen}
+        onClose={() => setIsWalletOpen(false)}
+      />
 
       {/* Rules Modal */}
       <RulesModal
