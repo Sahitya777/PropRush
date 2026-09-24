@@ -11,6 +11,7 @@ import {
   LogOut,
   RefreshCw,
   Wallet,
+  X,
 } from 'lucide-react';
 import { GameRoom } from '../types/game';
 import {
@@ -44,6 +45,7 @@ interface WagerPoolLobbyCardProps {
   currentUserWallet?: string;
   onPoolUpdated: (poolAddress: string, poolState?: WagerPoolState) => void;
   onPoolStartedOnChain?: () => void;
+  onClose?: () => void;
 }
 
 export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
@@ -52,6 +54,7 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
   currentUserWallet,
   onPoolUpdated,
   onPoolStartedOnChain,
+  onClose,
 }) => {
   const { theme } = useTheme();
   const isLight = theme === 'light';
@@ -321,18 +324,33 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
           </div>
         </div>
 
-        <button
-          onClick={refreshOnChainData}
-          disabled={isRefreshing}
-          className={`p-1.5 rounded-lg border text-xs cursor-pointer transition-all ${
-            isLight
-              ? 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
-              : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700'
-          }`}
-          title="Refresh on-chain state"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={refreshOnChainData}
+            disabled={isRefreshing}
+            className={`p-1.5 rounded-lg border text-xs cursor-pointer transition-all ${
+              isLight
+                ? 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
+                : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700'
+            }`}
+            title="Refresh on-chain state"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </button>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className={`p-1.5 rounded-lg border text-xs cursor-pointer transition-all ${
+                isLight
+                  ? 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
+                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700'
+              }`}
+              title="Close modal and view board"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Contract & Status Pill Grid */}

@@ -23,6 +23,7 @@ import {
   leaveServerRoom
 } from '../utils/serverRoomSync';
 import { WagerPoolLobbyCard } from '../components/WagerPoolLobbyCard';
+import { Shield } from 'lucide-react';
 
 interface GameRoomViewProps {
   roomConfig: {
@@ -57,6 +58,9 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
 
   // Mobile / Tablet Tab switch: 'board' or 'stats'
   const [mobileTab, setMobileTab] = useState<'board' | 'stats'>('board');
+
+  // Floating Escrow Modal Trigger (Opens over game board with zero layout shift)
+  const [showEscrowModal, setShowEscrowModal] = useState<boolean>(false);
 
   // Check if resuming an existing active match
   const savedActive = getActiveMatch();
@@ -2445,6 +2449,35 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               Pot: ${room.totalPrizePool}
             </div>
           )}
+
+          {/* On-Chain Escrow Modal Trigger Button */}
+          {(room.wagerMode === 'crypto' || roomConfig.wagerMode === 'crypto' || Boolean(room.wagerContractAddress) || room.betAmount > 0) && (
+            <button
+              id="btn-open-escrow-modal"
+              onClick={() => {
+                sounds.playClick();
+                setShowEscrowModal(true);
+              }}
+              className={`px-2.5 sm:px-3 py-0.5 rounded-full border text-[10px] sm:text-xs font-heading font-black flex items-center gap-1.5 cursor-pointer transition-all hover:scale-105 active:scale-95 shadow-sm ${
+                isLight
+                  ? 'bg-blue-50 hover:bg-blue-100 border-blue-300 text-blue-900'
+                  : 'bg-blue-950/80 hover:bg-blue-900/90 border-blue-500/50 text-blue-300 shadow-blue-950/40'
+              }`}
+              title="Open Base Sepolia on-chain escrow modal"
+            >
+              <Shield className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-blue-400" />
+              <span>Escrow</span>
+              <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded-full font-bold uppercase border ${
+                room.wagerStatus === 'Locked'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                  : room.wagerStatus === 'Settled'
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                  : 'bg-blue-500/20 text-blue-300 border-blue-400/30'
+              }`}>
+                {room.wagerStatus || (room.status === 'waiting' ? 'Open' : 'Active')}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Right: Quick Action Controls */}
@@ -2521,33 +2554,6 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         </button>
       </div>
 
-      {/* On-Chain Base Sepolia Smart Contract Escrow Lobby Banner / Card */}
-      {room.status === 'waiting' && (room.wagerMode === 'crypto' || roomConfig.wagerMode === 'crypto' || Boolean(room.wagerContractAddress)) && (
-        <div id="wager-pool-lobby-container" className="w-full max-w-5xl mx-auto px-2 sm:px-3 pt-2 pb-1 flex-shrink-0 z-20">
-          <WagerPoolLobbyCard
-            room={room}
-            isHost={isCurrentUserHost}
-            currentUserWallet={user.walletAddress}
-            onPoolUpdated={(address, poolState) => {
-              setRoom(prev => {
-                const updated: GameRoom = {
-                  ...prev,
-                  wagerMode: 'crypto',
-                  wagerContractAddress: address,
-                  wagerStatus: poolState?.status || prev.wagerStatus || 'Open',
-                  wagerTotalPool: poolState?.poolValue ? Number(poolState.poolValue) / 1e6 : prev.wagerTotalPool
-                };
-                broadcastAndSync(updated, 'SYNC_ROOM');
-                return updated;
-              });
-            }}
-            onPoolStartedOnChain={() => {
-              handleHostStartGame();
-            }}
-          />
-        </div>
-      )}
-
       {/* 2. MAIN LAYOUT: RESPONSIVE ACROSS MOBILE, IPAD/TABLET & DESKTOP */}
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row items-stretch justify-between p-1.5 sm:p-2.5 lg:p-3 gap-2 sm:gap-3 overflow-hidden">
         
@@ -2584,6 +2590,39 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
           mobileTab === 'stats' ? 'flex' : 'hidden lg:flex'
         }`}>
           
+          {/* Lobby Escrow Modal Trigger Card (Compact & Non-intrusive) */}
+          {room.status === 'waiting' && (room.wagerMode === 'crypto' || roomConfig.wagerMode === 'crypto' || Boolean(room.wagerContractAddress) || room.betAmount > 0) && (
+            <button
+              id="btn-lobby-escrow-card"
+              onClick={() => {
+                sounds.playClick();
+                setShowEscrowModal(true);
+              }}
+              className={`w-full p-2.5 rounded-2xl border text-left flex items-center justify-between gap-2.5 transition-all cursor-pointer shadow-sm hover:scale-[1.01] active:scale-[0.99] ${
+                isLight
+                  ? 'bg-blue-50/90 hover:bg-blue-100/80 border-blue-200 text-blue-950'
+                  : 'bg-blue-950/40 hover:bg-blue-900/50 border-blue-500/40 text-blue-100'
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-blue-500/20 border border-blue-400/30 flex items-center justify-center shrink-0">
+                  <Shield className="w-4 h-4 text-blue-400" />
+                </div>
+                <div className="min-w-0">
+                  <div className="font-heading font-black text-xs truncate">
+                    Base Sepolia Escrow
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-mono truncate">
+                    Buy-in: ${room.betAmount} USDC • Pot: ${room.wagerTotalPool ?? (room.betAmount * room.players.length)}
+                  </div>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 shrink-0">
+                Manage 🛡️
+              </span>
+            </button>
+          )}
+
           {/* Players List */}
           <div className={`p-3 rounded-2xl border flex flex-col gap-2 shadow-md ${
             isLight ? 'bg-white border-slate-200' : 'bg-[#141026] border-[#2b2447]'
@@ -3140,6 +3179,49 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
                 {room.status === 'waiting' ? `Leave & Refund ($${room.betAmount})` : 'Yes, Forfeit Match'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* On-Chain Base Sepolia Smart Contract Escrow Modal Dialog (Floating Overlay - Zero GameBoard Shift) */}
+      {showEscrowModal && (room.wagerMode === 'crypto' || roomConfig.wagerMode === 'crypto' || Boolean(room.wagerContractAddress) || room.betAmount > 0) && (
+        <div
+          id="wager-escrow-modal-backdrop"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fade-in overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              sounds.playClick();
+              setShowEscrowModal(false);
+            }
+          }}
+        >
+          <div className="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-3xl shadow-2xl animate-scale-up my-auto">
+            <WagerPoolLobbyCard
+              room={room}
+              isHost={isCurrentUserHost}
+              currentUserWallet={user.walletAddress}
+              onClose={() => {
+                sounds.playClick();
+                setShowEscrowModal(false);
+              }}
+              onPoolUpdated={(address, poolState) => {
+                setRoom(prev => {
+                  const updated: GameRoom = {
+                    ...prev,
+                    wagerMode: 'crypto',
+                    wagerContractAddress: address,
+                    wagerStatus: poolState?.status || prev.wagerStatus || 'Open',
+                    wagerTotalPool: poolState?.poolValue ? Number(poolState.poolValue) / 1e6 : prev.wagerTotalPool
+                  };
+                  broadcastAndSync(updated, 'SYNC_ROOM');
+                  return updated;
+                });
+              }}
+              onPoolStartedOnChain={() => {
+                setShowEscrowModal(false);
+                handleHostStartGame();
+              }}
+            />
           </div>
         </div>
       )}
