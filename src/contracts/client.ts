@@ -59,16 +59,27 @@ export interface WagerPoolState {
 /**
  * Resolves the best available Ethereum provider.
  * When multiple extensions (e.g. MetaMask and Phantom) are installed,
- * prioritizes genuine MetaMask.
+ * prioritizes genuine MetaMask, Dynamic injected provider, or passed wallet connector.
  */
 export function getInjectedProvider(preferred?: any): any {
   if (preferred?.request) return preferred;
-  if (preferred?.connector?.findProvider) {
+  if (preferred?.connector?.provider?.request) return preferred.connector.provider;
+  if (preferred?.provider?.request) return preferred.provider;
+
+  if (typeof preferred?.connector?.findProvider === 'function') {
     try {
       const p = preferred.connector.findProvider();
       if (p?.request) return p;
     } catch {}
   }
+
+  if (typeof preferred?.connector?.getProvider === 'function') {
+    try {
+      const p = preferred.connector.getProvider();
+      if (p?.request) return p;
+    } catch {}
+  }
+
   if (typeof window === 'undefined') return null;
 
   const win = window as any;
@@ -123,18 +134,22 @@ export async function ensureBaseSepolia(provider?: any): Promise<void> {
       switchError?.message?.includes('4902') ||
       switchError?.data?.originalError?.code === 4902
     ) {
-      await ethereum.request({
-        method: 'wallet_addEthereumChain',
-        params: [
-          {
-            chainId: chainIdHex,
-            chainName: BASE_SEPOLIA_CONFIG.name,
-            nativeCurrency: BASE_SEPOLIA_CONFIG.nativeCurrency,
-            rpcUrls: BASE_SEPOLIA_CONFIG.rpcUrls.default.http,
-            blockExplorerUrls: [BASE_SEPOLIA_CONFIG.blockExplorers.default.url],
-          },
-        ],
-      });
+      try {
+        await ethereum.request({
+          method: 'wallet_addEthereumChain',
+          params: [
+            {
+              chainId: chainIdHex,
+              chainName: BASE_SEPOLIA_CONFIG.name,
+              nativeCurrency: BASE_SEPOLIA_CONFIG.nativeCurrency,
+              rpcUrls: BASE_SEPOLIA_CONFIG.rpcUrls.default.http,
+              blockExplorerUrls: [BASE_SEPOLIA_CONFIG.blockExplorers.default.url],
+            },
+          ],
+        });
+      } catch (addErr) {
+        console.warn('addEthereumChain warning:', addErr);
+      }
     } else {
       console.warn('Switch chain warning:', switchError);
     }
@@ -144,10 +159,15 @@ export async function ensureBaseSepolia(provider?: any): Promise<void> {
 /**
  * Requests wallet account authorization with automatic fallback to permissions prompt
  * if dApp interaction is disabled or disconnected in MetaMask.
+ * If knownAddress is provided and the wallet is already connected in the session,
+ * it avoids throwing spurious connection errors.
  */
-export async function requestWalletAccounts(provider?: any): Promise<Address[]> {
+export async function requestWalletAccounts(provider?: any, knownAddress?: string): Promise<Address[]> {
   const ethereum = getInjectedProvider(provider);
   if (!ethereum?.request) {
+    if (knownAddress && knownAddress.startsWith('0x')) {
+      return [knownAddress as Address];
+    }
     throw new Error('No crypto wallet detected. Please install or unlock MetaMask.');
   }
 
@@ -163,6 +183,20 @@ export async function requestWalletAccounts(provider?: any): Promise<Address[]> 
     }
   } catch (err) {
     console.debug('Passive eth_accounts check:', err);
+  }
+
+  // If we already know the connected account from the user's active session, check if it's usable
+  if (knownAddress && knownAddress.startsWith('0x')) {
+    try {
+      const accounts: string[] = await ethereum.request({ method: 'eth_requestAccounts' });
+      if (accounts && accounts.length > 0) {
+        return accounts.map((a: string) => a as Address);
+      }
+    } catch {
+      // Do not throw! User is already authenticated and has an active address
+      return [knownAddress as Address];
+    }
+    return [knownAddress as Address];
   }
 
   // 2. Not yet connected: request user authorization
@@ -205,6 +239,9 @@ export async function requestWalletAccounts(provider?: any): Promise<Address[]> 
         if (ethereum.selectedAddress) {
           return [ethereum.selectedAddress as Address];
         }
+        if (knownAddress && knownAddress.startsWith('0x')) {
+          return [knownAddress as Address];
+        }
         throw new Error(
           permErr?.message?.includes('User rejected')
             ? 'Wallet connection request was rejected. Please approve the connection in MetaMask.'
@@ -218,8 +255,14 @@ export async function requestWalletAccounts(provider?: any): Promise<Address[]> 
       if (ethereum.selectedAddress) {
         return [ethereum.selectedAddress as Address];
       }
+      if (knownAddress && knownAddress.startsWith('0x')) {
+        return [knownAddress as Address];
+      }
       throw new Error('A wallet connection request is already pending. Please click the MetaMask extension icon to approve.');
     } else {
+      if (knownAddress && knownAddress.startsWith('0x')) {
+        return [knownAddress as Address];
+      }
       throw err;
     }
   }
@@ -234,6 +277,10 @@ export async function requestWalletAccounts(provider?: any): Promise<Address[]> 
     return fallbackAccounts.map((a: string) => a as Address);
   }
 
+  if (knownAddress && knownAddress.startsWith('0x')) {
+    return [knownAddress as Address];
+  }
+
   throw new Error('No wallet accounts authorized. Please unlock MetaMask and approve the connection.');
 }
 
@@ -243,32 +290,63 @@ export async function requestWalletAccounts(provider?: any): Promise<Address[]> 
 export async function getWalletClient(
   customProviderOrWallet?: any
 ): Promise<{ walletClient: WalletClient; address: Address }> {
-  // If a Dynamic primaryWallet with getWalletClient is passed:
-  if (customProviderOrWallet?.connector?.getWalletClient) {
-    try {
-      const dynClient = await customProviderOrWallet.connector.getWalletClient('84532');
-      if (dynClient && dynClient.account) {
-        return {
-          walletClient: dynClient as WalletClient,
-          address: dynClient.account.address as Address,
-        };
+  // Extract known address if available on the wallet object
+  const knownAddress: string | undefined =
+    customProviderOrWallet?.address ||
+    customProviderOrWallet?.account?.address ||
+    (typeof customProviderOrWallet?.account === 'string' ? customProviderOrWallet.account : undefined);
+
+  // 1. If a Dynamic primaryWallet with getWalletClient is passed:
+  const clientGetter =
+    (typeof customProviderOrWallet?.getWalletClient === 'function' ? customProviderOrWallet.getWalletClient.bind(customProviderOrWallet) : null) ||
+    (typeof customProviderOrWallet?.connector?.getWalletClient === 'function' ? customProviderOrWallet.connector.getWalletClient.bind(customProviderOrWallet.connector) : null);
+
+  if (clientGetter) {
+    for (const chainParam of ['84532', undefined, 84532]) {
+      try {
+        const dynClient = await clientGetter(chainParam);
+        if (dynClient) {
+          const clientAddress =
+            (typeof dynClient.account === 'string' ? dynClient.account : dynClient.account?.address) ||
+            knownAddress;
+          if (clientAddress && clientAddress.startsWith('0x')) {
+            return {
+              walletClient: dynClient as WalletClient,
+              address: clientAddress as Address,
+            };
+          }
+        }
+      } catch (e) {
+        console.warn(`Dynamic getWalletClient(${chainParam}) attempt:`, e);
       }
-    } catch (e) {
-      console.warn('Dynamic getWalletClient fallback to injected provider:', e);
     }
   }
 
   const ethereum = getInjectedProvider(customProviderOrWallet);
   if (!ethereum) {
+    // If window.ethereum is not present, but we have a known address from session, check window fallback
+    const winEth = typeof window !== 'undefined' ? (window as any).ethereum : null;
+    if (winEth?.request && knownAddress && knownAddress.startsWith('0x')) {
+      const walletClient = createWalletClient({
+        account: knownAddress as Address,
+        chain: BASE_SEPOLIA_CHAIN,
+        transport: custom(winEth),
+      });
+      return { walletClient, address: knownAddress as Address };
+    }
     throw new Error('No crypto wallet detected. Please connect MetaMask, Coinbase Wallet, or Dynamic.');
   }
 
   // 1. Authorize accounts FIRST (opens wallet popup if needed, or wakes up disabled interaction)
-  const accounts = await requestWalletAccounts(ethereum);
-  const address = accounts[0];
+  const accounts = await requestWalletAccounts(ethereum, knownAddress);
+  const address = accounts[0] || (knownAddress as Address);
 
   // 2. Ensure chain is Base Sepolia
-  await ensureBaseSepolia(ethereum);
+  try {
+    await ensureBaseSepolia(ethereum);
+  } catch (e) {
+    console.warn('ensureBaseSepolia caught:', e);
+  }
 
   // 3. Create wallet client
   const walletClient = createWalletClient({

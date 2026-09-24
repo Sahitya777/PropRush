@@ -11,7 +11,6 @@ import { AdminCommandCenterView } from './views/AdminCommandCenterView';
 import { NotFoundView } from './views/NotFoundView';
 import { PrivacyPolicyView } from './views/PrivacyPolicyView';
 import { TermsAndConditionsView } from './views/TermsAndConditionsView';
-import { WalletModal } from './components/WalletModal';
 import { RulesModal } from './components/RulesModal';
 import { DynamicAuthModal } from './components/DynamicAuthModal';
 import { DynamicUserSync } from './components/DynamicUserSync';
@@ -66,7 +65,6 @@ function AppContent() {
   const [currentView, setCurrentView] = useState<AppViewType>(getInitialView);
   const [activeRoomConfig, setActiveRoomConfig] = useState<RoomConfig | null>(null);
 
-  const [isWalletOpen, setIsWalletOpen] = useState(false);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTabId>('profile');
@@ -274,15 +272,13 @@ function AppContent() {
     if (config.betAmount > 0 && !isReconnecting && config.wagerMode !== 'crypto') {
       if (user.walletBalance < config.betAmount) {
         sounds.playPayRent();
-        alert(`⚠️ Insufficient wallet balance ($${user.walletBalance.toFixed(2)}). You need $${config.betAmount.toFixed(2)} buy-in to join "${config.roomName}". Please deposit funds.`);
-        setIsWalletOpen(true);
+        alert(`⚠️ Insufficient wallet balance ($${user.walletBalance.toFixed(2)}). You need $${config.betAmount.toFixed(2)} buy-in to join "${config.roomName}". Please fund your connected Web3 wallet.`);
         return;
       }
       // Deduct buy-in
       const deducted = deductBuyIn(config.betAmount);
       if (!deducted) {
         alert('Failed to process buy-in payment. Please check your wallet.');
-        setIsWalletOpen(true);
         return;
       }
       try {
@@ -331,10 +327,6 @@ function AppContent() {
           onNavigate={view => {
             navigateTo(view);
           }}
-          onOpenWallet={() => {
-            sounds.playClick();
-            setIsWalletOpen(true);
-          }}
           onOpenRules={() => {
             sounds.playClick();
             setIsRulesOpen(true);
@@ -379,7 +371,6 @@ function AppContent() {
         {currentView === 'home' && (
           <HomeLobbyView
             onJoinRoom={handleJoinRoom}
-            onOpenWallet={() => setIsWalletOpen(true)}
             onOpenStore={() => navigateTo('store')}
           />
         )}
@@ -477,10 +468,10 @@ function AppContent() {
                 How to Play
               </button>
               <button
-                onClick={() => setIsWalletOpen(true)}
+                onClick={() => setIsRulesOpen(true)}
                 className="hover:text-[#7059e2] cursor-pointer transition-colors"
               >
-                Wagers & Fees
+                Rules & Escrow
               </button>
               <button
                 onClick={() => navigateTo('rankings')}
@@ -512,12 +503,6 @@ function AppContent() {
           </div>
         </footer>
       )}
-
-      {/* Wallet Modal */}
-      <WalletModal
-        isOpen={isWalletOpen}
-        onClose={() => setIsWalletOpen(false)}
-      />
 
       {/* Rules Modal */}
       <RulesModal

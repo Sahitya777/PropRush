@@ -26,7 +26,6 @@ import {
   getWalletClient,
   getMockUsdcBalance,
   getMockUsdcAllowance,
-  mintTestUsdc,
   approveMockUsdc,
   createWagerPoolOnChain,
   joinWagerPool,
@@ -146,27 +145,6 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
     } catch (err: any) {
       console.error('Failed to deploy pool:', err);
       setStatusMessage({ type: 'error', text: err?.message || 'Deployment cancelled or failed' });
-    } finally {
-      setLoadingAction(null);
-    }
-  };
-
-  // Action: Mint 100 testnet USDC from Faucet
-  const handleMintFaucet = async () => {
-    setLoadingAction('mint');
-    setStatusMessage({ type: 'info', text: 'Minting 100 free testnet USDC (mUSDC) on Base Sepolia...' });
-    try {
-      const { walletClient, address } = await getWalletClient(primaryWallet);
-      const txHash = await mintTestUsdc(walletClient, address, 100);
-      setStatusMessage({
-        type: 'success',
-        text: 'Successfully claimed 100 testnet USDC! Your balance has been updated.',
-        txHash,
-      });
-      await refreshOnChainData();
-    } catch (err: any) {
-      console.error('Faucet mint failed:', err);
-      setStatusMessage({ type: 'error', text: err?.message || 'Faucet mint failed. Check if you have testnet Base Sepolia ETH for gas.' });
     } finally {
       setLoadingAction(null);
     }
@@ -391,16 +369,8 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
 
         <div className={`p-2.5 rounded-xl border ${isLight ? 'bg-white/80 border-slate-200' : 'bg-slate-900/60 border-slate-800'}`}>
           <div className="text-[10px] text-slate-400 uppercase font-mono">Your mUSDC Balance</div>
-          <div className="font-mono font-bold text-xs text-emerald-400 mt-0.5 flex items-center justify-between">
-            <span>${usdcBalance}</span>
-            <button
-              onClick={handleMintFaucet}
-              disabled={loadingAction === 'mint'}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-bold border border-emerald-500/40 cursor-pointer transition-all"
-              title="Claim 100 free testnet USDC from MockUSDC faucet on Base Sepolia"
-            >
-              {loadingAction === 'mint' ? 'Minting...' : '+100 Faucet'}
-            </button>
+          <div className="font-mono font-bold text-xs text-emerald-400 mt-0.5">
+            ${usdcBalance}
           </div>
         </div>
       </div>
