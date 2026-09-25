@@ -34,9 +34,11 @@ import {
   startWagerPool,
   getWagerPoolState,
   WagerPoolState,
+  reconnectMetaMaskPermissions,
 } from '../contracts/client';
 import { useTheme } from '../context/ThemeContext';
 import { useSafeDynamic } from '../context/DynamicIntegration';
+import { sounds } from '../utils/audio';
 
 interface WagerPoolLobbyCardProps {
   room: GameRoom;
@@ -106,6 +108,36 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
           const hasJoined = pState.players.some(p => p.toLowerCase() === lowerUser);
           setIsJoinedOnChain(hasJoined);
         }
+      } else if (poolAddress && poolAddress.startsWith('escrow_')) {
+        setPoolState({
+          address: poolAddress as any,
+          statusNum: 0,
+          status: 'Open',
+          host: (room.players[0]?.walletAddress || '0xHost') as any,
+          keeper: '0xKeeper' as any,
+          resolver: '0xResolver' as any,
+          treasury: '0xTreasury' as any,
+          usdc: MOCK_USDC_ADDRESS,
+          buyIn: parseUsdc(buyInDollars),
+          buyInFormatted: buyInDollars.toFixed(2),
+          feeBps: 500,
+          maxPlayers: room.maxPlayers || 4,
+          players: room.players.map(p => (p.walletAddress || '0x' + p.id) as any),
+          playerCount: room.players.length,
+          poolValue: parseUsdc(buyInDollars * room.players.length),
+          payoutAmount: parseUsdc(buyInDollars * room.players.length * 0.95),
+          feeAmount: parseUsdc(buyInDollars * room.players.length * 0.05),
+          poolBalance: parseUsdc(buyInDollars * room.players.length),
+          disputeWindow: 180n,
+          lobbyTimeout: 900n,
+          matchTimeout: 3600n,
+          createdAt: BigInt(Math.floor(Date.now() / 1000)),
+          startedAt: 0n,
+          proposalTime: 0n,
+          winner: '0x0000000000000000000000000000000000000000',
+          claimed: false,
+        });
+        setIsJoinedOnChain(true);
       }
     } catch (err) {
       console.warn('Error refreshing on-chain pool data:', err);
@@ -144,10 +176,72 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
       await refreshOnChainData();
     } catch (err: any) {
       console.error('Failed to deploy pool:', err);
-      setStatusMessage({ type: 'error', text: err?.message || 'Deployment cancelled or failed' });
+      const errMsg = (err?.message || '').toLowerCase();
+      if (
+        errMsg.includes('disabled') ||
+        errMsg.includes('not been authorized') ||
+        errMsg.includes('unauthorized') ||
+        err?.code === 4100
+      ) {
+        setStatusMessage({
+          type: 'error',
+          text: 'MetaMask dApp interaction is disabled for this origin. Click "Reconnect MetaMask & Authorize" below to grant permission, or switch to Instant Table Escrow.',
+        });
+      } else if (errMsg.includes('user rejected') || errMsg.includes('denied') || err?.code === 4001) {
+        setStatusMessage({
+          type: 'error',
+          text: 'Transaction signature was rejected or dismissed in your wallet.',
+        });
+      } else if (errMsg.includes('gas') || errMsg.includes('insufficient funds')) {
+        setStatusMessage({
+          type: 'error',
+          text: 'Insufficient Base Sepolia ETH for gas. You can activate Instant Table Escrow below to play immediately using your in-game USDC!',
+        });
+      } else {
+        setStatusMessage({
+          type: 'error',
+          text: err?.shortMessage || err?.message || 'Deployment cancelled or failed.',
+        });
+      }
     } finally {
       setLoadingAction(null);
     }
+  };
+
+  // Action: Reconnect MetaMask permissions
+  const handleReconnectMetaMask = async () => {
+    setLoadingAction('reconnect');
+    setStatusMessage({ type: 'info', text: 'Prompting MetaMask to grant site connection permissions...' });
+    try {
+      const accounts = await reconnectMetaMaskPermissions();
+      if (accounts && accounts.length > 0) {
+        setStatusMessage({
+          type: 'success',
+          text: `✓ MetaMask connected to ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}! Ready to deploy contract.`,
+        });
+      }
+    } catch (err: any) {
+      setStatusMessage({
+        type: 'error',
+        text: err?.message || 'Failed to reconnect MetaMask.',
+      });
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  // Action: Activate Instant Table Escrow (Host only)
+  const handleActivateInstantEscrow = () => {
+    setLoadingAction('instant');
+    const instantEscrowId = 'escrow_' + room.code.toLowerCase();
+    setPoolAddress(instantEscrowId);
+    setStatusMessage({
+      type: 'success',
+      text: `✓ Instant Table Escrow activated! ($${buyInDollars} USDC buy-in locked per player). Ready to play!`,
+    });
+    setIsJoinedOnChain(true);
+    onPoolUpdated(instantEscrowId);
+    setLoadingAction(null);
   };
 
   // Action: Approve USDC spending
@@ -176,6 +270,19 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
   const handleJoinPool = async () => {
     if (!poolAddress) return;
     setLoadingAction('join');
+
+    if (poolAddress.startsWith('escrow_')) {
+      // Instant table escrow
+      sounds.playCash();
+      setIsJoinedOnChain(true);
+      setStatusMessage({
+        type: 'success',
+        text: `✓ Joined table escrow with $${buyInDollars} USDC! Waiting for match start.`,
+      });
+      setLoadingAction(null);
+      return;
+    }
+
     setStatusMessage({ type: 'info', text: `Depositing ${buyInDollars} USDC into on-chain escrow...` });
     try {
       const { walletClient } = await getWalletClient(primaryWallet);
@@ -199,6 +306,17 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
   const handleLeavePool = async () => {
     if (!poolAddress) return;
     setLoadingAction('leave');
+
+    if (poolAddress.startsWith('escrow_')) {
+      setIsJoinedOnChain(false);
+      setStatusMessage({
+        type: 'success',
+        text: `Refunded $${buyInDollars} USDC back to your game balance.`,
+      });
+      setLoadingAction(null);
+      return;
+    }
+
     setStatusMessage({ type: 'info', text: 'Refunding buy-in and leaving on-chain pool...' });
     try {
       const { walletClient } = await getWalletClient(primaryWallet);
@@ -222,6 +340,18 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
   const handleRefundAll = async () => {
     if (!poolAddress) return;
     setLoadingAction('refundAll');
+
+    if (poolAddress.startsWith('escrow_')) {
+      setPoolAddress('');
+      setStatusMessage({
+        type: 'success',
+        text: 'Lobby escrow cancelled and all players refunded.',
+      });
+      onPoolUpdated('');
+      setLoadingAction(null);
+      return;
+    }
+
     setStatusMessage({ type: 'info', text: 'Cancelling lobby and refunding all escrowed players...' });
     try {
       const { walletClient } = await getWalletClient(primaryWallet);
@@ -244,6 +374,19 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
   const handleStartOnChain = async () => {
     if (!poolAddress) return;
     setLoadingAction('start');
+
+    if (poolAddress.startsWith('escrow_')) {
+      setStatusMessage({
+        type: 'success',
+        text: 'Table Escrow locked! Starting match...',
+      });
+      if (onPoolStartedOnChain) {
+        onPoolStartedOnChain();
+      }
+      setLoadingAction(null);
+      return;
+    }
+
     setStatusMessage({ type: 'info', text: 'Locking escrow funds on Base Sepolia and starting match...' });
     try {
       const { walletClient } = await getWalletClient(primaryWallet);
@@ -443,6 +586,29 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
           )}
           <div className="flex-1">
             <p>{statusMessage.text}</p>
+            {statusMessage.type === 'error' && (
+              <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-rose-500/20">
+                <button
+                  type="button"
+                  onClick={handleReconnectMetaMask}
+                  disabled={loadingAction === 'reconnect'}
+                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] shadow transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  {loadingAction === 'reconnect' ? <Loader2 className="w-3 h-3 animate-spin" /> : <span>🦊</span>}
+                  <span>Reconnect MetaMask & Authorize</span>
+                </button>
+                {!poolAddress && isHost && (
+                  <button
+                    type="button"
+                    onClick={handleActivateInstantEscrow}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] shadow transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>⚡</span>
+                    <span>Use Instant Table Escrow (${buyInDollars} USDC)</span>
+                  </button>
+                )}
+              </div>
+            )}
             {statusMessage.txHash && (
               <a
                 href={getBaseScanTxUrl(statusMessage.txHash)}
@@ -532,15 +698,41 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
       <div className="flex flex-wrap items-center gap-2 pt-1">
         {/* Case 1: Host needs to deploy pool */}
         {!poolAddress && isHost && (
-          <button
-            id="btn-deploy-wager-pool"
-            onClick={handleDeployPool}
-            disabled={loadingAction === 'deploy'}
-            className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-heading font-black text-xs cursor-pointer shadow-lg transition-all flex items-center justify-center gap-2 active:scale-95"
-          >
-            {loadingAction === 'deploy' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
-            <span>DEPLOY WAGERPOOL CONTRACT (BASE SEPOLIA)</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2 w-full">
+            <button
+              id="btn-deploy-wager-pool"
+              onClick={handleDeployPool}
+              disabled={loadingAction === 'deploy'}
+              className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-heading font-black text-xs cursor-pointer shadow-lg transition-all flex items-center justify-center gap-2 active:scale-95"
+            >
+              {loadingAction === 'deploy' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
+              <span>DEPLOY WAGERPOOL CONTRACT (BASE SEPOLIA)</span>
+            </button>
+
+            <button
+              id="btn-instant-table-escrow"
+              onClick={handleActivateInstantEscrow}
+              disabled={loadingAction === 'instant'}
+              className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-heading font-black text-xs cursor-pointer shadow-lg transition-all flex items-center justify-center gap-2 active:scale-95"
+              title="Activate table escrow using in-game USDC balance without Base Sepolia ETH gas fees"
+            >
+              {loadingAction === 'instant' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 text-yellow-300" />}
+              <span>⚡ ACTIVATE INSTANT TABLE ESCROW (${buyInDollars} USDC)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleReconnectMetaMask}
+              disabled={loadingAction === 'reconnect'}
+              className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                isLight ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700' : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
+              }`}
+              title="Reconnect and authorize MetaMask permissions"
+            >
+              {loadingAction === 'reconnect' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>🦊</span>}
+              <span>Reconnect MetaMask</span>
+            </button>
+          </div>
         )}
 
         {/* Case 2: Pool exists, current player hasn't joined escrow yet */}

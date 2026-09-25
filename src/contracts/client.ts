@@ -470,6 +470,77 @@ export async function mintTestUsdc(
 }
 
 /**
+ * Reconnects MetaMask site permissions explicitly to fix 'DApp interaction is disabled'
+ */
+export async function reconnectMetaMaskPermissions(): Promise<Address[]> {
+  const ethereum = getInjectedProvider();
+  if (!ethereum?.request) {
+    throw new Error('MetaMask or Web3 wallet extension not detected in this browser.');
+  }
+  try {
+    await ethereum.request({
+      method: 'wallet_requestPermissions',
+      params: [{ eth_accounts: {} }],
+    });
+  } catch (err: any) {
+    if (err?.code === 4001 || (err?.message || '').toLowerCase().includes('user rejected')) {
+      throw new Error('MetaMask connection request was rejected. Please click the fox icon to connect.');
+    }
+  }
+
+  const accounts: string[] = await ethereum.request({ method: 'eth_accounts' });
+  if (!accounts || accounts.length === 0) {
+    const requested: string[] = await ethereum.request({ method: 'eth_requestAccounts' });
+    return requested.map((a: string) => a as Address);
+  }
+  return accounts.map((a: string) => a as Address);
+}
+
+/**
+ * Safely executes a contract write with automatic recovery if MetaMask throws
+ * "DApp interaction is disabled" or 4100 authorization errors.
+ */
+export async function safeWriteContract(
+  walletClient: WalletClient,
+  params: any
+): Promise<string> {
+  try {
+    return await walletClient.writeContract(params);
+  } catch (err: any) {
+    const errMsg = (err?.message || '').toLowerCase();
+    const isAuthError =
+      errMsg.includes('disabled') ||
+      errMsg.includes('not been authorized') ||
+      errMsg.includes('unauthorized') ||
+      err?.code === 4100;
+
+    if (isAuthError) {
+      const ethereum = getInjectedProvider();
+      if (ethereum?.request) {
+        try {
+          console.warn('[MetaMask recovery] Requesting permissions due to disabled/unauthorized interaction...');
+          await ethereum.request({
+            method: 'wallet_requestPermissions',
+            params: [{ eth_accounts: {} }],
+          });
+          const accounts = await ethereum.request({ method: 'eth_accounts' });
+          const freshAccount = accounts[0] || params.account;
+          return await walletClient.writeContract({
+            ...params,
+            account: freshAccount,
+          });
+        } catch {
+          throw new Error(
+            'MetaMask dApp interaction is disabled. Please click the fox icon in your browser toolbar, unlock MetaMask, and click "Connect" to this site.'
+          );
+        }
+      }
+    }
+    throw err;
+  }
+}
+
+/**
  * Approves a spender (the WagerPool contract) to transfer buyIn
  */
 export async function approveMockUsdc(
@@ -480,7 +551,7 @@ export async function approveMockUsdc(
   const account = walletClient.account;
   if (!account) throw new Error('Wallet account required');
 
-  const hash = await walletClient.writeContract({
+  const hash = await safeWriteContract(walletClient, {
     address: MOCK_USDC_ADDRESS,
     abi: MOCK_USDC_ABI,
     functionName: 'approve',
@@ -508,7 +579,7 @@ export async function createWagerPoolOnChain(
 
   const buyInWei = parseUsdc(buyInUsdc);
 
-  const hash = await walletClient.writeContract({
+  const hash = await safeWriteContract(walletClient, {
     address: FACTORY_ADDRESS,
     abi: WAGER_POOL_FACTORY_ABI,
     functionName: 'createPool',
@@ -659,7 +730,7 @@ export async function joinWagerPool(
   const account = walletClient.account;
   if (!account) throw new Error('Wallet account required');
 
-  const hash = await walletClient.writeContract({
+  const hash = await safeWriteContract(walletClient, {
     address: poolAddress,
     abi: WAGER_POOL_ABI,
     functionName: 'join',
@@ -681,7 +752,7 @@ export async function leaveWagerPool(
   const account = walletClient.account;
   if (!account) throw new Error('Wallet account required');
 
-  const hash = await walletClient.writeContract({
+  const hash = await safeWriteContract(walletClient, {
     address: poolAddress,
     abi: WAGER_POOL_ABI,
     functionName: 'leave',
@@ -703,7 +774,7 @@ export async function refundWagerPool(
   const account = walletClient.account;
   if (!account) throw new Error('Wallet account required');
 
-  const hash = await walletClient.writeContract({
+  const hash = await safeWriteContract(walletClient, {
     address: poolAddress,
     abi: WAGER_POOL_ABI,
     functionName: 'refund',
@@ -725,7 +796,7 @@ export async function startWagerPool(
   const account = walletClient.account;
   if (!account) throw new Error('Wallet account required');
 
-  const hash = await walletClient.writeContract({
+  const hash = await safeWriteContract(walletClient, {
     address: poolAddress,
     abi: WAGER_POOL_ABI,
     functionName: 'start',
@@ -747,7 +818,7 @@ export async function disputeWagerResult(
   const account = walletClient.account;
   if (!account) throw new Error('Wallet account required');
 
-  const hash = await walletClient.writeContract({
+  const hash = await safeWriteContract(walletClient, {
     address: poolAddress,
     abi: WAGER_POOL_ABI,
     functionName: 'dispute',
@@ -769,7 +840,7 @@ export async function finalizeWagerResult(
   const account = walletClient.account;
   if (!account) throw new Error('Wallet account required');
 
-  const hash = await walletClient.writeContract({
+  const hash = await safeWriteContract(walletClient, {
     address: poolAddress,
     abi: WAGER_POOL_ABI,
     functionName: 'finalize',
@@ -791,7 +862,7 @@ export async function claimWagerPayout(
   const account = walletClient.account;
   if (!account) throw new Error('Wallet account required');
 
-  const hash = await walletClient.writeContract({
+  const hash = await safeWriteContract(walletClient, {
     address: poolAddress,
     abi: WAGER_POOL_ABI,
     functionName: 'claim',
