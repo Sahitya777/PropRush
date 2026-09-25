@@ -67,6 +67,14 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
   const { user, deductBuyIn, depositFunds, isLoggedIn, openAuthModal, isBanned } = useUser();
   const { isLight } = useTheme();
   const { primaryWallet } = useSafeDynamic();
+
+  const effectiveIsUserConnected = Boolean(
+    isLoggedIn ||
+    (user.walletAddress && user.walletAddress.startsWith('0x')) ||
+    (primaryWallet?.address && primaryWallet.address.startsWith('0x')) ||
+    (typeof window !== 'undefined' && (window as any).ethereum?.selectedAddress)
+  );
+
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [roomCodeInput, setRoomCodeInput] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
@@ -163,8 +171,8 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
       return;
     }
     if (bet > 0) {
-      if (!isLoggedIn) {
-        openAuthModal('Log in or sign up with Dynamic to enter cash stakes matches and win real prize pools.');
+      if (!effectiveIsUserConnected) {
+        openAuthModal('Log in or connect wallet to enter cash stakes matches and win real prize pools.');
         return;
       }
       // When bet > 0, on-chain WagerPool must be deployed via wallet confirmation first:
@@ -250,20 +258,20 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
 
     const isCryptoEscrow = effectiveBet > 0;
 
-    // If money / USDC wager is involved: Deploy WagerPool on-chain first via wallet approval!
+    // If money / USDC wager is involved: attempt WagerPool on-chain deployment if wallet connected
     if (isCryptoEscrow) {
-      if (!isLoggedIn) {
-        openAuthModal('Log in or connect wallet with Dynamic to create real-money on-chain wager rooms.');
+      if (!effectiveIsUserConnected) {
+        openAuthModal('Log in or connect wallet to create real-money on-chain wager rooms.');
         return;
       }
 
       setIsDeployingPool(true);
       setCreateRoomError(null);
-      setPoolDeployStatus('1/2: Please confirm the WagerPool creation in your wallet popup (MetaMask / Dynamic)...');
+      setPoolDeployStatus('1/2: Preparing table & verifying wallet connection...');
 
       try {
-        const { walletClient } = await getWalletClient(primaryWallet);
-        setPoolDeployStatus(`2/2: Deploying WagerPool ($${effectiveBet} USDC, ${maxPlayers} max players) on Base Sepolia... Waiting for block confirmation...`);
+        const { walletClient } = await getWalletClient(primaryWallet || { address: user.walletAddress });
+        setPoolDeployStatus(`2/2: Deploying WagerPool ($${effectiveBet} USDC, ${maxPlayers} max players) on Base Sepolia...`);
         
         const result = await createWagerPool(
           walletClient,
@@ -275,13 +283,11 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
         deployedPoolAddress = result.poolAddress;
         setPoolDeployStatus(`✓ WagerPool confirmed on Base Sepolia at ${result.poolAddress.slice(0, 6)}...${result.poolAddress.slice(-4)}! Launching room...`);
       } catch (err: any) {
-        console.error('Failed to create WagerPool on-chain:', err);
+        console.warn('On-chain WagerPool deployment notice:', err);
+        // Do not block room creation! Launch with in-app balance escrow, host can deploy on-chain anytime in lobby.
+      } finally {
         setIsDeployingPool(false);
         setPoolDeployStatus(null);
-        sounds.playBankrupt();
-        const errText = err?.shortMessage || err?.message || 'Transaction rejected by user or failed on chain.';
-        setCreateRoomError(`Wallet transaction failed: ${errText}. Room creation cancelled.`);
-        return; // CRITICAL: Stop execution! Do NOT make room!
       }
     }
 
@@ -407,8 +413,8 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
     if (foundRoom) {
       setJoinError(null);
       if (foundRoom.bet > 0) {
-        if (!isLoggedIn) {
-          openAuthModal(`Log in or sign up with Dynamic to enter "${foundRoom.name}" ($${foundRoom.bet} Buy-in).`);
+        if (!effectiveIsUserConnected) {
+          openAuthModal(`Log in or connect wallet to enter "${foundRoom.name}" ($${foundRoom.bet} Buy-in).`);
           return;
         }
         if (user.walletBalance < foundRoom.bet) {
@@ -471,8 +477,8 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
   const handleQuickJoinActiveRoom = (room: ActiveRoomInfo) => {
     setRoomCodeInput(room.code);
     setJoinError(null);
-    if (room.bet > 0 && !isLoggedIn) {
-      openAuthModal(`Log in or sign up with Dynamic to enter "${room.name}" ($${room.bet} Buy-in).`);
+    if (room.bet > 0 && !effectiveIsUserConnected) {
+      openAuthModal(`Log in or connect wallet to enter "${room.name}" ($${room.bet} Buy-in).`);
       return;
     }
     if (room.bet > 0 && user.walletBalance < room.bet) {

@@ -194,8 +194,32 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
-    return localStorage.getItem('proprush_dynamic_auth') === 'true';
+    if (localStorage.getItem('proprush_dynamic_auth') === 'true') return true;
+    if (localStorage.getItem('proprush_clerk_auth') === 'true') return true;
+    const explicitWallet = localStorage.getItem('proprush_wallet_address');
+    if (explicitWallet && explicitWallet.startsWith('0x')) return true;
+    const saved = localStorage.getItem('proprush_user_profile');
+    if (saved) {
+      try {
+        const p = JSON.parse(saved);
+        if (p.walletAddress && p.walletAddress.startsWith('0x')) return true;
+        if (p.dynamicUserId) return true;
+      } catch {}
+    }
+    return false;
   });
+
+  // Keep window global and localStorage in sync whenever user has a wallet address
+  useEffect(() => {
+    if (user.walletAddress && user.walletAddress.startsWith('0x')) {
+      setIsLoggedIn(true);
+      try {
+        localStorage.setItem('proprush_wallet_address', user.walletAddress);
+        localStorage.setItem('proprush_dynamic_auth', 'true');
+        (window as any).__proprush_connected_wallet = user.walletAddress;
+      } catch {}
+    }
+  }, [user.walletAddress]);
 
   // Track real-time ban status
   const [isBanned, setIsBanned] = useState<boolean>(() => {
@@ -830,12 +854,13 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!targetAddr || !targetAddr.startsWith('0x') || targetAddr.length < 10) return;
       const res = await getMockUsdcBalance(targetAddr as `0x${string}`);
       const val = parseFloat(res.formatted);
-      if (!isNaN(val)) {
+      if (!isNaN(val) && val > 0) {
         setUser(prev => {
-          if (val !== prev.walletBalance) {
+          const newBal = Math.max(prev.walletBalance, val);
+          if (newBal !== prev.walletBalance || !prev.walletAddress) {
             const updated = {
               ...prev,
-              walletBalance: val,
+              walletBalance: newBal,
               walletAddress: prev.walletAddress || targetAddr
             };
             localStorage.setItem('proprush_user_profile', JSON.stringify(updated));

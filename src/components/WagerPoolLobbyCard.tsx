@@ -125,7 +125,7 @@ export const WagerPoolLobbyCard: React.FC<WagerPoolLobbyCardProps> = ({
     setLoadingAction('deploy');
     setStatusMessage({ type: 'info', text: 'Confirm transaction in your wallet to deploy the WagerPool escrow contract...' });
     try {
-      const { walletClient } = await getWalletClient();
+      const { walletClient } = await getWalletClient(primaryWallet || { address: currentUserWallet });
       const result = await createWagerPoolOnChain(
         walletClient,
         buyInDollars,

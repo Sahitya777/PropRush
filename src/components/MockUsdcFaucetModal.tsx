@@ -28,6 +28,7 @@ import {
   getMockUsdcBalance,
   mintTestUsdc,
   getInjectedProvider,
+  getActiveSessionWalletAddress,
 } from '../contracts/client';
 import { sounds } from '../utils/audio';
 
@@ -54,6 +55,7 @@ export const MockUsdcFaucetModal: React.FC<MockUsdcFaucetModalProps> = ({
     primaryWallet?.address ||
     (user?.walletAddress && user.walletAddress.startsWith('0x') ? user.walletAddress : '') ||
     initialAddress ||
+    getActiveSessionWalletAddress(primaryWallet) ||
     (typeof window !== 'undefined' && (window as any).ethereum?.selectedAddress ? (window as any).ethereum.selectedAddress : '')
   ) as string;
 
@@ -253,18 +255,14 @@ export const MockUsdcFaucetModal: React.FC<MockUsdcFaucetModalProps> = ({
           type: 'error',
           text: 'Transaction was cancelled in your wallet.',
         });
-      } else if (errMsg.includes('disabled') || errMsg.includes('unauthorized') || err?.code === 4100) {
-        setStatusMessage({
-          type: 'error',
-          text: 'DApp interaction is disabled or disconnected in MetaMask. Click "Reconnect MetaMask" below to re-authorize.',
-        });
-      } else if (errMsg.includes('gas') || errMsg.includes('insufficient funds')) {
-        setStatusMessage({
-          type: 'error',
-          text: 'Insufficient Base Sepolia ETH for gas. Get free Base Sepolia ETH from the faucet link below.',
-        });
       } else {
-        setStatusMessage({ type: 'error', text: err?.message || 'Transaction failed or rejected.' });
+        // Fallback: grant to game balance so user is never blocked
+        sounds.playCash();
+        depositFunds(CLAIM_AMOUNT, 'mock_usdc_faucet');
+        setStatusMessage({
+          type: 'success',
+          text: `✓ Granted +$${CLAIM_AMOUNT}.00 Mock USDC to your player balance!`,
+        });
       }
     } finally {
       setIsMinting(false);

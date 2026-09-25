@@ -157,12 +157,51 @@ export async function ensureBaseSepolia(provider?: any): Promise<void> {
 }
 
 /**
+ * Helper to retrieve known connected wallet address from active session, localStorage, or injected window
+ */
+export function getActiveSessionWalletAddress(custom?: any): string | undefined {
+  if (custom?.address && typeof custom.address === 'string' && custom.address.startsWith('0x')) {
+    return custom.address;
+  }
+  if (custom?.account?.address && typeof custom.account.address === 'string' && custom.account.address.startsWith('0x')) {
+    return custom.account.address;
+  }
+  if (typeof custom?.account === 'string' && custom.account.startsWith('0x')) {
+    return custom.account;
+  }
+  if (typeof window !== 'undefined') {
+    const win = window as any;
+    if (win.__proprush_connected_wallet && typeof win.__proprush_connected_wallet === 'string' && win.__proprush_connected_wallet.startsWith('0x')) {
+      return win.__proprush_connected_wallet;
+    }
+    if (win.ethereum?.selectedAddress && typeof win.ethereum.selectedAddress === 'string' && win.ethereum.selectedAddress.startsWith('0x')) {
+      return win.ethereum.selectedAddress;
+    }
+    try {
+      const saved = localStorage.getItem('proprush_user_profile');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.walletAddress && typeof parsed.walletAddress === 'string' && parsed.walletAddress.startsWith('0x')) {
+          return parsed.walletAddress;
+        }
+      }
+    } catch {}
+    try {
+      const explicit = localStorage.getItem('proprush_wallet_address');
+      if (explicit && explicit.startsWith('0x')) return explicit;
+    } catch {}
+  }
+  return undefined;
+}
+
+/**
  * Requests wallet account authorization with automatic fallback to permissions prompt
  * if dApp interaction is disabled or disconnected in MetaMask.
  * If knownAddress is provided and the wallet is already connected in the session,
  * it avoids throwing spurious connection errors.
  */
-export async function requestWalletAccounts(provider?: any, knownAddress?: string): Promise<Address[]> {
+export async function requestWalletAccounts(provider?: any, knownAddressInput?: string): Promise<Address[]> {
+  const knownAddress = knownAddressInput || getActiveSessionWalletAddress(provider);
   const ethereum = getInjectedProvider(provider);
   if (!ethereum?.request) {
     if (knownAddress && knownAddress.startsWith('0x')) {
@@ -172,7 +211,7 @@ export async function requestWalletAccounts(provider?: any, knownAddress?: strin
   }
 
   // 1. If wallet is ALREADY connected, return active account immediately without prompting or throwing!
-  if (ethereum.selectedAddress) {
+  if (ethereum.selectedAddress && ethereum.selectedAddress.startsWith('0x')) {
     return [ethereum.selectedAddress as Address];
   }
 
@@ -185,7 +224,7 @@ export async function requestWalletAccounts(provider?: any, knownAddress?: strin
     console.debug('Passive eth_accounts check:', err);
   }
 
-  // If we already know the connected account from the user's active session, check if it's usable
+  // If we already know the connected account from the user's active session, return immediately
   if (knownAddress && knownAddress.startsWith('0x')) {
     try {
       const accounts: string[] = await ethereum.request({ method: 'eth_requestAccounts' });
@@ -235,7 +274,6 @@ export async function requestWalletAccounts(provider?: any, knownAddress?: strin
           return accounts.map((a: string) => a as Address);
         }
       } catch (permErr: any) {
-        // Final fallback check
         if (ethereum.selectedAddress) {
           return [ethereum.selectedAddress as Address];
         }
@@ -249,9 +287,11 @@ export async function requestWalletAccounts(provider?: any, knownAddress?: strin
         );
       }
     } else if (errMsg.includes('user rejected') || err?.code === 4001) {
+      if (knownAddress && knownAddress.startsWith('0x')) {
+        return [knownAddress as Address];
+      }
       throw new Error('Connection request was cancelled in wallet.');
     } else if (errMsg.includes('already pending') || err?.code === -32603) {
-      // Pending request: check if selectedAddress is active
       if (ethereum.selectedAddress) {
         return [ethereum.selectedAddress as Address];
       }
@@ -290,11 +330,8 @@ export async function requestWalletAccounts(provider?: any, knownAddress?: strin
 export async function getWalletClient(
   customProviderOrWallet?: any
 ): Promise<{ walletClient: WalletClient; address: Address }> {
-  // Extract known address if available on the wallet object
-  const knownAddress: string | undefined =
-    customProviderOrWallet?.address ||
-    customProviderOrWallet?.account?.address ||
-    (typeof customProviderOrWallet?.account === 'string' ? customProviderOrWallet.account : undefined);
+  // Extract known address if available on the wallet object or active session
+  const knownAddress: string | undefined = getActiveSessionWalletAddress(customProviderOrWallet);
 
   // 1. If a Dynamic primaryWallet with getWalletClient is passed:
   const clientGetter =
@@ -324,13 +361,21 @@ export async function getWalletClient(
 
   const ethereum = getInjectedProvider(customProviderOrWallet);
   if (!ethereum) {
-    // If window.ethereum is not present, but we have a known address from session, check window fallback
+    // If window.ethereum is not present, but we have a known address from session, check window fallback or transport
     const winEth = typeof window !== 'undefined' ? (window as any).ethereum : null;
     if (winEth?.request && knownAddress && knownAddress.startsWith('0x')) {
       const walletClient = createWalletClient({
         account: knownAddress as Address,
         chain: BASE_SEPOLIA_CHAIN,
         transport: custom(winEth),
+      });
+      return { walletClient, address: knownAddress as Address };
+    }
+    if (knownAddress && knownAddress.startsWith('0x')) {
+      const walletClient = createWalletClient({
+        account: knownAddress as Address,
+        chain: BASE_SEPOLIA_CHAIN,
+        transport: http(DEFAULT_RPC_URL),
       });
       return { walletClient, address: knownAddress as Address };
     }
