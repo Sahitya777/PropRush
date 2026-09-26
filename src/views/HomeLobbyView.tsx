@@ -18,8 +18,14 @@ import {
 } from '../utils/activeRoomsRegistry';
 import { fetchServerRoom, createServerRoom, disbandServerRoom } from '../utils/serverRoomSync';
 import { useSafeDynamic } from '../context/DynamicIntegration';
-import { createWagerPool, getWalletClient } from '../contracts/client';
-import { getBaseScanTxUrl } from '../contracts/config';
+import {
+  createWagerPool,
+  getWalletClient,
+  approveMockUsdc,
+  joinWagerPool,
+  getMockUsdcBalance
+} from '../contracts/client';
+import { getBaseScanTxUrl, parseUsdc } from '../contracts/config';
 import { Loader2, Shield, AlertCircle, CheckCircle2, ExternalLink } from 'lucide-react';
 
 interface HomeLobbyViewProps {
@@ -258,33 +264,72 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
 
     const isCryptoEscrow = effectiveBet > 0;
 
-    // If money / USDC wager is involved: attempt WagerPool on-chain deployment if wallet connected
+    // If money / USDC wager is involved: creator deploys pool & deposits buy-in first!
     if (isCryptoEscrow) {
       if (!effectiveIsUserConnected) {
-        openAuthModal('Log in or connect wallet to create real-money on-chain wager rooms.');
+        openAuthModal('Log in or connect your wallet to create on-chain wager matches.');
+        return;
+      }
+
+      const activeAddress = (
+        primaryWallet?.address ||
+        user.walletAddress ||
+        (typeof window !== 'undefined' ? (window as any).ethereum?.selectedAddress : null)
+      ) as string | undefined;
+
+      if (!activeAddress || !activeAddress.startsWith('0x')) {
+        openAuthModal('Please connect your Web3 wallet (MetaMask, Coinbase, or Dynamic) to deploy on-chain escrow.');
         return;
       }
 
       setIsDeployingPool(true);
       setCreateRoomError(null);
-      setPoolDeployStatus('1/2: Preparing table & verifying wallet connection...');
+      setPoolDeployStatus('1/3: Checking USDC balance & verifying wallet connection...');
 
       try {
-        const { walletClient } = await getWalletClient(primaryWallet || { address: user.walletAddress });
-        setPoolDeployStatus(`2/2: Deploying WagerPool ($${effectiveBet} USDC, ${maxPlayers} max players) on Base Sepolia...`);
-        
+        // Balance check
+        const balCheck = await getMockUsdcBalance(activeAddress as `0x${string}`).catch(() => null);
+        if (balCheck && Number(balCheck.balance) / 1e6 < effectiveBet) {
+          throw new Error(`Insufficient Mock USDC balance ($${balCheck.formatted} USDC available, $${effectiveBet} USDC required). Please claim free Base Sepolia Mock USDC from the wallet faucet first.`);
+        }
+
+        const { walletClient } = await getWalletClient(primaryWallet || { address: activeAddress });
+
+        // Step 1: Deploy WagerPool
+        setPoolDeployStatus(`1/3: Deploying WagerPool ($${effectiveBet} USDC, ${maxPlayers} max players) on Base Sepolia... Please confirm in wallet.`);
         const result = await createWagerPool(
           walletClient,
           effectiveBet,
           maxPlayers,
           500 // 5% platform fee
         );
-
         deployedPoolAddress = result.poolAddress;
-        setPoolDeployStatus(`✓ WagerPool confirmed on Base Sepolia at ${result.poolAddress.slice(0, 6)}...${result.poolAddress.slice(-4)}! Launching room...`);
+
+        // Step 2: Approve USDC
+        const buyInWei = parseUsdc(effectiveBet);
+        setPoolDeployStatus(`2/3: Approving $${effectiveBet} USDC for WagerPool contract... Please confirm in wallet.`);
+        await approveMockUsdc(walletClient, deployedPoolAddress as `0x${string}`, buyInWei);
+
+        // Step 3: Deposit buy-in
+        setPoolDeployStatus(`3/3: Depositing $${effectiveBet} USDC buy-in into WagerPool contract... Please confirm in wallet.`);
+        await joinWagerPool(walletClient, deployedPoolAddress as `0x${string}`);
+
+        setPoolDeployStatus(`✓ WagerPool created and $${effectiveBet} USDC deposit confirmed! Launching room...`);
       } catch (err: any) {
-        console.warn('On-chain WagerPool deployment notice:', err);
-        // Do not block room creation! Launch with in-app balance escrow, host can deploy on-chain anytime in lobby.
+        console.error('On-chain WagerPool deployment/deposit failed:', err);
+        const errMsg = (err?.shortMessage || err?.message || '').toLowerCase();
+        if (errMsg.includes('user rejected') || errMsg.includes('denied') || err?.code === 4001) {
+          setCreateRoomError('Transaction signature was cancelled or rejected in your wallet. Room creation cancelled.');
+        } else if (errMsg.includes('gas') || errMsg.includes('insufficient funds')) {
+          setCreateRoomError('Insufficient Base Sepolia ETH for gas. Please obtain free testnet ETH from the faucet to send transactions.');
+        } else if (errMsg.includes('disabled') || errMsg.includes('not been authorized') || errMsg.includes('unauthorized') || err?.code === 4100) {
+          setCreateRoomError('MetaMask authorization required. Please click your MetaMask extension icon, unlock it, and authorize connection to this site.');
+        } else {
+          setCreateRoomError(err?.shortMessage || err?.message || 'Failed to deploy on-chain escrow and deposit buy-in. Room creation cancelled.');
+        }
+        setIsDeployingPool(false);
+        setPoolDeployStatus(null);
+        return; // CRITICAL: Stop room creation if on-chain transaction failed!
       } finally {
         setIsDeployingPool(false);
         setPoolDeployStatus(null);
@@ -1113,6 +1158,18 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
                     </button>
                   </div>
                   <p className="text-[11px] text-slate-300 leading-relaxed">{createRoomError}</p>
+                  {createRoomError.toLowerCase().includes('faucet') && onOpenWallet && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCreateModal(false);
+                        onOpenWallet();
+                      }}
+                      className="mt-2 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] cursor-pointer"
+                    >
+                      🎁 Open Faucet & Get Free USDC
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -1125,7 +1182,7 @@ export const HomeLobbyView: React.FC<HomeLobbyViewProps> = ({
                   <div className="space-y-0.5">
                     <div className="font-bold text-xs">Base Sepolia Smart Contract Escrow</div>
                     <p className={`text-[11px] leading-relaxed ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
-                      When creating this room, your wallet will prompt you to deploy the on-chain WagerPool contract (${effectiveBet} USDC buy-in). The room is only created once approved and confirmed on-chain.
+                      Creating this cash match requires 1) deploying the WagerPool contract and 2) depositing your ${effectiveBet} USDC buy-in first. Other players will pay when joining the lobby before anyone can start the game.
                     </p>
                   </div>
                 </div>

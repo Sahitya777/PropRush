@@ -23,6 +23,7 @@ import {
   leaveServerRoom
 } from '../utils/serverRoomSync';
 import { WagerPoolLobbyCard } from '../components/WagerPoolLobbyCard';
+import { getWagerPoolState, WagerPoolState } from '../contracts/client';
 import { Shield } from 'lucide-react';
 
 interface GameRoomViewProps {
@@ -449,6 +450,57 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
   const lastLogRef = useRef<{ text: string; time: number }>({ text: '', time: 0 });
   const serverVersionRef = useRef<number>(0);
   const kickedPlayerIdsRef = useRef<Set<string>>(new Set());
+
+  // On-chain wager pool state tracking for match lobby
+  const [onChainPoolState, setOnChainPoolState] = useState<WagerPoolState | null>(null);
+
+  // Poll on-chain pool status during lobby waiting phase
+  useEffect(() => {
+    if (room.status !== 'waiting' || !room.wagerContractAddress || !room.wagerContractAddress.startsWith('0x')) {
+      return;
+    }
+    let isMounted = true;
+    const fetchPool = async () => {
+      try {
+        const state = await getWagerPoolState(room.wagerContractAddress as `0x${string}`);
+        if (isMounted && state) {
+          setOnChainPoolState(state);
+        }
+      } catch (err) {
+        console.debug('Failed to fetch pool state:', err);
+      }
+    };
+    fetchPool();
+    const interval = setInterval(fetchPool, 3500);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [room.status, room.wagerContractAddress]);
+
+  const depositedPlayerAddresses = useMemo(() => {
+    return (onChainPoolState?.players || []).map(p => p.toLowerCase());
+  }, [onChainPoolState]);
+
+  const isPlayerDeposited = (player: Player) => {
+    if (player.isBot) return true;
+    if (room.betAmount === 0) return true;
+    if (!room.wagerContractAddress) return false;
+    const w = (player.walletAddress || '').toLowerCase();
+    return Boolean(w && depositedPlayerAddresses.includes(w));
+  };
+
+  const unpaidHumanPlayers = useMemo(() => {
+    if (room.betAmount === 0 || !room.wagerContractAddress) return [];
+    return room.players.filter(p => !p.isBot && !isPlayerDeposited(p));
+  }, [room.players, room.betAmount, room.wagerContractAddress, depositedPlayerAddresses]);
+
+  const hasCurrentUserDeposited = useMemo(() => {
+    if (room.betAmount === 0) return true;
+    if (!room.wagerContractAddress) return false;
+    const myWallet = (user.walletAddress || '').toLowerCase();
+    return Boolean(myWallet && depositedPlayerAddresses.includes(myWallet));
+  }, [room.betAmount, room.wagerContractAddress, user.walletAddress, depositedPlayerAddresses]);
 
   // Auto-save active match whenever room or chat state updates
   useEffect(() => {
@@ -1108,6 +1160,22 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
       sounds.playBankrupt();
       alert('A minimum of 2 players is required to start the match. Please invite another player with your room code/link, or add an AI bot.');
       return;
+    }
+
+    // Escrow check: All human players must have paid their buy-in on-chain
+    if (room.betAmount > 0) {
+      if (!room.wagerContractAddress) {
+        sounds.playBankrupt();
+        alert('Cannot start match: The WagerPool escrow contract has not been deployed on Base Sepolia.');
+        setShowEscrowModal(true);
+        return;
+      }
+      if (unpaidHumanPlayers.length > 0) {
+        sounds.playBankrupt();
+        alert(`Cannot start match: All players must deposit their $${room.betAmount} USDC buy-in on-chain before the game can begin.\n\nPending payments: ${unpaidHumanPlayers.map(p => p.name).join(', ')}.`);
+        setShowEscrowModal(true);
+        return;
+      }
     }
 
     sounds.playDiceRoll();
@@ -2554,6 +2622,49 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
         </button>
       </div>
 
+      {/* Lobby Escrow Action Banners */}
+      {room.status === 'waiting' && room.betAmount > 0 && !hasCurrentUserDeposited && (
+        <div className="mx-2 sm:mx-3 mt-1.5 p-3 rounded-2xl bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-orange-500/20 border border-amber-500/50 flex flex-wrap items-center justify-between gap-2 text-xs animate-fade-in shadow-lg">
+          <div className="flex items-center gap-2.5">
+            <span className="text-2xl animate-bounce">💰</span>
+            <div>
+              <div className="font-heading font-black text-amber-300 text-sm flex items-center gap-1.5">
+                <span>Action Required: Deposit Your ${room.betAmount} USDC Buy-In</span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                All players must deposit into the Base Sepolia escrow smart contract before the match can begin.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              sounds.playClick();
+              setShowEscrowModal(true);
+            }}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 text-slate-950 font-heading font-black text-xs cursor-pointer shadow-md transition-all active:scale-95"
+          >
+            Deposit & Ready Up →
+          </button>
+        </div>
+      )}
+
+      {room.status === 'waiting' && room.betAmount > 0 && hasCurrentUserDeposited && unpaidHumanPlayers.length > 0 && (
+        <div className="mx-2 sm:mx-3 mt-1.5 px-3 py-2 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-between text-xs text-blue-200">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">⏳</span>
+            <span>
+              Your buy-in is deposited! Waiting for <strong>{unpaidHumanPlayers.map(p => p.name).join(', ')}</strong> to deposit before match can start ({room.players.length - unpaidHumanPlayers.length} of {room.players.length} ready).
+            </span>
+          </div>
+          <button
+            onClick={() => setShowEscrowModal(true)}
+            className="text-[11px] font-bold text-blue-400 hover:text-blue-300 underline cursor-pointer ml-2 shrink-0"
+          >
+            View Escrow
+          </button>
+        </div>
+      )}
+
       {/* 2. MAIN LAYOUT: RESPONSIVE ACROSS MOBILE, IPAD/TABLET & DESKTOP */}
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row items-stretch justify-between p-1.5 sm:p-2.5 lg:p-3 gap-2 sm:gap-3 overflow-hidden">
         
@@ -2581,6 +2692,9 @@ export const GameRoomView: React.FC<GameRoomViewProps> = ({
               onKickPlayer={handleRemovePlayerFromLobby}
               isLobbyMode={room.status === 'waiting'}
               isHost={isCurrentUserHost}
+              unpaidPlayersCount={unpaidHumanPlayers.length}
+              hasCurrentUserDeposited={hasCurrentUserDeposited}
+              onOpenEscrowModal={() => setShowEscrowModal(true)}
             />
           </div>
         </div>

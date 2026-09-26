@@ -477,23 +477,42 @@ export async function reconnectMetaMaskPermissions(): Promise<Address[]> {
   if (!ethereum?.request) {
     throw new Error('MetaMask or Web3 wallet extension not detected in this browser.');
   }
+
+  // 1. eth_requestAccounts directly opens the MetaMask popup to authorize connection
   try {
-    await ethereum.request({
-      method: 'wallet_requestPermissions',
-      params: [{ eth_accounts: {} }],
-    });
-  } catch (err: any) {
-    if (err?.code === 4001 || (err?.message || '').toLowerCase().includes('user rejected')) {
+    const requested: string[] = await ethereum.request({ method: 'eth_requestAccounts' });
+    if (requested && requested.length > 0) {
+      if (typeof window !== 'undefined') {
+        (window as any).__proprush_connected_wallet = requested[0];
+      }
+      return requested.map((a: string) => a as Address);
+    }
+  } catch (reqErr: any) {
+    if (reqErr?.code === 4001 || (reqErr?.message || '').toLowerCase().includes('user rejected')) {
       throw new Error('MetaMask connection request was rejected. Please click the fox icon to connect.');
     }
+    // 2. Fallback to wallet_requestPermissions if eth_requestAccounts failed with specific error
+    try {
+      await ethereum.request({
+        method: 'wallet_requestPermissions',
+        params: [{ eth_accounts: {} }],
+      });
+      const accounts: string[] = await ethereum.request({ method: 'eth_accounts' });
+      if (accounts && accounts.length > 0) {
+        if (typeof window !== 'undefined') {
+          (window as any).__proprush_connected_wallet = accounts[0];
+        }
+        return accounts.map((a: string) => a as Address);
+      }
+    } catch {}
+    throw reqErr;
   }
 
   const accounts: string[] = await ethereum.request({ method: 'eth_accounts' });
-  if (!accounts || accounts.length === 0) {
-    const requested: string[] = await ethereum.request({ method: 'eth_requestAccounts' });
-    return requested.map((a: string) => a as Address);
+  if (accounts && accounts.length > 0) {
+    return accounts.map((a: string) => a as Address);
   }
-  return accounts.map((a: string) => a as Address);
+  throw new Error('No accounts selected in MetaMask.');
 }
 
 /**
@@ -518,21 +537,31 @@ export async function safeWriteContract(
       const ethereum = getInjectedProvider();
       if (ethereum?.request) {
         try {
-          console.warn('[MetaMask recovery] Requesting permissions due to disabled/unauthorized interaction...');
-          await ethereum.request({
-            method: 'wallet_requestPermissions',
-            params: [{ eth_accounts: {} }],
-          });
-          const accounts = await ethereum.request({ method: 'eth_accounts' });
+          console.warn('[MetaMask recovery] Requesting account permissions via eth_requestAccounts...');
+          const accounts: string[] = await ethereum.request({ method: 'eth_requestAccounts' });
           const freshAccount = accounts[0] || params.account;
           return await walletClient.writeContract({
             ...params,
             account: freshAccount,
           });
         } catch {
-          throw new Error(
-            'MetaMask dApp interaction is disabled. Please click the fox icon in your browser toolbar, unlock MetaMask, and click "Connect" to this site.'
-          );
+          // Try wallet_requestPermissions as secondary
+          try {
+            await ethereum.request({
+              method: 'wallet_requestPermissions',
+              params: [{ eth_accounts: {} }],
+            });
+            const accounts = await ethereum.request({ method: 'eth_accounts' });
+            const freshAccount = accounts[0] || params.account;
+            return await walletClient.writeContract({
+              ...params,
+              account: freshAccount,
+            });
+          } catch {
+            throw new Error(
+              'MetaMask authorization required. Please click the fox icon in your browser toolbar, unlock MetaMask, and click "Connect" to this site.'
+            );
+          }
         }
       }
     }

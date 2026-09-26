@@ -25,6 +25,9 @@ interface GameBoardProps {
   onKickPlayer?: (playerId: string) => void;
   isLobbyMode?: boolean;
   isHost?: boolean;
+  unpaidPlayersCount?: number;
+  hasCurrentUserDeposited?: boolean;
+  onOpenEscrowModal?: () => void;
 }
 
 export const GameBoard: React.FC<GameBoardProps> = ({
@@ -45,7 +48,10 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   onStartGame,
   onKickPlayer,
   isLobbyMode = false,
-  isHost = false
+  isHost = false,
+  unpaidPlayersCount = 0,
+  hasCurrentUserDeposited = true,
+  onOpenEscrowModal,
 }) => {
   const { isLight } = useTheme();
   const currentTurnPlayer = room.players.find(p => p.id === room.currentTurnPlayerId);
@@ -203,6 +209,29 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                                   Waiting for 1 more player to join...
                                 </span>
                               </div>
+                            ) : room.betAmount > 0 && unpaidPlayersCount > 0 ? (
+                              <div className="flex flex-col items-center gap-1.5">
+                                <button
+                                  disabled
+                                  id="btn-start-game-deposit-pending"
+                                  className="px-6 py-3 rounded-2xl font-heading font-extrabold text-xs sm:text-sm bg-slate-800/90 border border-amber-500/50 text-amber-300 cursor-not-allowed shadow-md"
+                                  title="All players must deposit their USDC buy-in on-chain before the match can begin"
+                                >
+                                  🔒 Escrow Deposit Pending ({room.players.length - unpaidPlayersCount}/{room.players.length} Paid)
+                                </button>
+                                <span className="text-[11px] text-amber-400 font-bold leading-tight">
+                                  All players must pay the ${room.betAmount} USDC buy-in to start
+                                </span>
+                                {onOpenEscrowModal && (
+                                  <button
+                                    type="button"
+                                    onClick={onOpenEscrowModal}
+                                    className="mt-1 px-3 py-1 rounded-lg text-xs font-bold text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
+                                  >
+                                    View Escrow Contract & Deposits →
+                                  </button>
+                                )}
+                              </div>
                             ) : (
                               <div className="flex flex-col items-center gap-1.5">
                                 <button
@@ -212,20 +241,38 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                                 >
                                   🚀 Start Game ({room.players.length} Ready)
                                 </button>
-                                <span className={`text-[11px] font-mono-code ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                                  Click to launch match for all players
+                                <span className={`text-[11px] font-mono-code font-bold ${room.betAmount > 0 ? 'text-emerald-400' : isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                                  {room.betAmount > 0 ? '✓ All buy-ins deposited on-chain! Click to roll' : 'Click to launch match for all players'}
                                 </span>
                               </div>
                             )
                           ) : (
                             <div className="flex flex-col items-center gap-1.5">
-                              <div className="text-xs font-heading font-bold text-purple-300 flex items-center gap-1.5">
-                                <span className="animate-spin text-sm">⏳</span>
-                                <span>Waiting for Room Creator to start...</span>
-                              </div>
-                              <span className={`text-[11px] font-mono-code ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                                {room.players.length} players in room {room.code}
-                              </span>
+                              {room.betAmount > 0 && !hasCurrentUserDeposited ? (
+                                <div className="flex flex-col items-center gap-1.5 w-full">
+                                  <button
+                                    type="button"
+                                    onClick={onOpenEscrowModal}
+                                    className="w-full px-6 py-3 rounded-2xl font-heading font-extrabold text-sm bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-yellow-400 text-slate-950 shadow-xl cursor-pointer transition-all transform active:scale-95 animate-bounce"
+                                  >
+                                    💰 Pay ${room.betAmount} USDC Buy-In
+                                  </button>
+                                  <span className="text-[11px] text-amber-300 font-bold">
+                                    Action required: Pay your buy-in on-chain to ready up!
+                                  </span>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="text-xs font-heading font-bold text-purple-300 flex items-center gap-1.5">
+                                    <span className="animate-spin text-sm">⏳</span>
+                                    <span>Waiting for Room Creator to start...</span>
+                                  </div>
+                                  <span className={`text-[11px] font-mono-code ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                                    {room.betAmount > 0 && <span className="text-emerald-400 font-bold mr-1">✓ Buy-in Paid!</span>}
+                                    {room.players.length} players in room {room.code}
+                                  </span>
+                                </>
+                              )}
                             </div>
                           )}
 
